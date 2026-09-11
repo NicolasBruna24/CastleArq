@@ -1,0 +1,2 @@
+"""LocalAI Hub application package."""
+
