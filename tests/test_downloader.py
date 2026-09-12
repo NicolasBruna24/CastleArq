@@ -115,6 +115,14 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(partial.read_bytes(), b"old")
             self.assertEqual(called, [])
 
+    def test_initial_state_has_no_final_or_part(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(directory)
+            self.assertFalse(plan.destination.exists())
+            self.assertFalse(
+                plan.destination.with_name(plan.destination.name + ".part").exists()
+            )
+
     def test_http_error_cleans_own_part(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = self.make_plan(directory)
@@ -305,6 +313,62 @@ class DownloaderTests(unittest.TestCase):
             )
             with self.assertRaises(UnsafePathError):
                 Downloader(store, opener=lambda *_args: Response([b"data"])).download(plan)
+
+    def test_part_symlink_is_rejected_without_http(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            root = Path(directory)
+            store = ModelStore(root)
+            spec = artifact()
+            artifact_dir = root / "qwen__coder" / spec.artifact_id
+            artifact_dir.mkdir(parents=True)
+            target = Path(outside) / "target"
+            target.write_bytes(b"outside")
+            partial = artifact_dir / f"{spec.filename}.part"
+            partial.symlink_to(target)
+            plan = DownloadPlan(
+                spec,
+                artifact_dir / spec.filename,
+                DownloadPlanStatus.READY,
+                (),
+                100,
+                spec.size_bytes,
+                False,
+            )
+            called = []
+            with self.assertRaises(UnsafePathError):
+                Downloader(
+                    store, opener=lambda *_args: called.append(True)
+                ).download(plan)
+            self.assertEqual(called, [])
+            self.assertTrue(partial.is_symlink())
+
+    def test_final_symlink_is_rejected_without_http(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            root = Path(directory)
+            store = ModelStore(root)
+            spec = artifact()
+            artifact_dir = root / "qwen__coder" / spec.artifact_id
+            artifact_dir.mkdir(parents=True)
+            target = Path(outside) / "target"
+            target.write_bytes(b"outside")
+            final = artifact_dir / spec.filename
+            final.symlink_to(target)
+            plan = DownloadPlan(
+                spec,
+                final,
+                DownloadPlanStatus.READY,
+                (),
+                100,
+                spec.size_bytes,
+                False,
+            )
+            called = []
+            with self.assertRaises(UnsafePathError):
+                Downloader(
+                    store, opener=lambda *_args: called.append(True)
+                ).download(plan)
+            self.assertEqual(called, [])
+            self.assertTrue(final.is_symlink())
 
 
 if __name__ == "__main__":
