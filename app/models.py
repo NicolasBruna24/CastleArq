@@ -1,6 +1,8 @@
 """Data structures for model metadata and quantization estimates."""
 
 from dataclasses import dataclass
+from enum import Enum
+import hashlib
 @dataclass(frozen=True)
 class Quantization:
     name: str
@@ -8,6 +10,35 @@ class Quantization:
     quality: int
     recommended: bool = False
     memory_estimated: bool = True
+
+
+class ArtifactState(str, Enum):
+    NOT_DOWNLOADED = "not_downloaded"
+    DOWNLOADING = "downloading"
+    DOWNLOADED = "downloaded"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class ArtifactSpec:
+    model_id: str
+    source: str
+    repository: str
+    filename: str
+    format: str = "Unknown"
+    quantization: str = "Unknown"
+    download_url: str | None = None
+    size_bytes: int | None = None
+    sha256: str | None = None
+    state: ArtifactState = ArtifactState.NOT_DOWNLOADED
+
+    @property
+    def artifact_id(self) -> str:
+        value = "|".join(
+            (self.source, self.repository, self.filename, self.quantization)
+        )
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 DEFAULT_QUANTIZATIONS = (

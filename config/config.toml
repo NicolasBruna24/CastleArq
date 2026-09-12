@@ -3,3 +3,6 @@
 safety_margin = 1.20
 ram_offload_factor = 0.50
 model_overhead = 1.15
+
+[models]
+directory = "~/.local/share/localai-hub/models"

@@ -7,6 +7,7 @@ import argparse
 from .hardware import detect_hardware
 from .compatibility import load_config, recommend_models
 from .model_catalog import get_catalog
+from .model_store import ModelStore
 from .runtimes import detect_backends, detect_runtimes, recommend
 
 
@@ -110,14 +111,36 @@ def print_models() -> None:
             print(f"  Warning: {warning}")
 
 
+def print_local_models() -> None:
+    print("LocalAI Hub - Local models")
+    print("==========================")
+    entries = ModelStore().list_artifacts()
+    if not entries:
+        print("No local model artifacts found.")
+        return
+    for entry in entries:
+        if entry.artifact is None:
+            print(f"  INVALID: {entry.manifest_path} ({entry.message})")
+            continue
+        print(f"  {entry.artifact.model_id} / {entry.artifact.filename}")
+        print(f"    State: {entry.state.value}")
+        print(f"    Source: {entry.artifact.source}")
+        if entry.message:
+            print(f"    Problem: {entry.message}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
-    parser.add_argument("command", choices=("detect", "models"), help="command to execute")
+    parser.add_argument(
+        "command", choices=("detect", "models", "list"), help="command to execute"
+    )
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()
     elif args.command == "models":
         print_models()
+    elif args.command == "list":
+        print_local_models()
     return 0
 
 

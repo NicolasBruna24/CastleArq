@@ -84,3 +84,23 @@ La compatibilidad no combina la VRAM de varias GPUs: cada dispositivo se
 evalúa individualmente y el análisis multi-GPU avanzado queda para una fase
 posterior. La RAM solo se usa como fallback cuando el runtime declara soporte
 CPU explícito; en ese caso el resultado se marca como `marginal`.
+
+## Fase 3.0-A: almacenamiento local
+
+La subfase inicial de Fase 3 separa un modelo lógico de un `ArtifactSpec`
+descargable y añade manifests JSON al almacenamiento local. Por defecto se usa
+`~/.local/share/localai-hub/models`, configurable en `[models]` de
+`config/config.toml`. El comando `list` solo inspecciona artifacts locales:
+
+```bash
+python3 -m app.main list
+```
+
+Los estados distinguen `not_downloaded`, `downloading`, `downloaded`,
+`verified` y `failed`. Un checksum disponible se verifica al inspeccionar el
+artifact; sin checksum, un archivo nunca se marca como criptográficamente
+verificado. El estado operativo se deriva del filesystem y de metadata
+verificable; el estado persistido en el manifest es informativo/cache. La ruta
+local se deriva siempre del model ID sanitizado, artifact ID y filename, y no
+se utiliza ningún `local_path` externo. Esta subfase todavía no accede a
+Internet ni descarga archivos.
