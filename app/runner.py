@@ -69,6 +69,7 @@ class LlamaCppRunner(ModelRunner):
             device,
             "--prompt",
             request.prompt,
+            "--single-turn",
         ]
         environment = {"PATH": os.defpath}
         try:

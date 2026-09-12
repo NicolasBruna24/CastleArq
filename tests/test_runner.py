@@ -67,6 +67,7 @@ class RunnerTests(unittest.TestCase):
             [
                 str(self.executable), "cli", "--model", str(self.model),
                 "--device", "Vulkan0", "--prompt", self.request.prompt,
+                "--single-turn",
             ],
         )
         self.assertIs(process.call_args.kwargs["shell"], False)
@@ -80,7 +81,10 @@ class RunnerTests(unittest.TestCase):
             self.artifact, target, ExecutionRequest(self.spec, "hello", target)
         )
         self.assertTrue(result.success)
-        self.assertEqual(process.call_args.args[0][-2:], ["--prompt", "hello"])
+        self.assertEqual(
+            process.call_args.args[0][-3:],
+            ["--prompt", "hello", "--single-turn"],
+        )
         self.assertIn("none", process.call_args.args[0])
 
     def test_backend_without_capability_is_rejected(self):
