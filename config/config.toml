@@ -1,1 +1,5 @@
-# Reserved for user configuration in a future phase.
+# Centralized assumptions for compatibility estimates.
+[compatibility]
+safety_margin = 1.20
+ram_offload_factor = 0.50
+model_overhead = 1.15

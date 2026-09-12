@@ -7,7 +7,7 @@ runtimes ni dependencias del sistema.
 
 ## Estado actual
 
-La Fase 1.5 está implementada:
+La Fase 2 está implementada:
 
 - detección de sistema operativo, arquitectura, CPU, RAM y GPU en Linux;
 - GPU con nombre, fabricante, PCI ID, driver y fuente de cada dato cuando están disponibles;
@@ -16,7 +16,11 @@ La Fase 1.5 está implementada:
 - detección de runtimes `llama.cpp / llama.app` y Ollama;
 - detección por presencia de Vulkan, OpenCL, SYCL, CUDA y ROCm;
 - recomendación basada exclusivamente en lo detectado;
-- interfaz preparada para futuros modelos y runners, sin ejecutar inferencia.
+- catálogo pequeño y estático de modelos de coding, general-purpose y reasoning;
+- cuantizaciones GGUF aproximadas y estimación explícita de memoria;
+- motor de compatibilidad con estados compatible, marginal, incompatible y unknown;
+- recomendación ordenada por memoria, calidad, margen, runtime y backend;
+- interfaz preparada para futuros runners, sin descargar ni ejecutar modelos.
 
 Los comandos ausentes, salidas inválidas y datos no disponibles se muestran como
 `Unknown`, `Not detected` o `not available`; no provocan tracebacks al usuario.
@@ -28,6 +32,7 @@ Se requiere Python 3.10 o posterior. No hay dependencias externas en el MVP:
 ```bash
 python3 -m unittest discover
 python3 -m app.main detect
+python3 -m app.main models
 ```
 
 La aplicación no usa `sudo`, no modifica el sistema y no instala drivers,
@@ -38,6 +43,8 @@ CUDA, ROCm, SYCL, oneAPI ni otros runtimes.
 - `app/hardware.py`: estructuras y detección de hardware.
 - `app/runtimes.py`: detección de runtimes y backends.
 - `app/models.py`: metadatos de modelos para una fase futura.
+- `app/model_catalog.py`: catálogo curado local, sin red ni scraping.
+- `app/compatibility.py`: estimación, compatibilidad y recomendación.
 - `app/runner.py`: interfaz abstracta para runners futuros.
 - `app/main.py`: CLI.
 
@@ -61,3 +68,19 @@ automáticamente y no se modifican drivers, kernel ni configuración del sistema
 
 No se implementarán marketplace, cuentas, nube, Kubernetes, Docker obligatorio,
 telemetría ni gestión automática de drivers en esta fase.
+
+## Fase 2: catálogo y compatibilidad
+
+`models` analiza el catálogo local usando el hardware, runtimes y backends
+detectados. La memoria se estima a partir de parámetros, bits por parámetro y
+overhead; el resultado se marca siempre como estimado. La VRAM se prioriza y la
+RAM puede actuar como respaldo penalizado, pero no se considera equivalente.
+Los márgenes se centralizan en `config/config.toml`.
+
+Esta fase no descarga modelos, no consulta Hugging Face, no inicia servidores,
+no ejecuta inferencia y no instala software.
+
+La compatibilidad no combina la VRAM de varias GPUs: cada dispositivo se
+evalúa individualmente y el análisis multi-GPU avanzado queda para una fase
+posterior. La RAM solo se usa como fallback cuando el runtime declara soporte
+CPU explícito; en ese caso el resultado se marca como `marginal`.

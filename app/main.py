@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 
 from .hardware import detect_hardware
+from .compatibility import load_config, recommend_models
+from .model_catalog import get_catalog
 from .runtimes import detect_backends, detect_runtimes, recommend
 
 
@@ -58,12 +60,64 @@ def print_detection() -> None:
     print(f"  Recommended backend: {backend}")
 
 
+def print_models() -> None:
+    hardware = detect_hardware()
+    runtimes = detect_runtimes()
+    detected_gpu_backends = {
+        backend for gpu in hardware.gpus for backend in gpu.backends
+    }
+    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
+    results = recommend_models(
+        hardware, runtimes, backends, get_catalog(), config=load_config()
+    )
+    print("LocalAI Hub - Model recommendations")
+    print("==========================")
+    if not results:
+        print("No models available in the catalog.")
+        return
+    known_vram = [
+        gpu.vram_available_gib if gpu.vram_available_bytes is not None
+        else gpu.vram_gib
+        for gpu in hardware.gpus
+        if gpu.vram_available_bytes is not None or gpu.vram_bytes is not None
+    ]
+    vram_summary = (
+        ", ".join(_format_mib(value) for value in known_vram)
+        if known_vram
+        else "Unknown"
+    )
+    print(f"\nHardware: {_format_gib(hardware.memory.total_gib)} RAM")
+    print(f"  VRAM per GPU: {vram_summary}")
+    if len(hardware.gpus) > 1:
+        print("  Multi-GPU analysis: not supported")
+    for index, result in enumerate(results, 1):
+        quantization = result.recommended_quantization
+        memory = (
+            f"{result.estimated_memory_bytes / (1024**3):.1f} GiB estimated"
+            if result.estimated_memory_bytes is not None
+            else "Unknown memory"
+        )
+        print(f"\n{index}. {result.model.name}")
+        print(f"  Status: {result.status.value.upper()}")
+        print(f"  Score: {result.score}")
+        print(f"  Quantization: {quantization.name if quantization else 'Unknown'}")
+        print(f"  Memory: {memory}")
+        print(f"  Runtime: {result.recommended_runtime or 'None'}")
+        print(f"  Backend: {result.recommended_backend or 'None'}")
+        for reason in result.reasons:
+            print(f"  Reason: {reason}")
+        for warning in result.warnings:
+            print(f"  Warning: {warning}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
-    parser.add_argument("command", choices=("detect",), help="command to execute")
+    parser.add_argument("command", choices=("detect", "models"), help="command to execute")
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()
+    elif args.command == "models":
+        print_models()
     return 0
 
 

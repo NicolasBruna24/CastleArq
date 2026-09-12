@@ -13,6 +13,7 @@ class RuntimeStatus:
     installed: bool
     available: bool
     gpu_backend_detected: bool
+    supported_backends: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -21,6 +22,9 @@ class RuntimeStatus:
         if self.installed:
             return "installed but not available"
         return "not installed"
+
+    def supports_backend(self, backend: str) -> bool:
+        return backend in self.supported_backends
 
 
 @dataclass(frozen=True)
@@ -41,8 +45,11 @@ def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
     if ollama_path:
         ollama_available = _command_succeeds((ollama_path, "list"))
     return [
-        RuntimeStatus("llama.cpp / llama.app", llama_installed, llama_installed, False),
-        RuntimeStatus("Ollama", bool(ollama_path), ollama_available, False),
+        RuntimeStatus(
+            "llama.cpp / llama.app", llama_installed, llama_installed, False,
+            ("Vulkan", "CPU"),
+        ),
+        RuntimeStatus("Ollama", bool(ollama_path), ollama_available, False, ()),
     ]
 
 
@@ -59,8 +66,11 @@ def detect_backends(
     )
     detected_gpu_backends = detected_gpu_backends or set()
     return [
-        BackendStatus(name, which(binary) is not None or name in detected_gpu_backends)
-        for name, binary in checks
+        *[
+            BackendStatus(name, which(binary) is not None or name in detected_gpu_backends)
+            for name, binary in checks
+        ],
+        BackendStatus("CPU", True),
     ]
 
 
