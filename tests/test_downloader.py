@@ -64,7 +64,11 @@ class DownloaderTests(unittest.TestCase):
     def test_success_streams_and_publishes_final_file(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
-            spec = artifact(size_bytes=6)
+            content = b"abcdef"
+            spec = artifact(
+                size_bytes=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
             plan = self.make_plan(directory, spec)
             result = Downloader(
                 store, opener=lambda _url, _timeout: Response([b"abc", b"def"])
@@ -74,6 +78,41 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(result.bytes_downloaded, 6)
             self.assertEqual(result.destination.read_bytes(), b"abcdef")
             self.assertFalse(result.destination.with_name(result.destination.name + ".part").exists())
+
+    def test_checksum_mismatch_preserves_new_part(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(directory, artifact(sha256="0" * 64))
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: Response([b"0123456789"]),
+            ).download(plan)
+            partial = plan.destination.with_name(plan.destination.name + ".part")
+            self.assertEqual(result.status, DownloadResultStatus.CHECKSUM_MISMATCH)
+            self.assertFalse(plan.destination.exists())
+            self.assertEqual(partial.read_bytes(), b"0123456789")
+
+    def test_sha256_none_publishes_without_checksum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(directory, artifact(sha256=None))
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: Response([b"0123456789"]),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.SUCCESS)
+            self.assertEqual(plan.destination.read_bytes(), b"0123456789")
+
+    def test_checksum_comparison_accepts_uppercase_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"0123456789"
+            plan = self.make_plan(
+                directory,
+                artifact(sha256=hashlib.sha256(content).hexdigest().upper()),
+            )
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: Response([content]),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.SUCCESS)
 
     def test_non_ready_plans_do_not_open_url(self):
         for status in (
@@ -145,6 +184,86 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(requests[0][2], {"Range": "bytes=4-"})
             self.assertEqual(plan.destination.read_bytes(), b"1234567890")
             self.assertFalse(partial.exists())
+
+    def test_complete_part_with_correct_checksum_is_published_without_http(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"1234567890"
+            plan = self.make_plan(
+                directory,
+                artifact(
+                    size_bytes=len(content),
+                    sha256=hashlib.sha256(content).hexdigest(),
+                ),
+            )
+            plan.destination.parent.mkdir(parents=True)
+            partial = plan.destination.with_name(plan.destination.name + ".part")
+            partial.write_bytes(content)
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: self.fail("HTTP must not be called"),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.SUCCESS)
+            self.assertEqual(plan.destination.read_bytes(), content)
+            self.assertFalse(partial.exists())
+
+    def test_complete_part_with_wrong_checksum_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"1234567890"
+            plan = self.make_plan(
+                directory,
+                artifact(size_bytes=len(content), sha256="0" * 64),
+            )
+            plan.destination.parent.mkdir(parents=True)
+            partial = plan.destination.with_name(plan.destination.name + ".part")
+            partial.write_bytes(content)
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: self.fail("HTTP must not be called"),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.CHECKSUM_MISMATCH)
+            self.assertEqual(partial.read_bytes(), content)
+            self.assertFalse(plan.destination.exists())
+
+    def test_resume_correct_checksum_hashes_complete_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = b"1234"
+            suffix = b"567890"
+            content = original + suffix
+            plan = self.make_plan(
+                directory,
+                artifact(
+                    size_bytes=len(content),
+                    sha256=hashlib.sha256(content).hexdigest(),
+                ),
+            )
+            plan.destination.parent.mkdir(parents=True)
+            partial = plan.destination.with_name(plan.destination.name + ".part")
+            partial.write_bytes(original)
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: resume_response([suffix], 4, 9, 10),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.SUCCESS)
+            self.assertEqual(plan.destination.read_bytes(), content)
+
+    def test_resume_wrong_checksum_preserves_complete_part(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = b"1234"
+            suffix = b"567890"
+            plan = self.make_plan(
+                directory,
+                artifact(size_bytes=10, sha256="0" * 64),
+            )
+            plan.destination.parent.mkdir(parents=True)
+            partial = plan.destination.with_name(plan.destination.name + ".part")
+            partial.write_bytes(original)
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: resume_response([suffix], 4, 9, 10),
+            ).download(plan)
+            self.assertEqual(result.status, DownloadResultStatus.CHECKSUM_MISMATCH)
+            self.assertEqual(partial.read_bytes(), original + suffix)
+            self.assertFalse(plan.destination.exists())
 
     def test_resume_uses_observed_total_without_mutating_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -496,24 +615,30 @@ class DownloaderTests(unittest.TestCase):
 
     def test_artifact_spec_is_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
-            plan = self.make_plan(directory, artifact(size_bytes=4))
+            content = b"data"
+            spec = artifact(
+                size_bytes=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
+            plan = self.make_plan(directory, spec)
             before = repr(plan.artifact)
             Downloader(
                 ModelStore(Path(directory)),
-                opener=lambda *_args: Response([b"data"]),
+                opener=lambda *_args: Response([content]),
             ).download(plan)
             self.assertEqual(repr(plan.artifact), before)
 
     def test_manifest_is_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
-            spec = artifact()
+            content = b"0123456789"
+            spec = artifact(sha256=hashlib.sha256(content).hexdigest())
             manifest = store.save_manifest(spec)
             before = manifest.read_bytes()
             plan = DownloadPlanner(store, lambda _path: 100).plan(spec)
             Downloader(
                 store,
-                opener=lambda *_args: Response([b"0123456789"]),
+                opener=lambda *_args: Response([content]),
             ).download(plan)
             self.assertEqual(manifest.read_bytes(), before)
 

@@ -1,8 +1,7 @@
 """Streaming artifact downloads with safe HTTP Range resume.
 
-This module intentionally excludes retries, checksums, and manifest
-management. A completed temporary file is published without replacing an
-existing artifact.
+This module intentionally excludes retries and manifest management. A
+completed temporary file is published without replacing an existing artifact.
 """
 
 from __future__ import annotations
@@ -10,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import stat
+import hashlib
+import hmac
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -30,6 +31,7 @@ class DownloadResultStatus(str, Enum):
     NETWORK_ERROR = "network_error"
     FILESYSTEM_ERROR = "filesystem_error"
     SIZE_MISMATCH = "size_mismatch"
+    CHECKSUM_MISMATCH = "checksum_mismatch"
     RESUME_NOT_SUPPORTED = "resume_not_supported"
     RANGE_NOT_SATISFIABLE = "range_not_satisfiable"
     INVALID_CONTENT_RANGE = "invalid_content_range"
@@ -164,7 +166,11 @@ class Downloader:
                         partial_size,
                         "Partial file is larger than expected artifact",
                     )
-                if expected_size is not None and partial_size == expected_size:
+                if (
+                    expected_size is not None
+                    and partial_size == expected_size
+                    and artifact.sha256 is None
+                ):
                     return self._failure(
                         DownloadResultStatus.PARTIAL_COMPLETE_UNVERIFIED,
                         destination,
@@ -185,10 +191,17 @@ class Downloader:
             observed_size = expected_size
             response = None
             try:
-                headers = {"Range": f"bytes={offset}-"} if part_exists else {}
-                response = self._open_response(artifact.download_url or "", headers)
-                response_status = _response_status(response)
-                if part_exists:
+                if not (
+                    part_exists
+                    and expected_size is not None
+                    and offset == expected_size
+                ):
+                    headers = {"Range": f"bytes={offset}-"} if part_exists else {}
+                    response = self._open_response(artifact.download_url or "", headers)
+                    response_status = _response_status(response)
+                else:
+                    response_status = None
+                if part_exists and response_status is not None:
                     if response_status == 200:
                         return self._failure(
                             DownloadResultStatus.RESUME_NOT_SUPPORTED,
@@ -237,17 +250,18 @@ class Downloader:
                         )
                     if observed_size is None:
                         observed_size = range_total
-                while True:
-                    chunk = response.read(self.chunk_size)
-                    if not chunk:
-                        break
-                    view = memoryview(chunk)
-                    while view:
-                        written = os.write(part_fd, view)
-                        if written <= 0:
-                            raise OSError("Unable to write download chunk")
-                        view = view[written:]
-                    bytes_downloaded += len(chunk)
+                if response is not None:
+                    while True:
+                        chunk = response.read(self.chunk_size)
+                        if not chunk:
+                            break
+                        view = memoryview(chunk)
+                        while view:
+                            written = os.write(part_fd, view)
+                            if written <= 0:
+                                raise OSError("Unable to write download chunk")
+                            view = view[written:]
+                        bytes_downloaded += len(chunk)
                 os.fsync(part_fd)
             except HTTPError as error:
                 if part_exists and error.code == 416:
@@ -281,6 +295,25 @@ class Downloader:
                     bytes_downloaded,
                     "Downloaded size differs from artifact metadata",
                 )
+            if artifact.sha256 is not None:
+                try:
+                    actual_sha256 = self._sha256_partial(part_name, artifact_fd)
+                except OSError as error:
+                    created_part = False
+                    return self._failure(
+                        DownloadResultStatus.FILESYSTEM_ERROR,
+                        destination,
+                        bytes_downloaded,
+                        str(error),
+                    )
+                if not hmac.compare_digest(actual_sha256, artifact.sha256.lower()):
+                    created_part = False
+                    return self._failure(
+                        DownloadResultStatus.CHECKSUM_MISMATCH,
+                        destination,
+                        bytes_downloaded,
+                        "Downloaded artifact checksum does not match metadata",
+                    )
             os.close(part_fd)
             part_fd = None
             try:
@@ -328,6 +361,22 @@ class Downloader:
             for fd in (artifact_fd, model_fd, root_fd):
                 if fd is not None:
                     os.close(fd)
+
+    def _sha256_partial(self, part_name: str, artifact_fd: int) -> str:
+        read_fd = os.open(
+            part_name,
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=artifact_fd,
+        )
+        try:
+            digest = hashlib.sha256()
+            while True:
+                chunk = os.read(read_fd, self.chunk_size)
+                if not chunk:
+                    return digest.hexdigest()
+                digest.update(chunk)
+        finally:
+            os.close(read_fd)
 
     def _open_response(self, url: str, headers: Mapping[str, str]) -> BinaryIO:
         if headers:

@@ -162,3 +162,16 @@ Los errores de red, escritura, `fsync` o validación de rango conservan el
 progreso parcial para una ejecución posterior. La publicación final continúa
 siendo exclusiva mediante `os.link(.part, final)` seguida de la eliminación
 del `.part`. Esta fase todavía no implementa SHA-256, retries ni recovery.
+
+## Fase 3.0-B.2.5: verificación SHA-256
+
+Cuando `ArtifactSpec.sha256` está disponible, `Downloader` calcula el
+SHA-256 del `.part` completo en streaming, desde el byte cero, después de
+comprobar el tamaño y antes de publicar. Solo un checksum coincidente permite
+la publicación exclusiva mediante `os.link(.part, final)` seguida de
+`os.unlink(.part)`.
+
+Un checksum incorrecto devuelve `CHECKSUM_MISMATCH`, no publica el artifact y
+conserva el `.part` intacto. Si no hay checksum esperado, no se inventa uno y
+se mantiene la publicación basada en tamaño. Esta fase no implementa retries,
+recovery, reparación automática ni persistencia adicional de manifests.
