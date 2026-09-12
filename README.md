@@ -138,3 +138,14 @@ No busca modelos, no consulta Hugging Face, no descarga contenido y no crea
 directorios, manifests, archivos `.part` ni artifacts. Con tamaño desconocido
 el resultado es `UNKNOWN`, nunca `READY`. La ejecución de descargas queda
 reservada para una fase posterior.
+
+## Fase 3.0-B.2.2: descarga básica
+
+La API `Downloader` recibe un `DownloadPlan` `READY`, descarga el contenido
+por streaming a un archivo `.part` y publica el artifact mediante una
+publicación atómica exclusiva sin reemplazo (`os.link` seguido de la
+eliminación del `.part`). Un `.part` preexistente se conserva y bloquea la
+operación; no hay resume todavía.
+
+Esta fase no implementa SHA-256, retries, Range requests, concurrencia ni
+gestión de manifests o estados persistidos.
