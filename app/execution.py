@@ -7,6 +7,7 @@ import hmac
 import math
 import os
 import stat
+from datetime import datetime
 from pathlib import Path
 
 from .downloads.inspection import ArtifactFilesystemInspector, ArtifactFilesystemState
@@ -76,6 +77,20 @@ class ExecutionRequest:
     timeout_seconds: float | None = None
 
 
+@dataclass(frozen=True)
+class ExecutionDiagnostics:
+    """Measured facts from the controlled subprocess operation."""
+
+    started_at: datetime
+    finished_at: datetime
+    elapsed_seconds: float
+    stdout_bytes: int
+    stderr_bytes: int
+    exit_code: int | None
+    timed_out: bool
+    terminated_normally: bool
+
+
 def validate_execution_request(request: ExecutionRequest) -> None:
     """Reject process-affecting request values outside the execution contract."""
     if not isinstance(request, ExecutionRequest):
@@ -123,6 +138,7 @@ class ExecutionResult:
     stderr: str
     error: ExecutionErrorInfo | None = None
     warnings: tuple[str, ...] = ()
+    diagnostics: ExecutionDiagnostics | None = None
 
 
 @dataclass(frozen=True)

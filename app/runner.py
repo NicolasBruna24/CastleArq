@@ -1,14 +1,17 @@
 """Concrete one-shot model runners."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import stat
 import subprocess
+import time
 from typing import Callable
 
 from .execution import (
     ExecutableArtifact,
+    ExecutionDiagnostics,
     ExecutionErrorCode,
     ExecutionErrorInfo,
     ExecutionRequest,
@@ -78,48 +81,90 @@ class LlamaCppRunner(ModelRunner):
             "--single-turn",
         ]
         environment = {"PATH": os.defpath}
+        started_at = datetime.now(timezone.utc)
+        started_monotonic = time.monotonic()
         try:
             completed = self._run_process(
                 argv,
                 capture_output=True,
-                text=True,
+                text=False,
                 check=False,
                 shell=False,
                 env=environment,
                 timeout=request.timeout_seconds,
             )
         except subprocess.TimeoutExpired as error:
+            diagnostics = self._diagnostics(
+                started_at,
+                started_monotonic,
+                _output_bytes(error.stdout),
+                _output_bytes(error.stderr),
+                None,
+                timed_out=True,
+                terminated_normally=False,
+            )
             return ExecutionResult(
                 False,
                 None,
                 _output(error.stdout),
                 _output(error.stderr),
                 ExecutionErrorInfo(ExecutionErrorCode.TIMEOUT, "Execution timed out"),
+                diagnostics=diagnostics,
             )
         except FileNotFoundError as error:
             return self._error_result(
-                ExecutionErrorCode.EXECUTABLE_MISSING, str(error)
+                ExecutionErrorCode.EXECUTABLE_MISSING,
+                str(error),
+                self._diagnostics(
+                    started_at, started_monotonic, b"", b"", None, False, False
+                ),
             )
         except PermissionError as error:
             return self._error_result(
-                ExecutionErrorCode.PERMISSION_DENIED, str(error)
+                ExecutionErrorCode.PERMISSION_DENIED,
+                str(error),
+                self._diagnostics(
+                    started_at, started_monotonic, b"", b"", None, False, False
+                ),
             )
         except OSError as error:
-            return self._error_result(ExecutionErrorCode.LAUNCH_FAILED, str(error))
+            return self._error_result(
+                ExecutionErrorCode.LAUNCH_FAILED,
+                str(error),
+                self._diagnostics(
+                    started_at, started_monotonic, b"", b"", None, False, False
+                ),
+            )
 
+        stdout = _output(completed.stdout)
+        stderr = _output(completed.stderr)
+        diagnostics = self._diagnostics(
+            started_at,
+            started_monotonic,
+            _output_bytes(completed.stdout),
+            _output_bytes(completed.stderr),
+            completed.returncode,
+            timed_out=False,
+            terminated_normally=True,
+        )
         if completed.returncode == 0:
             return ExecutionResult(
-                True, completed.returncode, completed.stdout, completed.stderr
+                True,
+                completed.returncode,
+                stdout,
+                stderr,
+                diagnostics=diagnostics,
             )
         return ExecutionResult(
             False,
             completed.returncode,
-            completed.stdout,
-            completed.stderr,
+            stdout,
+            stderr,
             ExecutionErrorInfo(
                 ExecutionErrorCode.PROCESS_FAILED,
                 f"llama.cpp exited with status {completed.returncode}",
             ),
+            diagnostics=diagnostics,
         )
 
     def _validate_inputs(
@@ -204,11 +249,49 @@ class LlamaCppRunner(ModelRunner):
         return None
 
     @staticmethod
-    def _error_result(code: ExecutionErrorCode, message: str) -> ExecutionResult:
-        return ExecutionResult(False, None, "", "", ExecutionErrorInfo(code, message))
+    def _error_result(
+        code: ExecutionErrorCode,
+        message: str,
+        diagnostics: ExecutionDiagnostics | None = None,
+    ) -> ExecutionResult:
+        return ExecutionResult(
+            False,
+            None,
+            "",
+            "",
+            ExecutionErrorInfo(code, message),
+            diagnostics=diagnostics,
+        )
+
+    @staticmethod
+    def _diagnostics(
+        started_at: datetime,
+        started_monotonic: float,
+        stdout: bytes,
+        stderr: bytes,
+        exit_code: int | None,
+        timed_out: bool,
+        terminated_normally: bool,
+    ) -> ExecutionDiagnostics:
+        return ExecutionDiagnostics(
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc),
+            elapsed_seconds=max(0.0, time.monotonic() - started_monotonic),
+            stdout_bytes=len(stdout),
+            stderr_bytes=len(stderr),
+            exit_code=exit_code,
+            timed_out=timed_out,
+            terminated_normally=terminated_normally,
+        )
 
 
 def _output(value: str | bytes | None) -> str:
     if value is None:
         return ""
     return value.decode(errors="replace") if isinstance(value, bytes) else value
+
+
+def _output_bytes(value: str | bytes | None) -> bytes:
+    if value is None:
+        return b""
+    return value if isinstance(value, bytes) else value.encode()

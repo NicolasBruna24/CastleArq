@@ -1,5 +1,6 @@
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -99,22 +100,44 @@ class RunnerTests(unittest.TestCase):
         process.assert_not_called()
 
     def test_success_and_process_failure(self):
-        success_runner, _ = self.make_runner(Mock(returncode=0, stdout="o", stderr="e"))
-        self.assertTrue(success_runner.run(self.artifact, self.target, self.request).success)
+        success_runner, _ = self.make_runner(Mock(returncode=0, stdout=b"o", stderr=b"e"))
+        success = success_runner.run(self.artifact, self.target, self.request)
+        self.assertTrue(success.success)
+        self.assertEqual(success.stdout, "o")
+        self.assertEqual(success.diagnostics.stdout_bytes, 1)
+        self.assertEqual(success.diagnostics.stderr_bytes, 1)
+        self.assertEqual(success.diagnostics.exit_code, 0)
+        self.assertFalse(success.diagnostics.timed_out)
+        self.assertTrue(success.diagnostics.terminated_normally)
+        self.assertGreaterEqual(success.diagnostics.elapsed_seconds, 0)
+        self.assertLessEqual(
+            success.diagnostics.started_at, success.diagnostics.finished_at
+        )
         failure_runner, _ = self.make_runner(
-            Mock(returncode=2, stdout="o", stderr="bad")
+            Mock(returncode=2, stdout=b"o", stderr=b"bad")
         )
         result = failure_runner.run(self.artifact, self.target, self.request)
         self.assertFalse(result.success)
         self.assertEqual(result.exit_code, 2)
         self.assertEqual(result.error.code, ExecutionErrorCode.PROCESS_FAILED)
+        self.assertEqual(result.diagnostics.exit_code, 2)
+        self.assertFalse(result.diagnostics.timed_out)
+        self.assertTrue(result.diagnostics.terminated_normally)
 
     def test_timeout_is_mapped(self):
-        process = Mock(side_effect=__import__("subprocess").TimeoutExpired("llama", 1))
+        error = subprocess.TimeoutExpired(
+            "llama", 1, output=b"out", stderr=b"err"
+        )
+        process = Mock(side_effect=error)
         result = LlamaCppRunner(self.capability, process).run(
             self.artifact, self.target, self.request
         )
         self.assertEqual(result.error.code, ExecutionErrorCode.TIMEOUT)
+        self.assertEqual(result.diagnostics.stdout_bytes, 3)
+        self.assertEqual(result.diagnostics.stderr_bytes, 3)
+        self.assertTrue(result.diagnostics.timed_out)
+        self.assertFalse(result.diagnostics.terminated_normally)
+        self.assertIsNone(result.diagnostics.exit_code)
 
     def test_invalid_timeout_is_rejected_before_subprocess(self):
         for timeout in (0, -1, float("nan"), float("inf"), True, "30"):

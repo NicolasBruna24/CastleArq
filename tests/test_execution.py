@@ -1,7 +1,9 @@
 import unittest
 from dataclasses import FrozenInstanceError
+from datetime import datetime, timezone
 
 from app.execution import (
+    ExecutionDiagnostics,
     ExecutionErrorCode,
     ExecutionErrorInfo,
     ExecutionRequest,
@@ -59,6 +61,22 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual(result.stdout, "partial output")
         self.assertEqual(result.stderr, "failure")
         self.assertEqual(result.error.code, ExecutionErrorCode.PROCESS_FAILED)
+
+    def test_diagnostics_are_optional_and_frozen(self):
+        diagnostics = ExecutionDiagnostics(
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            elapsed_seconds=0.1,
+            stdout_bytes=3,
+            stderr_bytes=2,
+            exit_code=0,
+            timed_out=False,
+            terminated_normally=True,
+        )
+        result = ExecutionResult(True, 0, "", "", diagnostics=diagnostics)
+        self.assertIs(result.diagnostics, diagnostics)
+        with self.assertRaises(FrozenInstanceError):
+            diagnostics.exit_code = 1
 
     def test_domain_types_are_frozen(self):
         target = ExecutionTarget("llama.cpp", "CPU")
