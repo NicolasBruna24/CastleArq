@@ -21,6 +21,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(backends[0].available)
         self.assertFalse(backends[1].available)
 
+    def test_backend_detection_accepts_gpu_evidence(self):
+        backends = detect_backends(lambda _: None, {"Vulkan"})
+        self.assertTrue(backends[0].available)
+
 
 if __name__ == "__main__":
     unittest.main()

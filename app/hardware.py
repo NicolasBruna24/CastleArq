@@ -13,6 +13,7 @@ from typing import Callable, Sequence
 
 
 CommandRunner = Callable[[Sequence[str]], str | None]
+Which = Callable[[str], str | None]
 
 
 @dataclass(frozen=True)
@@ -35,12 +36,25 @@ class MemoryInfo:
 class GPUInfo:
     name: str = "Unknown"
     vendor: str = "Unknown"
+    pci_id: str | None = None
+    device_id: str | None = None
     vram_bytes: int | None = None
+    vram_available_bytes: int | None = None
+    sources: dict[str, str] = field(default_factory=dict)
+    backends: list[str] = field(default_factory=list)
     driver: str = "Unknown"
 
     @property
     def vram_gib(self) -> float | None:
         return self.vram_bytes / (1024**3) if self.vram_bytes is not None else None
+
+    @property
+    def vram_available_gib(self) -> float | None:
+        return (
+            self.vram_available_bytes / (1024**3)
+            if self.vram_available_bytes is not None
+            else None
+        )
 
 
 @dataclass(frozen=True)
@@ -91,16 +105,59 @@ def parse_lspci(text: str) -> list[GPUInfo]:
     for line in text.splitlines():
         if not re.search(r"(VGA compatible controller|3D controller|Display controller)", line, re.I):
             continue
+        pci_match = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
+        pci_id = pci_match.group(1).lower() if pci_match else None
+        device_id = pci_id.split(":", 1)[1] if pci_id else None
         if '"' in line:
             fields = re.findall(r'"([^"]*)"', line)
             name = fields[-1] if fields else line
         else:
             name = line.split(":", 2)[-1].strip()
             name = re.sub(r"^(VGA compatible controller|3D controller|Display controller):\s*", "", name, flags=re.I)
+        name = re.sub(r"\s*\[[0-9a-fA-F]{4}:[0-9a-fA-F]{4}\]\s*$", "", name).strip()
         lower = name.lower()
-        vendor = "NVIDIA" if "nvidia" in lower else "AMD" if any(x in lower for x in ("amd", "radeon", "advanced micro")) else "Intel" if "intel" in lower else "Unknown"
-        gpus.append(GPUInfo(name=name or "Unknown", vendor=vendor))
+        vendor = (
+            "NVIDIA" if "nvidia" in lower else
+            "AMD" if any(x in lower for x in ("amd", "radeon", "advanced micro")) else
+            "Intel" if "intel" in lower else
+            _vendor_from_pci(pci_id)
+        )
+        gpus.append(
+            GPUInfo(
+                name=name or "Unknown",
+                vendor=vendor,
+                pci_id=pci_id,
+                device_id=device_id,
+                sources={"gpu": "lspci"},
+            )
+        )
     return gpus
+
+
+def parse_external_gpu_memory(
+    text: str, source: str
+) -> list[tuple[str, int, int | None, str | None]]:
+    """Parse common Vulkan/llama device lines into name, total and available bytes."""
+    observations: list[tuple[str, int, int | None, str | None]] = []
+    for line in text.splitlines():
+        if not re.search(r"(device\s*name|vulkan\d+|gpu)", line, re.I):
+            continue
+        name_match = re.search(r"(?:device\s*name|vulkan\d+)\s*[:=]\s*(.+?)(?=\s*\(|$)", line, re.I)
+        if not name_match:
+            name_match = re.search(r"(?:device\s*name|vulkan\d+)\s*[:=]\s*(.+)$", line, re.I)
+        memory = re.search(r"([\d.]+)\s*(MiB|GiB|MB|GB)\b(?:[^\d]+([\d.]+)\s*(?:MiB|GiB|MB|GB)\s*free)?", line, re.I)
+        if not name_match or not memory:
+            continue
+        name = name_match.group(1).strip().rstrip(")")
+        total = _memory_to_bytes(float(memory.group(1)), memory.group(2))
+        available = (
+            _memory_to_bytes(float(memory.group(3)), memory.group(2))
+            if memory.group(3)
+            else None
+        )
+        backend = "Vulkan" if re.search(r"vulkan\d+", line, re.I) else None
+        observations.append((name, total, available, backend))
+    return observations
 
 
 class LinuxHardwareDetector:
@@ -109,10 +166,12 @@ class LinuxHardwareDetector:
         command_runner: CommandRunner = default_command_runner,
         proc_root: Path = Path("/proc"),
         sys_root: Path = Path("/sys"),
+        which: Which = shutil.which,
     ) -> None:
         self._run = command_runner
         self._proc_root = proc_root
         self._sys_root = sys_root
+        self._which = which
 
     def detect(self) -> HardwareSnapshot:
         architecture = platform.machine() or "Unknown"
@@ -120,14 +179,8 @@ class LinuxHardwareDetector:
         mem_text = self._read(self._proc_root / "meminfo")
         lspci = self._run(("lspci", "-nn"))
         gpus = parse_lspci(lspci or "")
-        vram = self._read_int(self._sys_root / "class/drm/card0/device/mem_info_vram_total")
-        if vram is not None and len(gpus) == 1:
-            gpus[0] = GPUInfo(
-                name=gpus[0].name,
-                vendor=gpus[0].vendor,
-                vram_bytes=vram,
-                driver=gpus[0].driver,
-            )
+        self._apply_sysfs(gpus)
+        self._apply_external_memory(gpus)
         return HardwareSnapshot(
             operating_system=self._detect_os(),
             architecture=architecture,
@@ -149,6 +202,92 @@ class LinuxHardwareDetector:
         except ValueError:
             return None
 
+    def _apply_sysfs(self, gpus: list[GPUInfo]) -> None:
+        cards = sorted((self._sys_root / "class/drm").glob("card[0-9]*"))
+        for index, card in enumerate(cards):
+            total = self._read_int(card / "device/mem_info_vram_total")
+            used = self._read_int(card / "device/mem_info_vram_used")
+            if total is None and used is None:
+                continue
+            available = max(total - used, 0) if total is not None and used is not None else None
+            if index >= len(gpus):
+                continue
+            gpu = gpus[index]
+            gpus[index] = self._with_gpu(
+                gpu,
+                vram_bytes=total,
+                vram_available_bytes=available,
+                source="sysfs",
+                driver=self._driver_name(card),
+            )
+
+    def _apply_external_memory(self, gpus: list[GPUInfo]) -> None:
+        commands = []
+        vulkan = self._which("vulkaninfo")
+        if vulkan:
+            commands.append((("vulkaninfo", "--summary"), "vulkan"))
+        llama = next((self._which(name) for name in ("llama", "llama.app", "llama-cli") if self._which(name)), None)
+        if llama:
+            commands.append(((llama, "serve", "--list-devices"), "llama.app"))
+        for command, source in commands:
+            observations = parse_external_gpu_memory(self._run(command) or "", source)
+            for name, total, available, backend in observations:
+                gpu = self._match_gpu(gpus, name)
+                if gpu is not None:
+                    index = gpus.index(gpu)
+                    gpus[index] = self._with_gpu(
+                        gpu,
+                        vram_bytes=total if gpu.vram_bytes is None else gpu.vram_bytes,
+                        vram_available_bytes=available,
+                        source=source,
+                        backend=backend,
+                    )
+
+    def _match_gpu(self, gpus: list[GPUInfo], external_name: str) -> GPUInfo | None:
+        name = external_name.lower()
+        for gpu in gpus:
+            if gpu.name.lower() in name or name in gpu.name.lower():
+                return gpu
+        return gpus[0] if len(gpus) == 1 else None
+
+    def _driver_name(self, card: Path) -> str:
+        try:
+            return (card / "device/driver").resolve().name or "Unknown"
+        except OSError:
+            return "Unknown"
+
+    @staticmethod
+    def _with_gpu(
+        gpu: GPUInfo,
+        *,
+        vram_bytes: int | None = None,
+        vram_available_bytes: int | None = None,
+        source: str | None = None,
+        backend: str | None = None,
+        driver: str | None = None,
+    ) -> GPUInfo:
+        sources = dict(gpu.sources)
+        if source:
+            sources["vram"] = source
+        backends = list(gpu.backends)
+        if backend and backend not in backends:
+            backends.append(backend)
+        return GPUInfo(
+            name=gpu.name,
+            vendor=gpu.vendor,
+            pci_id=gpu.pci_id,
+            device_id=gpu.device_id,
+            vram_bytes=vram_bytes if vram_bytes is not None else gpu.vram_bytes,
+            vram_available_bytes=(
+                vram_available_bytes
+                if vram_available_bytes is not None
+                else gpu.vram_available_bytes
+            ),
+            sources=sources,
+            backends=backends,
+            driver=driver if driver and driver != "Unknown" else gpu.driver,
+        )
+
     def _detect_os(self) -> str:
         release = self._read(Path("/etc/os-release"))
         match = re.search(r'^PRETTY_NAME="?(.*?)"?$', release, re.MULTILINE)
@@ -164,3 +303,13 @@ def detect_hardware() -> HardwareSnapshot:
         cpu=CPUInfo(architecture=platform.machine() or "Unknown"),
         memory=MemoryInfo(),
     )
+
+
+def _vendor_from_pci(pci_id: str | None) -> str:
+    vendors = {"10de": "NVIDIA", "1002": "AMD", "8086": "Intel"}
+    return vendors.get(pci_id.split(":", 1)[0].lower(), "Unknown") if pci_id else "Unknown"
+
+
+def _memory_to_bytes(value: float, unit: str) -> int:
+    multiplier = 1024**2 if unit.lower() in {"mib", "mb"} else 1024**3
+    return int(value * multiplier)

@@ -33,7 +33,9 @@ Which = Callable[[str], str | None]
 
 
 def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
-    llama_installed = any(which(binary) for binary in ("llama-cli", "llama-server", "llama.app"))
+    llama_installed = any(
+        which(binary) for binary in ("llama", "llama-cli", "llama-server", "llama.app")
+    )
     ollama_path = which("ollama")
     ollama_available = False
     if ollama_path:
@@ -44,7 +46,10 @@ def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
     ]
 
 
-def detect_backends(which: Which = shutil.which) -> list[BackendStatus]:
+def detect_backends(
+    which: Which = shutil.which,
+    detected_gpu_backends: set[str] | None = None,
+) -> list[BackendStatus]:
     checks = (
         ("Vulkan", "vulkaninfo"),
         ("OpenCL", "clinfo"),
@@ -52,7 +57,11 @@ def detect_backends(which: Which = shutil.which) -> list[BackendStatus]:
         ("CUDA", "nvidia-smi"),
         ("ROCm", "rocminfo"),
     )
-    return [BackendStatus(name, which(binary) is not None) for name, binary in checks]
+    detected_gpu_backends = detected_gpu_backends or set()
+    return [
+        BackendStatus(name, which(binary) is not None or name in detected_gpu_backends)
+        for name, binary in checks
+    ]
 
 
 def _command_succeeds(command: tuple[str, ...]) -> bool:
