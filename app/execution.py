@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import hmac
+import math
 import os
 import stat
 from pathlib import Path
@@ -73,6 +74,35 @@ class ExecutionRequest:
     prompt: str
     target: ExecutionTarget | None = None
     timeout_seconds: float | None = None
+
+
+def validate_execution_request(request: ExecutionRequest) -> None:
+    """Reject process-affecting request values outside the execution contract."""
+    if not isinstance(request, ExecutionRequest):
+        raise InvalidExecutionRequestError("Execution request has an invalid type")
+    if not isinstance(request.artifact, ArtifactSpec):
+        raise InvalidExecutionRequestError("Execution request artifact is invalid")
+    if not isinstance(request.prompt, str) or not request.prompt.strip():
+        raise InvalidExecutionRequestError("Execution request prompt must not be empty")
+    if request.target is not None:
+        if (
+            not isinstance(request.target, ExecutionTarget)
+            or not isinstance(request.target.runtime, str)
+            or not request.target.runtime
+            or not isinstance(request.target.backend, str)
+            or not request.target.backend
+        ):
+            raise InvalidExecutionRequestError("Execution request target is invalid")
+    timeout = request.timeout_seconds
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise InvalidExecutionRequestError(
+            "Execution request timeout must be finite and greater than zero"
+        )
 
 
 @dataclass(frozen=True)

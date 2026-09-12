@@ -163,6 +163,40 @@ class ModelExecutionServiceTests(unittest.TestCase):
         self.runner.run.assert_called_once()
         self.assertFalse(hasattr(self.service, "run_process"))
 
+    def test_invalid_request_stops_before_compatibility_and_runner(self):
+        invalid = ExecutionRequest(self.spec, "hello", timeout_seconds=0)
+        result = self.service.execute(self.model_spec, self.spec, invalid)
+        self.assertEqual(result.error.code, ExecutionErrorCode.INVALID_REQUEST)
+        self.evaluator.assert_not_called()
+        self.preflight.validate.assert_not_called()
+        self.selector.select.assert_not_called()
+        self.runner.run.assert_not_called()
+
+    def test_request_artifact_mismatch_stops_before_runner(self):
+        other = ArtifactSpec(
+            model_id="other",
+            source="huggingface",
+            repository="owner/other",
+            filename="other.gguf",
+            format="GGUF",
+        )
+        invalid = ExecutionRequest(other, "hello")
+        result = self.service.execute(self.model_spec, self.spec, invalid)
+        self.assertEqual(result.error.code, ExecutionErrorCode.INVALID_REQUEST)
+        self.evaluator.assert_not_called()
+        self.preflight.validate.assert_not_called()
+        self.runner.run.assert_not_called()
+
+    def test_request_target_mismatch_stops_before_runner(self):
+        invalid = ExecutionRequest(
+            self.spec,
+            "hello",
+            target=ExecutionTarget("llama.cpp CLI", "CPU"),
+        )
+        result = self.service.execute(self.model_spec, self.spec, invalid)
+        self.assertEqual(result.error.code, ExecutionErrorCode.INVALID_REQUEST)
+        self.runner.run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

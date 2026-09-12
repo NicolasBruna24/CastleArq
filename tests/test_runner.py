@@ -72,6 +72,10 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertIs(process.call_args.kwargs["shell"], False)
         self.assertNotIsInstance(argv, str)
+        self.assertEqual(
+            argv[7],
+            "hello; touch /tmp/pwned",
+        )
 
     def test_builds_cpu_argv_without_automatic_fallback(self):
         completed = Mock(returncode=0, stdout="", stderr="")
@@ -111,6 +115,28 @@ class RunnerTests(unittest.TestCase):
             self.artifact, self.target, self.request
         )
         self.assertEqual(result.error.code, ExecutionErrorCode.TIMEOUT)
+
+    def test_invalid_timeout_is_rejected_before_subprocess(self):
+        for timeout in (0, -1, float("nan"), float("inf"), True, "30"):
+            with self.subTest(timeout=timeout):
+                process = Mock()
+                request = ExecutionRequest(
+                    self.spec, "hello", self.target, timeout
+                )
+                result = LlamaCppRunner(self.capability, process).run(
+                    self.artifact, self.target, request
+                )
+                self.assertEqual(result.error.code, ExecutionErrorCode.INVALID_REQUEST)
+                process.assert_not_called()
+
+    def test_empty_prompt_is_rejected_before_subprocess(self):
+        process = Mock()
+        request = ExecutionRequest(self.spec, "   ", self.target)
+        result = LlamaCppRunner(self.capability, process).run(
+            self.artifact, self.target, request
+        )
+        self.assertEqual(result.error.code, ExecutionErrorCode.INVALID_REQUEST)
+        process.assert_not_called()
 
     def test_missing_and_permission_errors_are_mapped(self):
         for error, code in (

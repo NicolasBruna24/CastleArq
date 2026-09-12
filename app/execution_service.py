@@ -12,6 +12,8 @@ from .execution import (
     ExecutionErrorInfo,
     ExecutionRequest,
     ExecutionResult,
+    InvalidExecutionRequestError,
+    validate_execution_request,
 )
 from .models import ArtifactSpec, ModelSpec
 from .runner import ModelRunner
@@ -45,6 +47,16 @@ class ModelExecutionService:
         artifact: ArtifactSpec,
         request: ExecutionRequest,
     ) -> ExecutionResult:
+        try:
+            validate_execution_request(request)
+        except InvalidExecutionRequestError as error:
+            return self._failure(ExecutionErrorCode.INVALID_REQUEST, str(error), ())
+        if request.artifact != artifact:
+            return self._failure(
+                ExecutionErrorCode.INVALID_REQUEST,
+                "Execution request artifact does not match the execution artifact",
+                (),
+            )
         compatibility = self.compatibility_evaluator(model)
         if compatibility.status in {
             CompatibilityStatus.INCOMPATIBLE,
@@ -78,6 +90,12 @@ class ModelExecutionService:
                 compatibility.warnings,
             )
 
+        if request.target is not None and request.target != selection.target:
+            return self._failure(
+                ExecutionErrorCode.INVALID_REQUEST,
+                "Execution request target does not match the selected target",
+                compatibility.warnings,
+            )
         result = self.runner.run(executable_artifact, selection.target, request)
         warnings = _merge_warnings(
             compatibility.warnings, selection.warnings, result.warnings

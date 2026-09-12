@@ -14,6 +14,8 @@ from .execution import (
     ExecutionRequest,
     ExecutionResult,
     ExecutionTarget,
+    InvalidExecutionRequestError,
+    validate_execution_request,
 )
 from .runtimes import RuntimeCapability
 
@@ -50,6 +52,10 @@ class LlamaCppRunner(ModelRunner):
         target: ExecutionTarget,
         request: ExecutionRequest,
     ) -> ExecutionResult:
+        try:
+            validate_execution_request(request)
+        except InvalidExecutionRequestError as error:
+            return self._error_result(ExecutionErrorCode.INVALID_REQUEST, str(error))
         validation_error = self._validate_inputs(
             executable_artifact, target, request
         )
