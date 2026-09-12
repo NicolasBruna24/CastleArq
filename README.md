@@ -175,3 +175,11 @@ Un checksum incorrecto devuelve `CHECKSUM_MISMATCH`, no publica el artifact y
 conserva el `.part` intacto. Si no hay checksum esperado, no se inventa uno y
 se mantiene la publicación basada en tamaño. Esta fase no implementa retries,
 recovery, reparación automática ni persistencia adicional de manifests.
+
+## Fase 3.0-B.2.6.1: inspección de estado
+
+`ArtifactFilesystemInspector` permite inspeccionar de forma read-only si un
+artifact está `CLEAN`, `PARTIAL`, `FINAL_EXISTS` o `INCONSISTENT`. La
+inspección no crea directorios, no accede a la red, no modifica manifests ni
+elimina archivos `.part`. Los symlinks y paths inseguros se rechazan mediante
+las garantías existentes de `ModelStore`.

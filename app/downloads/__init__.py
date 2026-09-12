@@ -2,6 +2,11 @@
 
 from .planner import DownloadPlan, DownloadPlanStatus, DownloadPlanner
 from .downloader import DownloadResult, DownloadResultStatus, Downloader
+from .inspection import (
+    ArtifactFilesystemInspection,
+    ArtifactFilesystemInspector,
+    ArtifactFilesystemState,
+)
 
 __all__ = [
     "DownloadPlan",
@@ -10,4 +15,7 @@ __all__ = [
     "DownloadResult",
     "DownloadResultStatus",
     "Downloader",
+    "ArtifactFilesystemInspection",
+    "ArtifactFilesystemInspector",
+    "ArtifactFilesystemState",
 ]
