@@ -183,3 +183,10 @@ artifact está `CLEAN`, `PARTIAL`, `FINAL_EXISTS` o `INCONSISTENT`. La
 inspección no crea directorios, no accede a la red, no modifica manifests ni
 elimina archivos `.part`. Los symlinks y paths inseguros se rechazan mediante
 las garantías existentes de `ModelStore`.
+
+## Fase 3.0-B.2.6.2: decisiones de recuperación
+
+`RecoveryDecider` transforma el estado inspeccionado en una decisión
+read-only: `NO_ACTION`, `RESUME_ELIGIBLE`, `USE_EXISTING` o
+`REVIEW_REQUIRED`. No accede al filesystem, no modifica archivos o manifests,
+no elimina `.part` y no ejecuta descargas ni recuperación automática.
