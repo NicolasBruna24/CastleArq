@@ -1,0 +1,103 @@
+import json
+import unittest
+from urllib.error import HTTPError
+
+from app.models import ArtifactState
+from app.sources.huggingface import HuggingFaceSource, SourceError, detect_quantization
+
+
+def source(payload):
+    return HuggingFaceSource(transport=lambda _url, _timeout: json.dumps(payload).encode())
+
+
+class HuggingFaceTests(unittest.TestCase):
+    def test_repository_and_artifact_resolution(self):
+        result = source({"siblings": [
+            {"rfilename": "model.Q4_K_M.gguf", "size": 10, "lfs": {"sha256": "a" * 64}},
+            {"rfilename": "README.md", "size": 1},
+        ]}).discover_artifacts("owner/repository")
+        self.assertEqual(len(result), 1)
+        artifact = result[0]
+        self.assertEqual(artifact.source, "huggingface")
+        self.assertEqual(artifact.quantization, "Q4_K_M")
+        self.assertEqual(artifact.state, ArtifactState.NOT_DOWNLOADED)
+        self.assertEqual(artifact.sha256, "a" * 64)
+
+    def test_quantization_patterns_and_unknown(self):
+        self.assertEqual(detect_quantization("foo.Q2_K.gguf"), "Q2_K")
+        self.assertEqual(detect_quantization("foo.Q3_K_M.gguf"), "Q3_K_M")
+        self.assertEqual(detect_quantization("foo.Q4_K_M.gguf"), "Q4_K_M")
+        self.assertEqual(detect_quantization("foo.Q5_K_M.gguf"), "Q5_K_M")
+        self.assertEqual(detect_quantization("foo.Q6_K.gguf"), "Q6_K")
+        self.assertEqual(detect_quantization("foo-q8_0.gguf"), "Q8_0")
+        self.assertEqual(detect_quantization("foo-q4_0.gguf"), "Q4_0")
+        self.assertEqual(detect_quantization("foo-q4_0-00001-of-00002.gguf"), "Q4_0")
+        self.assertEqual(detect_quantization("foo-q5_0.gguf"), "Q5_0")
+        self.assertEqual(detect_quantization("foo-q5_0-00001-of-00002.gguf"), "Q5_0")
+        self.assertEqual(detect_quantization("foo.gguf"), "Unknown")
+
+    def test_invalid_repository_and_filename(self):
+        with self.assertRaises(SourceError):
+            source({"siblings": []}).discover_artifacts("../bad")
+        with self.assertRaises(SourceError):
+            source({"siblings": [{"rfilename": "../model.gguf"}]}).discover_artifacts("owner/repo")
+
+    def test_invalid_size_and_hash(self):
+        with self.assertRaises(SourceError):
+            source({"siblings": [{"rfilename": "model.gguf", "size": -1}]}).discover_artifacts("owner/repo")
+        with self.assertRaises(SourceError):
+            source({"siblings": [{"rfilename": "model.gguf", "lfs": {"sha256": "bad"}}]}).discover_artifacts("owner/repo")
+
+    def test_missing_files_and_invalid_json(self):
+        self.assertEqual(source({"siblings": []}).discover_artifacts("owner/repo"), [])
+        with self.assertRaises(SourceError):
+            HuggingFaceSource(transport=lambda _url, _timeout: b"invalid").discover_artifacts("owner/repo")
+
+    def test_no_checksum_is_none(self):
+        artifact = source({"files": [{"path": "model.Q8_0.gguf"}]}).discover_artifacts("owner/repo")[0]
+        self.assertIsNone(artifact.sha256)
+        self.assertIsNone(artifact.size_bytes)
+
+    def test_transport_does_not_receive_artifact_url(self):
+        calls = []
+        def transport(url, _timeout):
+            calls.append(url)
+            return b'{"siblings": []}'
+        HuggingFaceSource(transport=transport).discover_artifacts("owner/repo")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("/api/models/owner/repo", calls[0])
+        self.assertNotIn("/resolve/", calls[0])
+
+    def test_api_host_must_be_huggingface_https(self):
+        with self.assertRaises(SourceError):
+            HuggingFaceSource(api_base="http://huggingface.co/api", transport=lambda *_: b"{}").discover_artifacts("owner/repo")
+        with self.assertRaises(SourceError):
+            HuggingFaceSource(api_base="https://evil.example/api", transport=lambda *_: b"{}").discover_artifacts("owner/repo")
+
+    def test_http_errors_and_timeout_are_controlled(self):
+        def not_found(url, _timeout):
+            raise HTTPError(url, 404, "not found", {}, None)
+
+        def server_error(url, _timeout):
+            raise HTTPError(url, 500, "server error", {}, None)
+
+        for transport in (not_found, server_error):
+            with self.assertRaises(SourceError):
+                HuggingFaceSource(transport=transport).discover_artifacts("owner/repo")
+        with self.assertRaises(SourceError):
+            HuggingFaceSource(
+                transport=lambda _url, _timeout: (_ for _ in ()).throw(
+                    TimeoutError("timeout")
+                )
+            ).discover_artifacts("owner/repo")
+
+    def test_url_and_artifact_metadata_are_safe(self):
+        artifact = source(
+            {"siblings": [{"rfilename": "foo-Q4_K_M.gguf", "size": 0}]}
+        ).discover_artifacts("owner/repository")[0]
+        self.assertTrue(artifact.download_url.startswith("https://huggingface.co/"))
+        self.assertEqual(artifact.size_bytes, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -104,3 +104,19 @@ verificable; el estado persistido en el manifest es informativo/cache. La ruta
 local se deriva siempre del model ID sanitizado, artifact ID y filename, y no
 se utiliza ningún `local_path` externo. Esta subfase todavía no accede a
 Internet ni descarga archivos.
+
+## Fase 3.0-B.1: Hugging Face metadata discovery
+
+Hugging Face es la primera fuente externa de metadata. La consulta remota es
+explícita:
+
+```bash
+python3 -m app.main source huggingface owner/repository
+```
+
+La operación valida el repository, consulta únicamente la API pública de
+metadata y descubre artifacts GGUF convirtiéndolos a `ArtifactSpec`. Conserva
+el tamaño y SHA-256 solo cuando Hugging Face los proporciona y detecta
+cuantizaciones de forma conservadora. No solicita el contenido de los
+artifacts, no descarga modelos y no modifica `ModelStore`. El Download Manager
+queda reservado para Fase 3.0-B.2.

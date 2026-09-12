@@ -8,6 +8,7 @@ from .hardware import detect_hardware
 from .compatibility import load_config, recommend_models
 from .model_catalog import get_catalog
 from .model_store import ModelStore
+from .sources import HuggingFaceSource, SourceError
 from .runtimes import detect_backends, detect_runtimes, recommend
 
 
@@ -129,11 +130,38 @@ def print_local_models() -> None:
             print(f"    Problem: {entry.message}")
 
 
+def print_source(provider: str | None, repository: str | None) -> int:
+    if provider != "huggingface" or not repository:
+        print("Usage: python3 -m app.main source huggingface <repository>")
+        return 2
+    try:
+        artifacts = HuggingFaceSource().discover_artifacts(repository)
+    except SourceError as error:
+        print(f"Source error: {error}")
+        return 1
+    print(f"LocalAI Hub - Hugging Face metadata: {repository}")
+    print("==========================")
+    if not artifacts:
+        print("No GGUF artifacts found.")
+        return 0
+    for artifact in artifacts:
+        print(f"\n  {artifact.filename}")
+        print(f"    Format: {artifact.format}")
+        print(f"    Quantization: {artifact.quantization}")
+        print(f"    Size: {artifact.size_bytes if artifact.size_bytes is not None else 'Unknown'}")
+        print(f"    SHA-256: {artifact.sha256 or 'Unknown'}")
+        print(f"    URL: {artifact.download_url}")
+        print(f"    Artifact ID: {artifact.artifact_id}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
     parser.add_argument(
-        "command", choices=("detect", "models", "list"), help="command to execute"
+        "command", choices=("detect", "models", "list", "source"), help="command to execute"
     )
+    parser.add_argument("provider", nargs="?")
+    parser.add_argument("repository", nargs="?")
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()
@@ -141,6 +169,8 @@ def main() -> int:
         print_models()
     elif args.command == "list":
         print_local_models()
+    elif args.command == "source":
+        return print_source(args.provider, args.repository)
     return 0
 
 
