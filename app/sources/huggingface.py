@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
@@ -35,6 +35,8 @@ class HuggingFaceSource(ModelSource):
         _validate_repository(repository)
         api_url = _metadata_url(self.api_base, repository)
         payload = self._get_json(api_url)
+        if not isinstance(payload, dict):
+            raise SourceError("Hugging Face model metadata must be an object")
         files = payload.get("siblings")
         if files is None:
             files = payload.get("files")
@@ -48,9 +50,15 @@ class HuggingFaceSource(ModelSource):
             artifact = self._artifact_from_file(repository, entry)
             if artifact is not None:
                 artifacts.append(artifact)
+        if any(
+            artifact.size_bytes is None or artifact.sha256 is None
+            for artifact in artifacts
+        ):
+            tree = self._get_json(_tree_metadata_url(self.api_base, repository))
+            artifacts = _enrich_from_tree(artifacts, tree)
         return artifacts
 
-    def _get_json(self, url: str) -> dict[str, object]:
+    def _get_json(self, url: str) -> dict[str, object] | list[object]:
         try:
             raw = (self.transport or _http_get)(url, self.timeout)
             payload = json.loads(raw.decode("utf-8"))
@@ -60,8 +68,8 @@ class HuggingFaceSource(ModelSource):
             raise SourceError(f"Hugging Face metadata request failed: {error}") from error
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise SourceError("Hugging Face returned invalid JSON") from error
-        if not isinstance(payload, dict):
-            raise SourceError("Hugging Face returned an invalid metadata object")
+        if not isinstance(payload, (dict, list)):
+            raise SourceError("Hugging Face returned invalid metadata")
         return payload
 
     def _artifact_from_file(
@@ -126,6 +134,13 @@ def _metadata_url(api_base: str, repository: str) -> str:
     return f"{api_base.rstrip('/')}/models/{quote(repository, safe='/')}"
 
 
+def _tree_metadata_url(api_base: str, repository: str) -> str:
+    parsed = urlparse(api_base)
+    if parsed.scheme != "https" or parsed.netloc != "huggingface.co":
+        raise SourceError("Hugging Face API host must be https://huggingface.co")
+    return f"{api_base.rstrip('/')}/models/{quote(repository, safe='/')}/tree/main?recursive=true"
+
+
 def _download_url(repository: str, filename: str) -> str:
     url = f"https://huggingface.co/{quote(repository, safe='/')}/resolve/main/{quote(filename)}"
     parsed = urlparse(url)
@@ -153,6 +168,40 @@ def _extract_sha256(entry: dict[str, object]) -> str | None:
     if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", value):
         raise SourceError("Invalid artifact SHA-256")
     return value.lower()
+
+
+def _enrich_from_tree(
+    artifacts: list[ArtifactSpec], payload: dict[str, object] | list[object]
+) -> list[ArtifactSpec]:
+    if not isinstance(payload, list):
+        return artifacts
+    entries = {
+        entry.get("path"): entry
+        for entry in payload
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    }
+    enriched: list[ArtifactSpec] = []
+    for artifact in artifacts:
+        entry = entries.get(artifact.filename)
+        if not isinstance(entry, dict):
+            enriched.append(artifact)
+            continue
+        size = artifact.size_bytes
+        if size is None:
+            size = _extract_size(entry)
+        sha256 = artifact.sha256
+        if sha256 is None:
+            sha256 = _extract_tree_oid(entry)
+        enriched.append(replace(artifact, size_bytes=size, sha256=sha256))
+    return enriched
+
+
+def _extract_tree_oid(entry: dict[str, object]) -> str | None:
+    lfs = entry.get("lfs")
+    value = lfs.get("oid") if isinstance(lfs, dict) else None
+    if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{64}", value):
+        return value.lower()
+    return None
 
 
 def _http_get(url: str, timeout: float) -> bytes:

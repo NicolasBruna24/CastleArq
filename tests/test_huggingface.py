@@ -10,6 +10,14 @@ def source(payload):
     return HuggingFaceSource(transport=lambda _url, _timeout: json.dumps(payload).encode())
 
 
+def source_responses(model_payload, tree_payload):
+    def transport(url, _timeout):
+        payload = tree_payload if "/tree/" in url else model_payload
+        return json.dumps(payload).encode()
+
+    return HuggingFaceSource(transport=transport)
+
+
 class HuggingFaceTests(unittest.TestCase):
     def test_repository_and_artifact_resolution(self):
         result = source({"siblings": [
@@ -97,6 +105,66 @@ class HuggingFaceTests(unittest.TestCase):
         ).discover_artifacts("owner/repository")[0]
         self.assertTrue(artifact.download_url.startswith("https://huggingface.co/"))
         self.assertEqual(artifact.size_bytes, 0)
+
+    def test_tree_metadata_enriches_gguf_artifact(self):
+        sha256 = "b" * 64
+        artifact = source_responses(
+            {"siblings": [{"rfilename": "model.Q4_K_M.gguf"}]},
+            [{"path": "model.Q4_K_M.gguf", "size": 12, "lfs": {
+                "size": 12, "oid": sha256
+            }}],
+        ).discover_artifacts("owner/repository")[0]
+        self.assertEqual(artifact.size_bytes, 12)
+        self.assertEqual(artifact.sha256, sha256)
+
+    def test_tree_uses_lfs_size_when_size_is_missing(self):
+        artifact = source_responses(
+            {"siblings": [{"rfilename": "model.Q4_K_M.gguf"}]},
+            [{"path": "model.Q4_K_M.gguf", "lfs": {
+                "size": 13, "oid": "c" * 64
+            }}],
+        ).discover_artifacts("owner/repository")[0]
+        self.assertEqual(artifact.size_bytes, 13)
+
+    def test_tree_without_lfs_preserves_unknown_metadata(self):
+        artifact = source_responses(
+            {"siblings": [{"rfilename": "model.Q4_K_M.gguf"}]},
+            [{"path": "model.Q4_K_M.gguf", "size": 14}],
+        ).discover_artifacts("owner/repository")[0]
+        self.assertEqual(artifact.size_bytes, 14)
+        self.assertIsNone(artifact.sha256)
+
+    def test_invalid_tree_oid_is_not_accepted_as_sha256(self):
+        artifact = source_responses(
+            {"siblings": [{"rfilename": "model.Q4_K_M.gguf"}]},
+            [{"path": "model.Q4_K_M.gguf", "size": 15, "lfs": {
+                "oid": "not-a-sha256", "xetHash": "d" * 64
+            }}],
+        ).discover_artifacts("owner/repository")[0]
+        self.assertIsNone(artifact.sha256)
+
+    def test_tree_selects_exact_filename_among_multiple_files(self):
+        artifact = source_responses(
+            {"siblings": [
+                {"rfilename": "other.Q4_K_M.gguf"},
+                {"rfilename": "target.Q4_K_M.gguf"},
+            ]},
+            [
+                {"path": "other.Q4_K_M.gguf", "size": 16, "lfs": {"oid": "e" * 64}},
+                {"path": "target.Q4_K_M.gguf", "size": 17, "lfs": {"oid": "f" * 64}},
+            ],
+        ).discover_artifacts("owner/repository")
+        self.assertEqual([(item.filename, item.size_bytes, item.sha256) for item in artifact], [
+            ("other.Q4_K_M.gguf", 16, "e" * 64),
+            ("target.Q4_K_M.gguf", 17, "f" * 64),
+        ])
+
+    def test_tree_does_not_use_xet_hash_as_sha256(self):
+        artifact = source_responses(
+            {"siblings": [{"rfilename": "model.Q4_K_M.gguf"}]},
+            [{"path": "model.Q4_K_M.gguf", "size": 18, "xetHash": "a" * 64}],
+        ).discover_artifacts("owner/repository")[0]
+        self.assertIsNone(artifact.sha256)
 
 
 if __name__ == "__main__":
