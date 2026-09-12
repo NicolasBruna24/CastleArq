@@ -190,3 +190,11 @@ las garantías existentes de `ModelStore`.
 read-only: `NO_ACTION`, `RESUME_ELIGIBLE`, `USE_EXISTING` o
 `REVIEW_REQUIRED`. No accede al filesystem, no modifica archivos o manifests,
 no elimina `.part` y no ejecuta descargas ni recuperación automática.
+
+## Fase 3.0-B.2.6.3: cleanup explícito
+
+`ArtifactCleanup` ejecuta únicamente operaciones destructivas solicitadas de
+forma explícita: eliminar el `.part` o eliminar el artifact final. Cada
+operación está acotada a su objetivo, nunca elimina manifests ni directorios,
+rechaza symlinks y es idempotente cuando el objetivo no existe. No decide
+automáticamente qué archivo conservar en estados inconsistentes.

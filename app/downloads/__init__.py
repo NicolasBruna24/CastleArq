@@ -8,6 +8,7 @@ from .inspection import (
     ArtifactFilesystemState,
 )
 from .recovery import RecoveryDecision, RecoveryDecisionResult, RecoveryDecider
+from .cleanup import ArtifactCleanup, CleanupOperation, CleanupResult
 
 __all__ = [
     "DownloadPlan",
@@ -22,4 +23,7 @@ __all__ = [
     "RecoveryDecision",
     "RecoveryDecisionResult",
     "RecoveryDecider",
+    "ArtifactCleanup",
+    "CleanupOperation",
+    "CleanupResult",
 ]
