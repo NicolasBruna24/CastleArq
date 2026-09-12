@@ -102,7 +102,7 @@ class DownloadPlannerTests(unittest.TestCase):
             )
             self.assertEqual(plan.status, DownloadPlanStatus.BLOCKED)
 
-    def test_partial_file_blocks_without_removing_it(self):
+    def test_partial_file_is_ready_for_resume_without_removing_it(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
             spec = artifact()
@@ -110,7 +110,7 @@ class DownloadPlannerTests(unittest.TestCase):
             partial = manifest.parent / f"{spec.filename}.part"
             partial.write_bytes(b"partial")
             plan = DownloadPlanner(store, lambda _path: 100).plan(spec)
-            self.assertEqual(plan.status, DownloadPlanStatus.BLOCKED)
+            self.assertEqual(plan.status, DownloadPlanStatus.READY)
             self.assertTrue(partial.exists())
 
     def test_corrupt_manifest_blocks(self):

@@ -98,7 +98,7 @@ class DownloadPlanner:
                     required_bytes=artifact.size_bytes,
                     existing=True,
                 )
-            if stored.state in {ArtifactState.DOWNLOADING, ArtifactState.FAILED}:
+            if stored.state == ArtifactState.FAILED:
                 message = stored.message or f"Existing artifact state is {stored.state.value}"
                 return DownloadPlan(
                     artifact=artifact,
@@ -109,7 +109,7 @@ class DownloadPlanner:
                     required_bytes=artifact.size_bytes,
                     existing=True,
                 )
-        elif existing:
+        elif existing and not Path(f"{destination}.part").exists():
             return DownloadPlan(
                 artifact=artifact,
                 destination=destination,

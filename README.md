@@ -144,8 +144,21 @@ reservada para una fase posterior.
 La API `Downloader` recibe un `DownloadPlan` `READY`, descarga el contenido
 por streaming a un archivo `.part` y publica el artifact mediante una
 publicación atómica exclusiva sin reemplazo (`os.link` seguido de la
-eliminación del `.part`). Un `.part` preexistente se conserva y bloquea la
-operación; no hay resume todavía.
+eliminación del `.part`). La reanudación segura de archivos `.part`
+preexistentes mediante HTTP Range se describe en la fase B.2.4 siguiente.
 
-Esta fase no implementa SHA-256, retries, Range requests, concurrencia ni
-gestión de manifests o estados persistidos.
+Esta fase no implementa SHA-256, retries, concurrencia ni gestión de manifests
+o estados persistidos.
+
+## Fase 3.0-B.2.4: reanudación mediante HTTP Range
+
+Un archivo `.part` existente puede reutilizarse mediante una petición
+`Range: bytes=<offset>-`. Solo se anexan datos cuando el servidor responde
+`206 Partial Content` con un `Content-Range` coherente con el offset local y
+el tamaño esperado. Una respuesta `200` ante una petición Range no se anexa y
+un `416 Range Not Satisfiable` preserva el `.part` intacto.
+
+Los errores de red, escritura, `fsync` o validación de rango conservan el
+progreso parcial para una ejecución posterior. La publicación final continúa
+siendo exclusiva mediante `os.link(.part, final)` seguida de la eliminación
+del `.part`. Esta fase todavía no implementa SHA-256, retries ni recovery.
