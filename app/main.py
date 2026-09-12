@@ -8,7 +8,10 @@ from .hardware import detect_hardware
 from .compatibility import load_config, recommend_models
 from .model_catalog import get_catalog
 from .model_store import ModelStore
+from .downloads import DownloadPlanStatus, DownloadPlanner
+from .models import ArtifactSpec
 from .sources import HuggingFaceSource, SourceError
+from .sources.huggingface import _download_url, detect_quantization
 from .runtimes import detect_backends, detect_runtimes, recommend
 
 
@@ -155,10 +158,48 @@ def print_source(provider: str | None, repository: str | None) -> int:
     return 0
 
 
+def print_plan(repository: str | None, filename: str | None) -> int:
+    if not repository or not filename:
+        print("Usage: python3 -m app.main plan <repository> <filename>")
+        return 2
+    try:
+        download_url = _download_url(repository, filename)
+    except SourceError as error:
+        print(f"Plan error: {error}")
+        return 1
+    artifact = ArtifactSpec(
+        model_id=repository,
+        source="huggingface",
+        repository=repository,
+        filename=filename,
+        format="GGUF",
+        quantization=detect_quantization(filename),
+        download_url=download_url,
+    )
+    plan = DownloadPlanner().plan(artifact)
+    print("LocalAI Hub - Offline download plan")
+    print("==========================")
+    print(f"  Repository: {artifact.repository}")
+    print(f"  Filename: {artifact.filename}")
+    print(f"  Format: {artifact.format}")
+    print(f"  Quantization: {artifact.quantization}")
+    print(f"  Status: {plan.status.value.upper()}")
+    print(f"  Destination: {plan.destination or 'Unknown'}")
+    print(f"  Size: {plan.required_bytes if plan.required_bytes is not None else 'Unknown'}")
+    print(
+        f"  Available disk: "
+        f"{plan.available_bytes if plan.available_bytes is not None else 'Unknown'}"
+    )
+    print(f"  Existing: {'yes' if plan.existing else 'no'}")
+    print(f"  Reasons: {', '.join(plan.reasons) if plan.reasons else 'none'}")
+    print("  Network: offline; metadata discovery is not performed")
+    return 0 if plan.status != DownloadPlanStatus.BLOCKED else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
     parser.add_argument(
-        "command", choices=("detect", "models", "list", "source"), help="command to execute"
+        "command", choices=("detect", "models", "list", "source", "plan"), help="command to execute"
     )
     parser.add_argument("provider", nargs="?")
     parser.add_argument("repository", nargs="?")
@@ -171,6 +212,8 @@ def main() -> int:
         print_local_models()
     elif args.command == "source":
         return print_source(args.provider, args.repository)
+    elif args.command == "plan":
+        return print_plan(args.provider, args.repository)
     return 0
 
 

@@ -120,3 +120,21 @@ el tamaño y SHA-256 solo cuando Hugging Face los proporciona y detecta
 cuantizaciones de forma conservadora. No solicita el contenido de los
 artifacts, no descarga modelos y no modifica `ModelStore`. El Download Manager
 queda reservado para Fase 3.0-B.2.
+
+## Fase 3.0-B.2.1: planificación de descargas
+
+La planificación valida localmente un `ArtifactSpec` y determina si está
+preparado para una futura descarga. Comprueba la fuente, URL de Hugging Face,
+filename, formato GGUF, tamaño, SHA-256, destino dentro del `ModelStore`,
+estado local y espacio disponible.
+
+El comando `plan` es estrictamente offline:
+
+```bash
+python3 -m app.main plan owner/repository model.Q4_K_M.gguf
+```
+
+No busca modelos, no consulta Hugging Face, no descarga contenido y no crea
+directorios, manifests, archivos `.part` ni artifacts. Con tamaño desconocido
+el resultado es `UNKNOWN`, nunca `READY`. La ejecución de descargas queda
+reservada para una fase posterior.
