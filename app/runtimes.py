@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
+from enum import Enum
+import subprocess
 from typing import Callable
 
 
@@ -34,6 +36,154 @@ class BackendStatus:
 
 
 Which = Callable[[str], str | None]
+Run = Callable[[tuple[str, ...]], "RuntimeProbeResult"]
+
+
+class PromptInputMode(str, Enum):
+    ARGUMENT = "argument"
+    FILE = "file"
+
+
+@dataclass(frozen=True)
+class RuntimeProbeResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class RuntimeCapability:
+    """Validated capabilities of a detected runtime executable."""
+
+    name: str
+    executable_path: str | None
+    version: str | None
+    supported_formats: tuple[str, ...]
+    supported_backends: tuple[str, ...]
+    prompt_input_modes: tuple[PromptInputMode, ...]
+    supports_one_shot: bool
+    available: bool
+    reason: str | None = None
+    compatibility_names: tuple[str, ...] = ()
+    backend_arguments: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("Runtime capability name is required")
+        if self.available and not self.executable_path:
+            raise ValueError("Available runtime requires an executable path")
+        if self.available and not self.supports_one_shot:
+            raise ValueError("Available runtime must support one-shot execution")
+        if self.available and not self.supported_formats:
+            raise ValueError("Available runtime requires a supported format")
+        if self.available and not self.supported_backends:
+            raise ValueError("Available runtime requires a supported backend")
+        if self.available and not self.prompt_input_modes:
+            raise ValueError("Available runtime requires a prompt input mode")
+
+    @property
+    def invocable(self) -> bool:
+        return self.available and self.supports_one_shot
+
+    def supports_runtime_name(self, name: str) -> bool:
+        return name == self.name or name in self.compatibility_names
+
+    def backend_argument(self, backend: str) -> str | None:
+        return dict(self.backend_arguments).get(backend)
+
+
+def detect_llama_capability(
+    which: Which = shutil.which,
+    run: Run | None = None,
+) -> RuntimeCapability:
+    """Probe the fixed llama CLI entry point without loading a model."""
+
+    executable = which("llama")
+    if executable is None:
+        return RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path=None,
+            version=None,
+            supported_formats=(),
+            supported_backends=(),
+            prompt_input_modes=(),
+            supports_one_shot=False,
+            available=False,
+            reason="llama executable was not found",
+        )
+
+    probe = run or _run_runtime_probe
+    version_result = probe((executable, "cli", "--version"))
+    help_result = probe((executable, "cli", "--help"))
+    if version_result.returncode != 0 or help_result.returncode != 0:
+        return RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path=executable,
+            version=_version_line(
+                f"{version_result.stdout}\n{version_result.stderr}"
+            ),
+            supported_formats=(),
+            supported_backends=(),
+            prompt_input_modes=(),
+            supports_one_shot=False,
+            available=False,
+            reason="llama cli version/help probe failed",
+        )
+
+    help_text = f"{help_result.stdout}\n{help_result.stderr}"
+    required_options = ("--model", "--prompt")
+    if not all(option in help_text for option in required_options):
+        return RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path=executable,
+            version=_version_line(
+                f"{version_result.stdout}\n{version_result.stderr}"
+            ),
+            supported_formats=(),
+            supported_backends=(),
+            prompt_input_modes=(),
+            supports_one_shot=False,
+            available=False,
+            reason="llama cli lacks required model or prompt options",
+        )
+
+    devices_result = probe((executable, "cli", "--list-devices"))
+    devices_text = f"{devices_result.stdout}\n{devices_result.stderr}"
+    backends = ["CPU"]
+    if devices_result.returncode == 0 and "Vulkan" in devices_text:
+        backends.append("Vulkan")
+    prompt_modes = [PromptInputMode.ARGUMENT]
+    if "--file" in help_text:
+        prompt_modes.append(PromptInputMode.FILE)
+    return RuntimeCapability(
+        name="llama.cpp CLI",
+        executable_path=executable,
+        version=_version_line(f"{version_result.stdout}\n{version_result.stderr}"),
+        supported_formats=("GGUF",),
+        supported_backends=tuple(backends),
+        prompt_input_modes=tuple(prompt_modes),
+        supports_one_shot=True,
+        available=True,
+        compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
+        backend_arguments=(("CPU", "none"), ("Vulkan", "Vulkan0")),
+    )
+
+
+def _version_line(output: str) -> str | None:
+    for line in output.splitlines():
+        if line.strip():
+            return line.strip()
+    return None
+
+
+def _run_runtime_probe(command: tuple[str, ...]) -> RuntimeProbeResult:
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return RuntimeProbeResult(1, "", str(error))
+    return RuntimeProbeResult(result.returncode, result.stdout, result.stderr)
 
 
 def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
