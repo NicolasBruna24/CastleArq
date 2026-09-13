@@ -27,6 +27,9 @@ from .runtimes import (
 from .selection import RuntimeBackendSelector
 
 
+_DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
+
+
 def _format_gib(value: float | None) -> str:
     return f"{value:.0f} GB" if value is not None else "Unknown"
 
@@ -254,7 +257,11 @@ def run_model(model_id: str | None, prompt: str | None) -> int:
     ).execute(
         resolved.model,
         resolved.artifact,
-        ExecutionRequest(resolved.artifact, prompt),
+        ExecutionRequest(
+            resolved.artifact,
+            prompt,
+            timeout_seconds=_DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+        ),
     )
     if result.success:
         print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")

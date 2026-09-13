@@ -1,11 +1,12 @@
 import io
+import math
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import Mock, patch
 
 from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
-from app.main import run_model
+from app.main import _DEFAULT_EXECUTION_TIMEOUT_SECONDS, run_model
 from app.model_catalog import get_catalog
 from app.models import ArtifactSpec
 from app.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
@@ -116,6 +117,29 @@ class MainRunTests(unittest.TestCase):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 1)
         self.assertIn("process failed", error.getvalue())
+
+    def test_run_passes_finite_positive_default_timeout(self):
+        captured = {}
+
+        def execute(model, artifact, request):
+            captured["request"] = request
+            return ExecutionResult(True, 0, "ok\n", "")
+
+        service = Mock()
+        service.execute.side_effect = execute
+        with patch("app.main.ModelArtifactResolver", return_value=Mock(
+            resolve=Mock(return_value=self.resolved)
+        )), patch("app.main.ModelExecutionService", return_value=service), patch(
+            "app.main.detect_hardware"
+        ), patch("app.main.detect_llama_capability"), patch(
+            "app.main.detect_backends"
+        ):
+            code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 0)
+        request = captured["request"]
+        self.assertEqual(request.timeout_seconds, _DEFAULT_EXECUTION_TIMEOUT_SECONDS)
+        self.assertGreater(request.timeout_seconds, 0)
+        self.assertTrue(math.isfinite(request.timeout_seconds))
 
 
 if __name__ == "__main__":
