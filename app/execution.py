@@ -91,6 +91,52 @@ class ExecutionDiagnostics:
     terminated_normally: bool
 
 
+class RuntimeMetricSource(str, Enum):
+    """Origin of optional runtime-reported performance metrics."""
+
+    LLAMA_HUMAN_OUTPUT = "llama_human_output"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class RuntimeMetrics:
+    """Optional metrics reported by an execution runtime."""
+
+    prompt_tokens: int | None = None
+    generated_tokens: int | None = None
+    prompt_tokens_per_second: float | None = None
+    generation_tokens_per_second: float | None = None
+    load_time_seconds: float | None = None
+    total_time_seconds: float | None = None
+    source: RuntimeMetricSource = RuntimeMetricSource.UNAVAILABLE
+
+    def __post_init__(self) -> None:
+        _validate_metric_value("prompt_tokens", self.prompt_tokens, int)
+        _validate_metric_value("generated_tokens", self.generated_tokens, int)
+        for name, value in (
+            ("prompt_tokens_per_second", self.prompt_tokens_per_second),
+            ("generation_tokens_per_second", self.generation_tokens_per_second),
+            ("load_time_seconds", self.load_time_seconds),
+            ("total_time_seconds", self.total_time_seconds),
+        ):
+            _validate_metric_value(name, value, (int, float))
+        if not isinstance(self.source, RuntimeMetricSource):
+            raise ValueError("source must be a RuntimeMetricSource")
+
+
+def _validate_metric_value(
+    name: str,
+    value: int | float | None,
+    expected_type: type | tuple[type, ...],
+) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, expected_type):
+        raise ValueError(f"{name} has an invalid type")
+    if value < 0 or (isinstance(value, float) and not math.isfinite(value)):
+        raise ValueError(f"{name} must be finite and non-negative")
+
+
 def validate_execution_request(request: ExecutionRequest) -> None:
     """Reject process-affecting request values outside the execution contract."""
     if not isinstance(request, ExecutionRequest):
@@ -139,6 +185,7 @@ class ExecutionResult:
     error: ExecutionErrorInfo | None = None
     warnings: tuple[str, ...] = ()
     diagnostics: ExecutionDiagnostics | None = None
+    runtime_metrics: RuntimeMetrics | None = None
 
 
 @dataclass(frozen=True)

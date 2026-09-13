@@ -9,6 +9,8 @@ from app.execution import (
     ExecutionRequest,
     ExecutionResult,
     ExecutionTarget,
+    RuntimeMetricSource,
+    RuntimeMetrics,
 )
 from app.models import ArtifactSpec
 
@@ -77,6 +79,51 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIs(result.diagnostics, diagnostics)
         with self.assertRaises(FrozenInstanceError):
             diagnostics.exit_code = 1
+
+    def test_runtime_metrics_can_be_empty_or_partial(self):
+        empty = RuntimeMetrics()
+        self.assertEqual(empty.source, RuntimeMetricSource.UNAVAILABLE)
+        metrics = RuntimeMetrics(
+            prompt_tokens=12,
+            generated_tokens=7,
+            prompt_tokens_per_second=10.5,
+            generation_tokens_per_second=4.25,
+            load_time_seconds=0.8,
+            total_time_seconds=2.4,
+            source=RuntimeMetricSource.LLAMA_HUMAN_OUTPUT,
+        )
+        self.assertEqual(metrics.prompt_tokens, 12)
+        self.assertEqual(metrics.generated_tokens, 7)
+        self.assertEqual(metrics.prompt_tokens_per_second, 10.5)
+        self.assertEqual(metrics.generation_tokens_per_second, 4.25)
+        self.assertEqual(metrics.load_time_seconds, 0.8)
+        self.assertEqual(metrics.total_time_seconds, 2.4)
+
+    def test_runtime_metrics_reject_invalid_values(self):
+        invalid_values = (
+            {"prompt_tokens": -1},
+            {"generated_tokens": -1},
+            {"prompt_tokens": True},
+            {"generation_tokens_per_second": False},
+            {"prompt_tokens_per_second": -0.1},
+            {"load_time_seconds": -0.1},
+            {"total_time_seconds": "2"},
+            {"generation_tokens_per_second": float("nan")},
+            {"source": "llama_human_output"},
+        )
+        for values in invalid_values:
+            with self.subTest(values=values):
+                with self.assertRaises(ValueError):
+                    RuntimeMetrics(**values)
+
+    def test_runtime_metrics_and_result_are_immutable(self):
+        metrics = RuntimeMetrics(prompt_tokens=1)
+        result = ExecutionResult(True, 0, "", "", runtime_metrics=metrics)
+        self.assertIs(result.runtime_metrics, metrics)
+        with self.assertRaises(FrozenInstanceError):
+            metrics.prompt_tokens = 2
+        with self.assertRaises(FrozenInstanceError):
+            result.runtime_metrics = None
 
     def test_domain_types_are_frozen(self):
         target = ExecutionTarget("llama.cpp", "CPU")
