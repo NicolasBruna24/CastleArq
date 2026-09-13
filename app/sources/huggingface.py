@@ -15,6 +15,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from .base import ModelSource
+from ..model_identity import logical_model_id
 from ..models import ArtifactSpec, ArtifactState
 
 
@@ -25,14 +26,28 @@ class SourceError(Exception):
 Transport = Callable[[str, float], bytes]
 
 
+def _default_model_id(repository: str) -> str | None:
+    return logical_model_id("huggingface", repository)
+
+
 @dataclass(frozen=True)
 class HuggingFaceSource(ModelSource):
     api_base: str = "https://huggingface.co/api"
     timeout: float = 10.0
     transport: Transport | None = None
+    model_id_provider: Callable[[str], str | None] | None = None
+
+    def _logical_model_id(self, repository: str) -> str | None:
+        provider = self.model_id_provider or _default_model_id
+        return provider(repository)
 
     def discover_artifacts(self, repository: str) -> list[ArtifactSpec]:
         _validate_repository(repository)
+        model_id = self._logical_model_id(repository)
+        if model_id is None:
+            raise SourceError(
+                f"Repository is not mapped to a catalog model: {repository}"
+            )
         api_url = _metadata_url(self.api_base, repository)
         payload = self._get_json(api_url)
         if not isinstance(payload, dict):
@@ -47,7 +62,7 @@ class HuggingFaceSource(ModelSource):
         for entry in files:
             if not isinstance(entry, dict):
                 continue
-            artifact = self._artifact_from_file(repository, entry)
+            artifact = self._artifact_from_file(model_id, repository, entry)
             if artifact is not None:
                 artifacts.append(artifact)
         if any(
@@ -73,7 +88,7 @@ class HuggingFaceSource(ModelSource):
         return payload
 
     def _artifact_from_file(
-        self, repository: str, entry: dict[str, object]
+        self, model_id: str, repository: str, entry: dict[str, object]
     ) -> ArtifactSpec | None:
         filename = entry.get("rfilename", entry.get("path"))
         if not isinstance(filename, str) or not filename.lower().endswith(".gguf"):
@@ -84,7 +99,7 @@ class HuggingFaceSource(ModelSource):
         url = _download_url(repository, filename)
         quantization = detect_quantization(filename)
         return ArtifactSpec(
-            model_id=repository,
+            model_id=model_id,
             source="huggingface",
             repository=repository,
             filename=filename,

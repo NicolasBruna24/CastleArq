@@ -12,6 +12,7 @@ from .execution_service import ModelExecutionService
 from .model_catalog import get_catalog
 from .model_store import ModelStore
 from .downloads import DownloadPlanStatus, DownloadPlanner
+from .model_identity import logical_model_id
 from .models import ArtifactSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runner import LlamaCppRunner
@@ -24,7 +25,9 @@ from .runtimes import (
     detect_runtimes,
     recommend,
 )
-from .selection import RuntimeBackendSelector
+from .selection import RuntimeBackendSelector, RuntimeSelectionError
+from .chat import ChatSessionError, start_chat_session
+from .execution import ArtifactPreflightError
 
 
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
@@ -177,13 +180,17 @@ def print_plan(repository: str | None, filename: str | None) -> int:
     if not repository or not filename:
         print("Usage: python3 -m app.main plan <repository> <filename>")
         return 2
+    model_id = logical_model_id("huggingface", repository)
+    if model_id is None:
+        print(f"Plan error: repository is not mapped to a catalog model: {repository}")
+        return 1
     try:
         download_url = _download_url(repository, filename)
     except SourceError as error:
         print(f"Plan error: {error}")
         return 1
     artifact = ArtifactSpec(
-        model_id=repository,
+        model_id=model_id,
         source="huggingface",
         repository=repository,
         filename=filename,
@@ -277,10 +284,143 @@ def run_model(model_id: str | None, prompt: str | None) -> int:
     return 1
 
 
+def chat_model(
+    model_id: str | None,
+    *,
+    input_fn=None,
+    out=None,
+    err=None,
+    session_factory=None,
+) -> int:
+    """Interactive multi-turn chat over one persistent runtime process."""
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    input_fn = input_fn if input_fn is not None else input
+
+    if not model_id:
+        print("Usage: python3 -m app.main chat <model-id>", file=err)
+        return 2
+
+    try:
+        model_store = ModelStore()
+        resolver = ModelArtifactResolver(model_store)
+        resolved = resolver.resolve(model_id)
+    except ModelArtifactResolutionError as error:
+        print(f"Chat error: {error}", file=err)
+        return 1
+
+    hardware = detect_hardware()
+    capability = detect_llama_capability()
+    if not capability.invocable:
+        print(
+            "Chat error: no invocable runtime is available",
+            file=err,
+        )
+        return 1
+    runtimes = [
+        RuntimeStatus(
+            "llama.cpp / llama.app",
+            installed=capability.executable_path is not None,
+            available=capability.available,
+            gpu_backend_detected=bool(hardware.gpus),
+            supported_backends=capability.supported_backends,
+        )
+    ]
+    detected_gpu_backends = {
+        backend for gpu in hardware.gpus for backend in gpu.backends
+    }
+    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
+    compatibility = assess_model(
+        hardware,
+        runtimes,
+        backends,
+        resolved.model,
+        config=CompatibilityConfig(),
+    )
+    if compatibility.status in ("incompatible", "unknown"):
+        print(
+            "Chat error: model compatibility does not permit execution",
+            file=err,
+        )
+        for warning in compatibility.warnings:
+            print(f"Warning: {warning}", file=err)
+        return 1
+
+    try:
+        executable_artifact = ArtifactExecutionPreflight(model_store).validate(
+            resolved.artifact
+        )
+    except ArtifactPreflightError as error:
+        print(f"Chat error: {error.message}", file=err)
+        return 1
+
+    try:
+        selection = RuntimeBackendSelector().select(
+            compatibility, capability, executable_artifact
+        )
+    except RuntimeSelectionError as error:
+        print(f"Chat error: {error.message}", file=err)
+        return 1
+
+    for warning in selection.warnings:
+        print(f"Warning: {warning}", file=err)
+
+    def stream(chunk: str) -> None:
+        out.write(chunk)
+        out.flush()
+
+    if session_factory is not None:
+        session = session_factory(
+            capability, executable_artifact, selection.target, chunk_callback=stream
+        )
+    else:
+        session = start_chat_session(
+            capability,
+            executable_artifact,
+            selection.target,
+            chunk_callback=stream,
+        )
+
+    print("LocalAI Hub — chat", file=out)
+    print(f"Model: {model_id}", file=out)
+    print("Type /exit to quit.", file=out)
+    try:
+        while True:
+            try:
+                out.write("you> ")
+                out.flush()
+                prompt = input_fn()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                # Ctrl+C while waiting for input: close the session cleanly.
+                break
+            if not prompt.strip():
+                continue
+            if prompt.strip() == "/exit":
+                break
+            try:
+                session.send(prompt)
+            except KeyboardInterrupt:
+                session.cancel()
+                if session.state.value != "ready":
+                    break
+            except ChatSessionError as error:
+                print(f"Chat error: {error}", file=err)
+                break
+            out.write("\n")
+            out.flush()
+    finally:
+        session.close()
+    print("Session closed.", file=out)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
     parser.add_argument(
-        "command", choices=("detect", "models", "list", "source", "plan", "run"),
+        "command",
+        choices=("detect", "models", "list", "source", "plan", "run", "chat"),
         help="command to execute",
     )
     parser.add_argument("provider", nargs="?")
@@ -301,6 +441,10 @@ def main() -> int:
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")
         return run_model(args.provider, args.prompt)
+    elif args.command == "chat":
+        if args.repository is not None:
+            parser.error("chat accepts exactly one model-id")
+        return chat_model(args.provider)
     return 0
 
 

@@ -7,6 +7,13 @@ from app.sources.huggingface import HuggingFaceSource, SourceError, detect_quant
 
 
 def source(payload):
+    return HuggingFaceSource(
+        transport=lambda _url, _timeout: json.dumps(payload).encode(),
+        model_id_provider=lambda _repository: "test/model",
+    )
+
+
+def default_source(payload):
     return HuggingFaceSource(transport=lambda _url, _timeout: json.dumps(payload).encode())
 
 
@@ -15,10 +22,24 @@ def source_responses(model_payload, tree_payload):
         payload = tree_payload if "/tree/" in url else model_payload
         return json.dumps(payload).encode()
 
-    return HuggingFaceSource(transport=transport)
+    return HuggingFaceSource(
+        transport=transport,
+        model_id_provider=lambda _repository: "test/model",
+    )
 
 
 class HuggingFaceTests(unittest.TestCase):
+    def test_default_mapping_assigns_logical_model_id(self):
+        artifact = default_source({"siblings": [
+            {"rfilename": "model.Q4_K_M.gguf", "size": 10, "lfs": {"sha256": "a" * 64}},
+        ]}).discover_artifacts("Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")[0]
+        self.assertEqual(artifact.model_id, "qwen2.5-coder-7b-instruct")
+        self.assertEqual(artifact.repository, "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+        self.assertNotEqual(artifact.model_id, artifact.repository)
+
+    def test_unmapped_repository_has_no_logical_identity(self):
+        with self.assertRaisesRegex(SourceError, "not mapped"):
+            default_source({"siblings": []}).discover_artifacts("owner/repository")
     def test_repository_and_artifact_resolution(self):
         result = source({"siblings": [
             {"rfilename": "model.Q4_K_M.gguf", "size": 10, "lfs": {"sha256": "a" * 64}},
@@ -59,7 +80,10 @@ class HuggingFaceTests(unittest.TestCase):
     def test_missing_files_and_invalid_json(self):
         self.assertEqual(source({"siblings": []}).discover_artifacts("owner/repo"), [])
         with self.assertRaises(SourceError):
-            HuggingFaceSource(transport=lambda _url, _timeout: b"invalid").discover_artifacts("owner/repo")
+            HuggingFaceSource(
+                transport=lambda _url, _timeout: b"invalid",
+                model_id_provider=lambda _repository: "test/model",
+            ).discover_artifacts("owner/repo")
 
     def test_no_checksum_is_none(self):
         artifact = source({"files": [{"path": "model.Q8_0.gguf"}]}).discover_artifacts("owner/repo")[0]
@@ -71,16 +95,19 @@ class HuggingFaceTests(unittest.TestCase):
         def transport(url, _timeout):
             calls.append(url)
             return b'{"siblings": []}'
-        HuggingFaceSource(transport=transport).discover_artifacts("owner/repo")
+        HuggingFaceSource(
+            transport=transport, model_id_provider=lambda _repository: "test/model"
+        ).discover_artifacts("owner/repo")
         self.assertEqual(len(calls), 1)
         self.assertIn("/api/models/owner/repo", calls[0])
         self.assertNotIn("/resolve/", calls[0])
 
     def test_api_host_must_be_huggingface_https(self):
+        provider = lambda _repository: "test/model"  # noqa: E731
         with self.assertRaises(SourceError):
-            HuggingFaceSource(api_base="http://huggingface.co/api", transport=lambda *_: b"{}").discover_artifacts("owner/repo")
+            HuggingFaceSource(api_base="http://huggingface.co/api", transport=lambda *_: b"{}", model_id_provider=provider).discover_artifacts("owner/repo")
         with self.assertRaises(SourceError):
-            HuggingFaceSource(api_base="https://evil.example/api", transport=lambda *_: b"{}").discover_artifacts("owner/repo")
+            HuggingFaceSource(api_base="https://evil.example/api", transport=lambda *_: b"{}", model_id_provider=provider).discover_artifacts("owner/repo")
 
     def test_http_errors_and_timeout_are_controlled(self):
         def not_found(url, _timeout):
@@ -91,12 +118,15 @@ class HuggingFaceTests(unittest.TestCase):
 
         for transport in (not_found, server_error):
             with self.assertRaises(SourceError):
-                HuggingFaceSource(transport=transport).discover_artifacts("owner/repo")
+                HuggingFaceSource(
+                    transport=transport, model_id_provider=lambda _repository: "test/model"
+                ).discover_artifacts("owner/repo")
         with self.assertRaises(SourceError):
             HuggingFaceSource(
                 transport=lambda _url, _timeout: (_ for _ in ()).throw(
                     TimeoutError("timeout")
-                )
+                ),
+                model_id_provider=lambda _repository: "test/model",
             ).discover_artifacts("owner/repo")
 
     def test_url_and_artifact_metadata_are_safe(self):

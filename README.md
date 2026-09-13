@@ -206,6 +206,18 @@ mediante preflight y lo ejecuta una sola vez con el runtime detectado. No
 descarga, no modifica manifests, no altera el estado del artifact ni el
 `ModelStore`.
 
+El comando `chat` abre una conversación interactiva multi-turno sobre un único
+proceso de runtime:
+
+```text
+python3 -m app.main chat <model-id>
+```
+
+Sigue el mismo pipeline de seguridad (resolver → preflight → selección) y usa
+la misma capa de ejecución que `run`. Escribe `/exit` o pulsa Ctrl+D para
+salir; Ctrl+C cancela la generación en curso. El contexto conversacional lo
+mantiene el runtime, no la aplicación.
+
 Supuesto: el `ModelStore` local se considera confiable y no compartido con
 actores no confiables durante la ejecución. Existe una ventana TOCTOU residual
 entre el preflight y el lanzamiento del subprocess: un actor con escritura

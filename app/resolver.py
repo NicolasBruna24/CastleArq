@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from .model_catalog import get_catalog
@@ -21,7 +20,13 @@ class ResolvedModelArtifact:
 
 
 class ModelArtifactResolver:
-    """Resolve catalog model IDs to exactly one usable local artifact."""
+    """Resolve canonical logical model IDs to exactly one usable artifact.
+
+    The input must be a ``ModelSpec.model_id`` (the canonical logical
+    identity). Artifacts belong to a logical model when their persisted
+    ``ArtifactSpec.model_id`` is exactly that identity. Source repositories
+    are locators, never model identities, and are never accepted here.
+    """
 
     def __init__(
         self,
@@ -41,7 +46,8 @@ class ModelArtifactResolver:
         matching = [
             entry
             for entry in self.model_store.list_artifacts()
-            if entry.artifact is not None and _matches_model(model, entry.artifact)
+            if entry.artifact is not None
+            and entry.artifact.model_id == model.model_id
         ]
         if not matching:
             raise ModelArtifactResolutionError(
@@ -84,21 +90,3 @@ class ModelArtifactResolver:
                 f"No usable local artifact is installed for model: {model_id}"
             )
         return ResolvedModelArtifact(model, usable[0].artifact)
-
-
-def _matches_model(model: ModelSpec, artifact: ArtifactSpec) -> bool:
-    logical_id = _normalize(model.model_id)
-    repository_name = artifact.repository.rsplit("/", 1)[-1]
-    artifact_model_name = artifact.model_id.rsplit("/", 1)[-1]
-    return logical_id in {
-        _normalize(_without_gguf_suffix(repository_name)),
-        _normalize(_without_gguf_suffix(artifact_model_name)),
-    }
-
-
-def _without_gguf_suffix(value: str) -> str:
-    return re.sub(r"[-_.]?gguf$", "", value, flags=re.IGNORECASE)
-
-
-def _normalize(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())

@@ -20,7 +20,7 @@ class ModelArtifactResolverTests(unittest.TestCase):
 
     def _artifact(self, *, filename="model.Q4_K_M.gguf", state=ArtifactState.VERIFIED):
         return ArtifactSpec(
-            model_id="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            model_id=self.model.model_id,
             source="huggingface",
             repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
             filename=filename,
@@ -48,6 +48,35 @@ class ModelArtifactResolverTests(unittest.TestCase):
     def test_unknown_model_is_rejected(self):
         with self.assertRaisesRegex(ModelArtifactResolutionError, "not found"):
             ModelArtifactResolver(self.store).resolve("unknown-model")
+
+    def test_repository_id_is_not_a_canonical_model_id(self):
+        self._store_artifact(self._artifact())
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "not found"):
+            ModelArtifactResolver(self.store).resolve(
+                "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+            )
+
+    def test_artifacts_of_other_logical_models_do_not_match(self):
+        artifact = self._artifact()
+        artifact = ArtifactSpec(
+            **{**artifact.__dict__, "model_id": "other/unrelated-model"}
+        )
+        self._store_artifact(artifact)
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "No local artifact"):
+            ModelArtifactResolver(self.store).resolve(self.model.model_id)
+
+    def test_repository_name_similarity_does_not_create_identity(self):
+        artifact = self._artifact()
+        artifact = ArtifactSpec(
+            **{
+                **artifact.__dict__,
+                "model_id": "other/model",
+                "repository": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            }
+        )
+        self._store_artifact(artifact)
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "No local artifact"):
+            ModelArtifactResolver(self.store).resolve(self.model.model_id)
 
     def test_missing_artifact_is_rejected(self):
         artifact = self._artifact()
