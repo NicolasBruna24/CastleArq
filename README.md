@@ -198,3 +198,18 @@ forma explícita: eliminar el `.part` o eliminar el artifact final. Cada
 operación está acotada a su objetivo, nunca elimina manifests ni directorios,
 rechaza symlinks y es idempotente cuando el objetivo no existe. No decide
 automáticamente qué archivo conservar en estados inconsistentes.
+
+## Fase 4: ejecución de un artifact local
+
+`run` resuelve un modelo lógico contra el catálogo, verifica el artifact local
+mediante preflight y lo ejecuta una sola vez con el runtime detectado. No
+descarga, no modifica manifests, no altera el estado del artifact ni el
+`ModelStore`.
+
+Supuesto: el `ModelStore` local se considera confiable y no compartido con
+actores no confiables durante la ejecución. Existe una ventana TOCTOU residual
+entre el preflight y el lanzamiento del subprocess: un actor con escritura
+sobre el `ModelStore` podría reemplazar o modificar el archivo en ese
+intervalo. Eliminarla por completo requeriría mecanismos adicionales (file
+descriptors, locks o publicación por inodo), fuera del alcance actual de
+Fase 4.
