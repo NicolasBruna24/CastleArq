@@ -20,6 +20,7 @@ from .execution import (
     InvalidExecutionRequestError,
     validate_execution_request,
 )
+from .runtime_metrics import parse_llama_human_output
 from .runtimes import RuntimeCapability
 
 
@@ -138,6 +139,7 @@ class LlamaCppRunner(ModelRunner):
 
         stdout = _output(completed.stdout)
         stderr = _output(completed.stderr)
+        runtime_metrics = parse_llama_human_output(stdout)
         diagnostics = self._diagnostics(
             started_at,
             started_monotonic,
@@ -154,6 +156,7 @@ class LlamaCppRunner(ModelRunner):
                 stdout,
                 stderr,
                 diagnostics=diagnostics,
+                runtime_metrics=runtime_metrics,
             )
         return ExecutionResult(
             False,
@@ -165,6 +168,7 @@ class LlamaCppRunner(ModelRunner):
                 f"llama.cpp exited with status {completed.returncode}",
             ),
             diagnostics=diagnostics,
+            runtime_metrics=runtime_metrics,
         )
 
     def _validate_inputs(

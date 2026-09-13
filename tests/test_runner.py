@@ -11,6 +11,7 @@ from app.execution import (
     ExecutionErrorCode,
     ExecutionRequest,
     ExecutionTarget,
+    RuntimeMetricSource,
 )
 from app.models import ArtifactSpec, ArtifactState
 from app.runner import LlamaCppRunner
@@ -123,6 +124,73 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result.diagnostics.exit_code, 2)
         self.assertFalse(result.diagnostics.timed_out)
         self.assertTrue(result.diagnostics.terminated_normally)
+        self.assertIsNone(result.runtime_metrics)
+
+    def test_success_parses_runtime_metrics_from_stdout(self):
+        completed = Mock(
+            returncode=0,
+            stdout=b"response\n[ Prompt: 100 t/s | Generation: 42 t/s ]\n",
+            stderr=b"diagnostic",
+        )
+        runner, process = self.make_runner(completed)
+        result = runner.run(self.artifact, self.target, self.request)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.stdout, completed.stdout.decode())
+        self.assertEqual(result.stderr, "diagnostic")
+        self.assertEqual(result.diagnostics.stdout_bytes, len(completed.stdout))
+        self.assertTrue(result.diagnostics.terminated_normally)
+        self.assertEqual(result.runtime_metrics.prompt_tokens_per_second, 100.0)
+        self.assertEqual(result.runtime_metrics.generation_tokens_per_second, 42.0)
+        self.assertEqual(
+            result.runtime_metrics.source,
+            RuntimeMetricSource.LLAMA_HUMAN_OUTPUT,
+        )
+        self.assertEqual(process.call_count, 1)
+
+    def test_success_without_runtime_metrics_returns_none(self):
+        runner, _ = self.make_runner(
+            Mock(returncode=0, stdout=b"plain response", stderr=b"")
+        )
+        result = runner.run(self.artifact, self.target, self.request)
+        self.assertTrue(result.success)
+        self.assertIsNone(result.runtime_metrics)
+
+    def test_metrics_are_parsed_only_from_stdout(self):
+        runner, _ = self.make_runner(
+            Mock(
+                returncode=0,
+                stdout=b"plain response",
+                stderr=b"[ Prompt: 100 t/s | Generation: 42 t/s ]",
+            )
+        )
+        result = runner.run(self.artifact, self.target, self.request)
+        self.assertTrue(result.success)
+        self.assertIsNone(result.runtime_metrics)
+
+    def test_success_preserves_partial_runtime_metrics(self):
+        runner, _ = self.make_runner(
+            Mock(returncode=0, stdout=b"[ Prompt: 100 t/s | ]", stderr=b"")
+        )
+        result = runner.run(self.artifact, self.target, self.request)
+        self.assertTrue(result.success)
+        self.assertEqual(result.runtime_metrics.prompt_tokens_per_second, 100.0)
+        self.assertIsNone(result.runtime_metrics.generation_tokens_per_second)
+
+    def test_process_failure_remains_failure_with_runtime_metrics(self):
+        runner, _ = self.make_runner(
+            Mock(
+                returncode=2,
+                stdout=b"[ Prompt: 100 t/s | Generation: 42 t/s ]",
+                stderr=b"bad",
+            )
+        )
+        result = runner.run(self.artifact, self.target, self.request)
+        self.assertFalse(result.success)
+        self.assertEqual(result.error.code, ExecutionErrorCode.PROCESS_FAILED)
+        self.assertEqual(result.runtime_metrics.prompt_tokens_per_second, 100.0)
+        self.assertEqual(result.runtime_metrics.generation_tokens_per_second, 42.0)
 
     def test_timeout_is_mapped(self):
         error = subprocess.TimeoutExpired(
