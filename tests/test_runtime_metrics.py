@@ -8,16 +8,44 @@ from app.runtime_metrics import parse_llama_human_output
 class RuntimeMetricsParserTests(unittest.TestCase):
     def test_parses_decimal_metrics(self):
         result = parse_llama_human_output(
-            "[ Prompt: 100.5 t/s | Generation: 42.25 t/s ]"
+            "[ Prompt: 256.2 t/s | Generation: 40.2 t/s ]"
         )
-        self.assertEqual(result.prompt_tokens_per_second, 100.5)
-        self.assertEqual(result.generation_tokens_per_second, 42.25)
+        self.assertEqual(result.prompt_tokens_per_second, 256.2)
+        self.assertEqual(result.generation_tokens_per_second, 40.2)
         self.assertEqual(result.source, RuntimeMetricSource.LLAMA_HUMAN_OUTPUT)
 
+    def test_parses_comma_decimal_metrics(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 256,2 t/s | Generation: 40,2 t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 256.2)
+        self.assertEqual(result.generation_tokens_per_second, 40.2)
+
     def test_parses_integer_metrics(self):
-        result = parse_llama_human_output("[ Prompt: 100 t/s | Generation: 42 t/s ]")
-        self.assertEqual(result.prompt_tokens_per_second, 100.0)
-        self.assertEqual(result.generation_tokens_per_second, 42.0)
+        result = parse_llama_human_output("[ Prompt: 256 t/s | Generation: 40 t/s ]")
+        self.assertEqual(result.prompt_tokens_per_second, 256.0)
+        self.assertEqual(result.generation_tokens_per_second, 40.0)
+
+    def test_parses_scientific_notation_with_point(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 2.562e2 t/s | Generation: 4.02e1 t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 256.2)
+        self.assertEqual(result.generation_tokens_per_second, 40.2)
+
+    def test_parses_scientific_notation_with_comma(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 2,562e2 t/s | Generation: 4,02e1 t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 256.2)
+        self.assertEqual(result.generation_tokens_per_second, 40.2)
+
+    def test_parses_mixed_decimal_separators(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 256,2 t/s | Generation: 40.2 t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 256.2)
+        self.assertEqual(result.generation_tokens_per_second, 40.2)
 
     def test_tolerates_reasonable_spacing_and_surrounding_output(self):
         result = parse_llama_human_output(
@@ -61,6 +89,7 @@ class RuntimeMetricsParserTests(unittest.TestCase):
             ("[ Prompt: -1 t/s | Generation: 42 t/s ]", None, 42.0),
             ("[ Prompt: NaN t/s | Generation: 42 t/s ]", None, 42.0),
             ("[ Prompt: inf t/s | Generation: 42 t/s ]", None, 42.0),
+            ("[ Prompt: Infinity t/s | Generation: 42 t/s ]", None, 42.0),
             ("[ Prompt: -inf t/s | Generation: 42 t/s ]", None, 42.0),
             ("[ Prompt: abc t/s | Generation: 42 t/s ]", None, 42.0),
         )

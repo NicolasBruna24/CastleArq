@@ -46,7 +46,7 @@ def _parse_number(value: str | None) -> float | None:
     if value is None:
         return None
     try:
-        number = float(value)
+        number = float(value.replace(",", "."))
     except ValueError:
         return None
     return number if math.isfinite(number) and number >= 0 else None
