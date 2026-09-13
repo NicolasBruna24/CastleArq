@@ -18,6 +18,17 @@ from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runner import LlamaCppRunner
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
+
+
+def _catalog_model_ids() -> frozenset[str]:
+    """Logical model IDs currently known by the compatibility catalog.
+
+    Kept intentionally small and CLI-local so that no source or store gains a
+    backwards dependency on the catalog. Discovery remains discovery; this is
+    only a presentation/validation aid so the user sees which logical model a
+    source artifact maps to and whether that model is known.
+    """
+    return frozenset(model.model_id for model in get_catalog())
 from .runtimes import (
     RuntimeStatus,
     detect_backends,
@@ -165,6 +176,19 @@ def print_source(provider: str | None, repository: str | None) -> int:
     if not artifacts:
         print("No GGUF artifacts found.")
         return 0
+
+    catalog_ids = _catalog_model_ids()
+    model_ids = sorted({artifact.model_id for artifact in artifacts})
+    for model_id in model_ids:
+        status = "in catalog" if model_id in catalog_ids else "not in catalog"
+        print(f"\n  Model: {model_id}")
+        print(f"    Catalog: {status}")
+    if model_ids and model_ids[0] not in catalog_ids:
+        print(
+            "\n  Warning: the logical model ID above is not in the local catalog;"
+            " run/chat will not resolve it until it is added."
+        )
+
     for artifact in artifacts:
         print(f"\n  {artifact.filename}")
         print(f"    Format: {artifact.format}")
@@ -201,6 +225,7 @@ def print_plan(repository: str | None, filename: str | None) -> int:
     plan = DownloadPlanner().plan(artifact)
     print("LocalAI Hub - Offline download plan")
     print("==========================")
+    print(f"  Model: {artifact.model_id}")
     print(f"  Repository: {artifact.repository}")
     print(f"  Filename: {artifact.filename}")
     print(f"  Format: {artifact.format}")
