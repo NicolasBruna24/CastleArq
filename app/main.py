@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from .hardware import detect_hardware
-from .compatibility import load_config, recommend_models
+from .compatibility import CompatibilityConfig, assess_model, load_config, recommend_models
+from .execution import ArtifactExecutionPreflight, ExecutionRequest
+from .execution_service import ModelExecutionService
 from .model_catalog import get_catalog
 from .model_store import ModelStore
 from .downloads import DownloadPlanStatus, DownloadPlanner
 from .models import ArtifactSpec
+from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
+from .runner import LlamaCppRunner
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
-from .runtimes import detect_backends, detect_runtimes, recommend
+from .runtimes import (
+    RuntimeStatus,
+    detect_backends,
+    detect_llama_capability,
+    detect_runtimes,
+    recommend,
+)
+from .selection import RuntimeBackendSelector
 
 
 def _format_gib(value: float | None) -> str:
@@ -196,13 +208,77 @@ def print_plan(repository: str | None, filename: str | None) -> int:
     return 0 if plan.status != DownloadPlanStatus.BLOCKED else 1
 
 
+def run_model(model_id: str | None, prompt: str | None) -> int:
+    if not model_id or prompt is None or not prompt.strip():
+        print("Usage: python3 -m app.main run <model-id> --prompt <text>", file=sys.stderr)
+        return 2
+    try:
+        model_store = ModelStore()
+        resolver = ModelArtifactResolver(model_store)
+        resolved = resolver.resolve(model_id)
+    except ModelArtifactResolutionError as error:
+        print(f"Run error: {error}", file=sys.stderr)
+        return 1
+
+    hardware = detect_hardware()
+    capability = detect_llama_capability()
+    runtimes = [
+        RuntimeStatus(
+            "llama.cpp / llama.app",
+            installed=capability.executable_path is not None,
+            available=capability.available,
+            gpu_backend_detected=bool(hardware.gpus),
+            supported_backends=capability.supported_backends,
+        )
+    ]
+    detected_gpu_backends = {
+        backend for gpu in hardware.gpus for backend in gpu.backends
+    }
+    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
+
+    def evaluate(model):
+        return assess_model(
+            hardware,
+            runtimes,
+            backends,
+            model,
+            config=CompatibilityConfig(),
+        )
+
+    result = ModelExecutionService(
+        evaluate,
+        ArtifactExecutionPreflight(model_store),
+        RuntimeBackendSelector(),
+        capability,
+        LlamaCppRunner(capability),
+    ).execute(
+        resolved.model,
+        resolved.artifact,
+        ExecutionRequest(resolved.artifact, prompt),
+    )
+    if result.success:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        for warning in result.warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+        return 0
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+    if result.error:
+        print(f"Run error: {result.error.message}", file=sys.stderr)
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
     parser.add_argument(
-        "command", choices=("detect", "models", "list", "source", "plan"), help="command to execute"
+        "command", choices=("detect", "models", "list", "source", "plan", "run"),
+        help="command to execute",
     )
     parser.add_argument("provider", nargs="?")
     parser.add_argument("repository", nargs="?")
+    parser.add_argument("--prompt")
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()
@@ -214,6 +290,10 @@ def main() -> int:
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
         return print_plan(args.provider, args.repository)
+    elif args.command == "run":
+        if args.repository is not None:
+            parser.error("run accepts exactly one model-id")
+        return run_model(args.provider, args.prompt)
     return 0
 
 
