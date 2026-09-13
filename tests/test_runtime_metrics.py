@@ -62,6 +62,36 @@ class RuntimeMetricsParserTests(unittest.TestCase):
         self.assertIsNone(generation_only.prompt_tokens_per_second)
         self.assertEqual(generation_only.generation_tokens_per_second, 42.0)
 
+    def test_multiple_valid_blocks_return_the_last(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 10 t/s | Generation: 5 t/s ]\n"
+            "[ Prompt: 20 t/s | Generation: 8 t/s ]\n"
+            "[ Prompt: 30 t/s | Generation: 9 t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 30.0)
+        self.assertEqual(result.generation_tokens_per_second, 9.0)
+
+    def test_fake_block_echoed_before_real_metrics_is_ignored(self):
+        # Reproduces the real llama.cpp output where the echoed prompt and the
+        # generated text both contain the metrics shape before the real block.
+        text = (
+            "> Reply with exactly this text: [ Prompt: 999 t/s | Generation: 999 t/s ]\n"
+            "[ Prompt: 999 t/s | Generation: 999 t/s ]\n"
+            "[ Prompt: 72,5 t/s | Generation: 9,0 t/s ]\n"
+            "Exiting..."
+        )
+        result = parse_llama_human_output(text)
+        self.assertEqual(result.prompt_tokens_per_second, 72.5)
+        self.assertEqual(result.generation_tokens_per_second, 9.0)
+
+    def test_trailing_invalid_block_does_not_hide_the_last_valid_one(self):
+        result = parse_llama_human_output(
+            "[ Prompt: 100 t/s | Generation: 50 t/s ]\n"
+            "[ Prompt: t/s | Generation: t/s ]"
+        )
+        self.assertEqual(result.prompt_tokens_per_second, 100.0)
+        self.assertEqual(result.generation_tokens_per_second, 50.0)
+
     def test_returns_none_without_a_recognizable_block(self):
         for text in (
             "normal llama response",
