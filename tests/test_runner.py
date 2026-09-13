@@ -67,7 +67,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             argv,
             [
-                str(self.executable), "cli", "--model", str(self.model),
+                str(self.executable), "cli", "--simple-io", "--model", str(self.model),
                 "--device", "Vulkan0", "--prompt", self.request.prompt,
                 "--single-turn",
             ],
@@ -75,9 +75,13 @@ class RunnerTests(unittest.TestCase):
         self.assertIs(process.call_args.kwargs["shell"], False)
         self.assertNotIsInstance(argv, str)
         self.assertEqual(
-            argv[7],
+            argv[8],
             "hello; touch /tmp/pwned",
         )
+        self.assertNotIn("--show-timings", argv)
+        self.assertNotIn("--perf", argv)
+        self.assertNotIn("--log-jsonl", argv)
+        self.assertNotIn("--output", argv)
 
     def test_builds_cpu_argv_without_automatic_fallback(self):
         completed = Mock(returncode=0, stdout="", stderr="")
@@ -91,6 +95,7 @@ class RunnerTests(unittest.TestCase):
             process.call_args.args[0][-3:],
             ["--prompt", "hello", "--single-turn"],
         )
+        self.assertIn("--simple-io", process.call_args.args[0])
         self.assertIn("none", process.call_args.args[0])
 
     def test_backend_without_capability_is_rejected(self):

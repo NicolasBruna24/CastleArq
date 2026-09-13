@@ -73,6 +73,7 @@ class LlamaCppRunner(ModelRunner):
         argv = [
             executable,
             "cli",
+            "--simple-io",
             "--model",
             str(executable_artifact.path),
             "--device",
