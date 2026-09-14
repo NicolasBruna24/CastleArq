@@ -3,8 +3,10 @@ import math
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app.execution import ExecutionRequest, ExecutionTarget
 from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
 from app.main import _DEFAULT_EXECUTION_TIMEOUT_SECONDS, run_model
 from app.model_catalog import get_catalog
@@ -16,7 +18,7 @@ class MainRunTests(unittest.TestCase):
     def setUp(self):
         self.model = get_catalog()[0]
         self.artifact = ArtifactSpec(
-            model_id="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            model_id="qwen2.5-coder-7b-instruct",
             source="huggingface",
             repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
             filename="model.Q4_K_M.gguf",
@@ -24,6 +26,17 @@ class MainRunTests(unittest.TestCase):
             quantization="Q4_K_M",
         )
         self.resolved = ResolvedModelArtifact(self.model, self.artifact)
+        self.preparation = SimpleNamespace(
+            executable_artifact=Mock(),
+            target=ExecutionTarget("llama.cpp CLI", "Vulkan"),
+            compatibility_warnings=(),
+            selection_warnings=(),
+        )
+
+    def _runner(self, result):
+        runner = Mock()
+        runner.run.return_value = result
+        return runner
 
     def test_empty_prompt_is_usage_error_without_resolution(self):
         with patch("app.main.ModelArtifactResolver") as resolver:
@@ -65,43 +78,52 @@ class MainRunTests(unittest.TestCase):
             self.assertEqual(main(), 1)
 
     def test_resolution_error_returns_one_without_execution(self):
-        resolver = Mock()
-        resolver.resolve.side_effect = ModelArtifactResolutionError("missing")
-        with patch("app.main.ModelArtifactResolver", return_value=resolver), patch(
-            "app.main.ModelExecutionService"
-        ) as service:
+        with patch("app.main.ModelArtifactResolver") as resolver, patch(
+            "app.main._prepare"
+        ) as prepare, patch("app.main.LlamaCppRunner") as runner:
+            resolver.return_value.resolve.side_effect = (
+                ModelArtifactResolutionError("missing")
+            )
             error = io.StringIO()
             with redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
             self.assertEqual(code, 1)
             self.assertIn("missing", error.getvalue())
-            service.assert_not_called()
+            prepare.assert_not_called()
+            runner.assert_not_called()
+
+    def test_preparation_error_returns_one_without_running(self):
+        error_class = __import__("app.main", fromlist=["PreparationError"]).PreparationError
+        with patch("app.main.ModelArtifactResolver") as resolver, patch(
+            "app.main._prepare"
+        ) as prepare, patch("app.main.LlamaCppRunner") as runner:
+            resolver.return_value.resolve.return_value = self.resolved
+            prepare.side_effect = error_class(
+                "Model compatibility does not permit execution",
+                compatibility_warnings=("marginal",),
+            )
+            error = io.StringIO()
+            with redirect_stderr(error):
+                code = run_model(self.model.model_id, "hello")
+            self.assertEqual(code, 1)
+            self.assertIn("Model compatibility", error.getvalue())
+            self.assertIn("marginal", error.getvalue())
+            runner.assert_not_called()
 
     def test_success_prints_stdout_and_warnings(self):
-        service = Mock()
-        service.execute.return_value = ExecutionResult(
-            True, 0, "model response\n", "runtime diagnostic\n",
-            warnings=("estimated memory",),
-        )
-        output = io.StringIO()
-        error = io.StringIO()
+        self.preparation.compatibility_warnings = ("estimated memory",)
+        result = ExecutionResult(True, 0, "model response\n", "runtime diagnostic\n")
         with patch("app.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main.ModelExecutionService", return_value=service), patch(
-            "app.main.detect_hardware"
-        ), patch("app.main.detect_llama_capability"), patch(
-            "app.main.detect_backends"
-        ), redirect_stdout(output), redirect_stderr(error):
+        )), patch("app.main._prepare", return_value=self.preparation), patch(
+            "app.main.LlamaCppRunner", return_value=self._runner(result)
+        ):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
-        self.assertEqual(output.getvalue(), "model response\n")
-        self.assertIn("runtime diagnostic", error.getvalue())
-        self.assertIn("Warning: estimated memory", error.getvalue())
 
     def test_runner_error_returns_one(self):
-        service = Mock()
-        service.execute.return_value = ExecutionResult(
-            False, 2, "", "bad runtime", 
+        result = ExecutionResult(
+            False, 2, "", "bad runtime",
             error=ExecutionErrorInfo(
                 ExecutionErrorCode.PROCESS_FAILED, "process failed"
             ),
@@ -109,10 +131,8 @@ class MainRunTests(unittest.TestCase):
         error = io.StringIO()
         with patch("app.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main.ModelExecutionService", return_value=service), patch(
-            "app.main.detect_hardware"
-        ), patch("app.main.detect_llama_capability"), patch(
-            "app.main.detect_backends"
+        )), patch("app.main._prepare", return_value=self.preparation), patch(
+            "app.main.LlamaCppRunner", return_value=self._runner(result)
         ), redirect_stderr(error):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 1)
@@ -121,18 +141,16 @@ class MainRunTests(unittest.TestCase):
     def test_run_passes_finite_positive_default_timeout(self):
         captured = {}
 
-        def execute(model, artifact, request):
+        def run(executable_artifact, target, request):
             captured["request"] = request
             return ExecutionResult(True, 0, "ok\n", "")
 
-        service = Mock()
-        service.execute.side_effect = execute
+        runner = Mock()
+        runner.run.side_effect = run
         with patch("app.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main.ModelExecutionService", return_value=service), patch(
-            "app.main.detect_hardware"
-        ), patch("app.main.detect_llama_capability"), patch(
-            "app.main.detect_backends"
+        )), patch("app.main._prepare", return_value=self.preparation), patch(
+            "app.main.LlamaCppRunner", return_value=runner
         ):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)

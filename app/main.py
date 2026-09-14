@@ -4,20 +4,31 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
+from types import SimpleNamespace
 
+from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
+from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
-from .compatibility import CompatibilityConfig, assess_model, load_config, recommend_models
-from .execution import ArtifactExecutionPreflight, ExecutionRequest
-from .execution_service import ModelExecutionService
 from .model_catalog import get_catalog
+from .model_identity import logical_model_id
 from .model_store import ModelStore
 from .downloads import DownloadPlanStatus, DownloadPlanner
-from .model_identity import logical_model_id
-from .models import ArtifactSpec
+from .models import ArtifactSpec, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
+from .runtimes import (
+    RuntimeCapability,
+    RuntimeStatus,
+    detect_backends,
+    detect_llama_capability,
+    detect_runtimes,
+    recommend,
+)
 from .runner import LlamaCppRunner
+from .selection import RuntimeBackendSelector, RuntimeSelection, RuntimeSelectionError
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
+from .chat import ChatSessionError, start_chat_session
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -29,20 +40,117 @@ def _catalog_model_ids() -> frozenset[str]:
     source artifact maps to and whether that model is known.
     """
     return frozenset(model.model_id for model in get_catalog())
-from .runtimes import (
-    RuntimeStatus,
-    detect_backends,
-    detect_llama_capability,
-    detect_runtimes,
-    recommend,
-)
-from .selection import RuntimeBackendSelector, RuntimeSelectionError
-from .chat import ChatSessionError, start_chat_session
-from .execution import ArtifactPreflightError
 
 
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
 
+
+
+@dataclass(frozen=True)
+class ExecutionPreparation:
+    """Inputs shared by one-shot run and interactive chat.
+
+    This type is deliberately minimal and immutable: it carries only the
+    information that both execution paths need AFTER resolution but BEFORE
+    any runtime process is launched. It does not execute anything.
+
+    ``compatibility_warnings`` and ``selection_warnings`` are kept separate so
+    that each execution path can preserve its exact historical warning
+    behaviour (one-shot run prints both; interactive chat prints only
+    selection warnings).
+    """
+
+    executable_artifact: ExecutableArtifact
+    target: ExecutionTarget
+    compatibility_warnings: tuple[str, ...]
+    selection_warnings: tuple[str, ...]
+
+
+class PreparationError(Exception):
+    """Raised when an artifact cannot be prepared for any execution path."""
+
+    def __init__(
+        self,
+        message: str,
+        compatibility_warnings: tuple[str, ...] = (),
+        selection_warnings: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.compatibility_warnings = compatibility_warnings
+        self.selection_warnings = selection_warnings
+
+    @property
+    def warnings(self) -> tuple[str, ...]:
+        """Merged warnings, deduplicated, for callers that treat them uniformly."""
+        return tuple(dict.fromkeys((*self.compatibility_warnings, *self.selection_warnings)))
+
+
+def _detect_runtime_statuses(
+    capability: RuntimeCapability,
+) -> list[RuntimeStatus]:
+    """Build the runtime list that both run and chat currently construct inline."""
+    return [
+        RuntimeStatus(
+            "llama.cpp / llama.app",
+            installed=capability.executable_path is not None,
+            available=capability.available,
+            gpu_backend_detected=False,
+            supported_backends=capability.supported_backends,
+        )
+    ]
+
+
+def _prepare(
+    model: ModelSpec,
+    artifact: ArtifactSpec,
+    capability: "RuntimeCapability",
+    model_store: ModelStore,
+) -> ExecutionPreparation:
+    """Resolve compatibility, preflight and selection without launching anything.
+
+    Both ``run_model`` and ``chat_model`` need exactly this sequence. Keeping it
+    here guarantees both paths make the same decisions from the same inputs.
+    """
+    hardware = detect_hardware()
+    runtimes = _detect_runtime_statuses(capability)
+    detected_gpu_backends = {backend for gpu in hardware.gpus for backend in gpu.backends}
+    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
+
+    compatibility = assess_model(
+        hardware, runtimes, backends, model, config=CompatibilityConfig()
+    )
+    if compatibility.status in {
+        CompatibilityStatus.INCOMPATIBLE,
+        CompatibilityStatus.UNKNOWN,
+    }:
+        raise PreparationError(
+            "Model compatibility does not permit execution",
+            compatibility_warnings=compatibility.warnings,
+        )
+
+    try:
+        executable_artifact = ArtifactExecutionPreflight(model_store).validate(artifact)
+    except ArtifactPreflightError as error:
+        raise PreparationError(
+            error.message, compatibility_warnings=compatibility.warnings
+        ) from error
+
+    try:
+        selection = RuntimeBackendSelector().select(
+            compatibility, capability, executable_artifact
+        )
+    except RuntimeSelectionError as error:
+        raise PreparationError(
+            error.message, compatibility_warnings=compatibility.warnings
+        ) from error
+
+    return ExecutionPreparation(
+        executable_artifact=executable_artifact,
+        target=selection.target,
+        compatibility_warnings=compatibility.warnings,
+        selection_warnings=selection.warnings,
+    )
 
 def _format_gib(value: float | None) -> str:
     return f"{value:.0f} GB" if value is not None else "Unknown"
@@ -255,51 +363,40 @@ def run_model(model_id: str | None, prompt: str | None) -> int:
         print(f"Run error: {error}", file=sys.stderr)
         return 1
 
-    hardware = detect_hardware()
     capability = detect_llama_capability()
-    runtimes = [
-        RuntimeStatus(
-            "llama.cpp / llama.app",
-            installed=capability.executable_path is not None,
-            available=capability.available,
-            gpu_backend_detected=bool(hardware.gpus),
-            supported_backends=capability.supported_backends,
+    try:
+        preparation = _prepare(
+            resolved.model, resolved.artifact, capability, model_store
         )
-    ]
-    detected_gpu_backends = {
-        backend for gpu in hardware.gpus for backend in gpu.backends
-    }
-    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
+    except PreparationError as error:
+        print(f"Run error: {error.message}", file=sys.stderr)
+        for warning in (*error.compatibility_warnings, *error.selection_warnings):
+            print(f"Warning: {warning}", file=sys.stderr)
+        return 1
 
-    def evaluate(model):
-        return assess_model(
-            hardware,
-            runtimes,
-            backends,
-            model,
-            config=CompatibilityConfig(),
-        )
-
-    result = ModelExecutionService(
-        evaluate,
-        ArtifactExecutionPreflight(model_store),
-        RuntimeBackendSelector(),
-        capability,
-        LlamaCppRunner(capability),
-    ).execute(
-        resolved.model,
+    request = ExecutionRequest(
         resolved.artifact,
-        ExecutionRequest(
-            resolved.artifact,
-            prompt,
-            timeout_seconds=_DEFAULT_EXECUTION_TIMEOUT_SECONDS,
-        ),
+        prompt,
+        target=preparation.target,
+        timeout_seconds=_DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+    )
+    result = LlamaCppRunner(capability).run(
+        preparation.executable_artifact, preparation.target, request
     )
     if result.success:
         print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
         if result.stderr:
             print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-        for warning in result.warnings:
+        all_warnings = tuple(
+            dict.fromkeys(
+                (
+                    *preparation.compatibility_warnings,
+                    *preparation.selection_warnings,
+                    *result.warnings,
+                )
+            )
+        )
+        for warning in all_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
         return 0
     if result.stderr:
@@ -334,7 +431,6 @@ def chat_model(
         print(f"Chat error: {error}", file=err)
         return 1
 
-    hardware = detect_hardware()
     capability = detect_llama_capability()
     if not capability.invocable:
         print(
@@ -342,52 +438,18 @@ def chat_model(
             file=err,
         )
         return 1
-    runtimes = [
-        RuntimeStatus(
-            "llama.cpp / llama.app",
-            installed=capability.executable_path is not None,
-            available=capability.available,
-            gpu_backend_detected=bool(hardware.gpus),
-            supported_backends=capability.supported_backends,
+
+    try:
+        preparation = _prepare(
+            resolved.model, resolved.artifact, capability, model_store
         )
-    ]
-    detected_gpu_backends = {
-        backend for gpu in hardware.gpus for backend in gpu.backends
-    }
-    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
-    compatibility = assess_model(
-        hardware,
-        runtimes,
-        backends,
-        resolved.model,
-        config=CompatibilityConfig(),
-    )
-    if compatibility.status in ("incompatible", "unknown"):
-        print(
-            "Chat error: model compatibility does not permit execution",
-            file=err,
-        )
-        for warning in compatibility.warnings:
+    except PreparationError as error:
+        print(f"Chat error: {error.message}", file=err)
+        for warning in (*error.compatibility_warnings, *error.selection_warnings):
             print(f"Warning: {warning}", file=err)
         return 1
 
-    try:
-        executable_artifact = ArtifactExecutionPreflight(model_store).validate(
-            resolved.artifact
-        )
-    except ArtifactPreflightError as error:
-        print(f"Chat error: {error.message}", file=err)
-        return 1
-
-    try:
-        selection = RuntimeBackendSelector().select(
-            compatibility, capability, executable_artifact
-        )
-    except RuntimeSelectionError as error:
-        print(f"Chat error: {error.message}", file=err)
-        return 1
-
-    for warning in selection.warnings:
+    for warning in preparation.selection_warnings:
         print(f"Warning: {warning}", file=err)
 
     def stream(chunk: str) -> None:
@@ -396,13 +458,13 @@ def chat_model(
 
     if session_factory is not None:
         session = session_factory(
-            capability, executable_artifact, selection.target, chunk_callback=stream
+            capability, preparation.executable_artifact, preparation.target, chunk_callback=stream
         )
     else:
         session = start_chat_session(
             capability,
-            executable_artifact,
-            selection.target,
+            preparation.executable_artifact,
+            preparation.target,
             chunk_callback=stream,
         )
 
