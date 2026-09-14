@@ -11,7 +11,7 @@ from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_mode
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
 from .model_catalog import get_catalog
-from .model_identity import SOURCE_REPOSITORY_TO_MODEL_ID, logical_model_id
+from .model_identity import logical_model_id, source_repositories_for_logical_model
 from .model_store import ModelStore, StoredArtifact, UnsafePathError
 from .downloads import (
     DownloadPlan,
@@ -210,6 +210,22 @@ def print_detection() -> None:
     print(f"  Recommended backend: {backend}")
 
 
+def _download_status(model_id: str) -> str:
+    """Describe whether a logical model currently has a downloadable source.
+
+    Derived only from the static source/repository mapping, so ``models`` stays
+    offline. The rule is explicit and deterministic: exactly one mapped locator
+    offers a download; zero or multiple locators are never guessed.
+    """
+    locators = source_repositories_for_logical_model(model_id)
+    if len(locators) == 1:
+        source, repository = locators[0]
+        return f"available ({source}: {repository})"
+    if not locators:
+        return "not available yet"
+    return "unavailable (multiple sources mapped)"
+
+
 def print_models() -> None:
     hardware = detect_hardware()
     runtimes = detect_runtimes()
@@ -248,6 +264,8 @@ def print_models() -> None:
             else "Unknown memory"
         )
         print(f"\n{index}. {result.model.name}")
+        print(f"  Model ID: {result.model.model_id}")
+        print(f"  Download: {_download_status(result.model.model_id)}")
         print(f"  Status: {result.status.value.upper()}")
         print(f"  Score: {result.score}")
         print(f"  Quantization: {quantization.name if quantization else 'Unknown'}")
@@ -422,23 +440,14 @@ def run_download(
         print("Usage: python3 -m app.main download <model-id>", file=err)
         return 2
 
-    repositories = sorted(
-        repository
-        for (source, repository), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items()
-        if logical == model_id
-    )
-    if len(repositories) != 1:
+    locators = source_repositories_for_logical_model(model_id)
+    if len(locators) != 1:
         print(
             f"Download error: no unique source repository is mapped to model: {model_id}",
             file=err,
         )
         return 1
-    repository = repositories[0]
-    source_name = next(
-        source
-        for (source, name), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items()
-        if logical == model_id and name == repository
-    )
+    source_name, repository = locators[0]
     if source_name != "huggingface":
         print(f"Download error: unsupported source: {source_name}", file=err)
         return 1

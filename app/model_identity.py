@@ -21,3 +21,22 @@ SOURCE_REPOSITORY_TO_MODEL_ID: dict[tuple[str, str], str] = {
 def logical_model_id(source: str, repository: str) -> str | None:
     """Return the canonical logical model ID for a source locator, or None."""
     return SOURCE_REPOSITORY_TO_MODEL_ID.get((source, repository))
+
+
+def source_repositories_for_logical_model(
+    model_id: str,
+) -> tuple[tuple[str, str], ...]:
+    """Return the ``(source, repository)`` locators mapped to a logical model ID.
+
+    The result is sorted so it is deterministic, and it is a pure read of the
+    static mapping above: no I/O and no network access. Multiple locators are
+    never collapsed into one; callers that require a single downloadable source
+    must check the returned length themselves.
+    """
+    return tuple(
+        sorted(
+            (source, repository)
+            for (source, repository), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items()
+            if logical == model_id
+        )
+    )

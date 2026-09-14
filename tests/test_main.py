@@ -2,16 +2,17 @@ import io
 import math
 import sys
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app.compatibility import CompatibilityResult, CompatibilityStatus
 from app.execution import ExecutionRequest, ExecutionTarget
 from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
-from app.main import _DEFAULT_EXECUTION_TIMEOUT_SECONDS, run_model
+from app.main import _DEFAULT_EXECUTION_TIMEOUT_SECONDS, print_models, run_model
 from app.model_catalog import get_catalog
-from app.models import ArtifactSpec
+from app.models import ArtifactSpec, Quantization
 from app.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
 
 
@@ -379,6 +380,130 @@ class PrintLocalModelsTests(unittest.TestCase):
             print_local_models(mock_store)
         text = out.getvalue()
         self.assertIn("size: Unknown", text)
+
+
+class PrintModelsTests(unittest.TestCase):
+    def _result(self, model, score=90):
+        return CompatibilityResult(
+            model=model,
+            status=CompatibilityStatus.COMPATIBLE,
+            score=score,
+            reasons=("reason text",),
+            warnings=("warning text",),
+            estimated_memory_bytes=8 * 1024**3,
+            memory_is_estimate=True,
+            recommended_quantization=Quantization("Q4_K_M", 4.5, 3),
+            recommended_runtime="llama.cpp / llama.app",
+            recommended_backend="Vulkan",
+        )
+
+    def _model(self, model_id):
+        return next(model for model in get_catalog() if model.model_id == model_id)
+
+    def _render(self, results, mapping=None):
+        hardware = SimpleNamespace(gpus=(), memory=SimpleNamespace(total_gib=16.0))
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("app.main.detect_hardware", return_value=hardware)
+            )
+            stack.enter_context(patch("app.main.detect_runtimes", return_value=[]))
+            stack.enter_context(patch("app.main.detect_backends", return_value=[]))
+            stack.enter_context(
+                patch("app.main.recommend_models", return_value=results)
+            )
+            if mapping is not None:
+                stack.enter_context(
+                    patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping)
+                )
+            output = io.StringIO()
+            with redirect_stdout(output):
+                print_models()
+        return output.getvalue()
+
+    def test_empty_recommendations_keep_existing_message(self):
+        text = self._render([])
+        self.assertIn("LocalAI Hub - Model recommendations", text)
+        self.assertIn("No models available in the catalog.", text)
+        self.assertNotIn("Model ID:", text)
+
+    def test_downloadable_model_shows_model_id_and_available_source(self):
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        text = self._render([self._result(qwen)])
+        self.assertIn("Qwen2.5-Coder 7B Instruct", text)
+        self.assertIn(f"Model ID: {qwen.model_id}", text)
+        self.assertIn(
+            "Download: available (huggingface: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF)",
+            text,
+        )
+
+    def test_not_downloadable_model_shows_not_available_yet(self):
+        llama = self._model("llama-3.1-8b-instruct")
+        text = self._render([self._result(llama)])
+        self.assertIn(f"Model ID: {llama.model_id}", text)
+        self.assertIn("Download: not available yet", text)
+        self.assertNotIn("Download: available", text)
+
+    def test_mixed_models_show_both_states_and_keep_order(self):
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        llama = self._model("llama-3.1-8b-instruct")
+        text = self._render(
+            [self._result(qwen, score=95), self._result(llama, score=93)]
+        )
+        self.assertIn(
+            "Download: available (huggingface: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF)",
+            text,
+        )
+        self.assertIn("Download: not available yet", text)
+        self.assertLess(text.index(qwen.model_id), text.index(llama.model_id))
+
+    def test_model_id_is_exact_and_not_the_friendly_name(self):
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        text = self._render([self._result(qwen)])
+        self.assertNotEqual(qwen.model_id, qwen.name)
+        self.assertIn(f"Model ID: {qwen.model_id}", text)
+        self.assertNotIn(f"Model ID: {qwen.name}", text)
+
+    def test_multiple_mapped_sources_are_not_offered_as_available(self):
+        llama = self._model("llama-3.1-8b-instruct")
+        mapping = {
+            ("huggingface", "owner/one"): llama.model_id,
+            ("huggingface", "owner/two"): llama.model_id,
+        }
+        text = self._render([self._result(llama)], mapping=mapping)
+        self.assertIn("Download: unavailable (multiple sources mapped)", text)
+        self.assertNotIn("Download: available", text)
+
+    def test_repository_is_taken_only_from_the_real_mapping(self):
+        from app.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
+
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        llama = self._model("llama-3.1-8b-instruct")
+        text = self._render([self._result(qwen), self._result(llama)])
+        self.assertTrue(SOURCE_REPOSITORY_TO_MODEL_ID)
+        for (source, repository), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items():
+            if logical == qwen.model_id:
+                self.assertIn(f"Download: available ({source}: {repository})", text)
+        self.assertEqual(text.count("Download: available"), 1)
+        self.assertEqual(text.count("Download: not available yet"), 1)
+        self.assertNotIn("owner/", text)
+
+    def test_existing_recommendation_fields_are_preserved(self):
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        text = self._render([self._result(qwen, score=95)])
+        self.assertIn("Status: COMPATIBLE", text)
+        self.assertIn("Score: 95", text)
+        self.assertIn("Quantization: Q4_K_M", text)
+        self.assertIn("Memory: 8.0 GiB estimated", text)
+        self.assertIn("Runtime: llama.cpp / llama.app", text)
+        self.assertIn("Backend: Vulkan", text)
+        self.assertIn("Reason: reason text", text)
+        self.assertIn("Warning: warning text", text)
+
+    def test_output_is_deterministic(self):
+        qwen = self._model("qwen2.5-coder-7b-instruct")
+        first = self._render([self._result(qwen)])
+        second = self._render([self._result(qwen)])
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":
