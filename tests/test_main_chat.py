@@ -118,7 +118,7 @@ def pipeline(tmp_path, monkeypatch):
         def __init__(self, store):
             pass
 
-        def resolve(self, model_id):
+        def resolve(self, model_id, *, quantization=None, filename=None):
             return SimpleNamespace(model=model, artifact=artifact)
 
     class FakePreflight:
@@ -292,7 +292,7 @@ def test_chat_resolution_failure_returns_1(pipeline, monkeypatch):
         def __init__(self, store):
             pass
 
-        def resolve(self, model_id):
+        def resolve(self, model_id, *, quantization=None, filename=None):
             raise ModelArtifactResolutionError("model not found")
 
     monkeypatch.setattr(main_module, "ModelArtifactResolver", FailingResolver)
