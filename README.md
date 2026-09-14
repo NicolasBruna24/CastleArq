@@ -7,23 +7,110 @@ runtimes ni dependencias del sistema.
 
 ## Estado actual
 
-La Fase 2 está implementada:
+El proyecto cubre hoy el flujo completo de uso local:
 
-- detección de sistema operativo, arquitectura, CPU, RAM y GPU en Linux;
-- GPU con nombre, fabricante, PCI ID, driver y fuente de cada dato cuando están disponibles;
-- detección de VRAM mediante sysfs y, opcionalmente, `vulkaninfo` o `llama ... serve --list-devices`;
-- VRAM total y disponible, conservando `Unknown` cuando ninguna fuente lo expone;
-- detección de runtimes `llama.cpp / llama.app` y Ollama;
-- detección por presencia de Vulkan, OpenCL, SYCL, CUDA y ROCm;
-- recomendación basada exclusivamente en lo detectado;
-- catálogo pequeño y estático de modelos de coding, general-purpose y reasoning;
-- cuantizaciones GGUF aproximadas y estimación explícita de memoria;
-- motor de compatibilidad con estados compatible, marginal, incompatible y unknown;
-- recomendación ordenada por memoria, calidad, margen, runtime y backend;
-- interfaz preparada para futuros runners, sin descargar ni ejecutar modelos.
+- detección de hardware (SO, CPU, RAM, GPU, VRAM) y de runtimes y backends
+  (`llama.cpp / llama.app`, Ollama) en Linux, con recomendación basada
+  exclusivamente en lo detectado;
+- catálogo local curado y motor de compatibilidad (compatible, marginal,
+  incompatible, unknown) con estimación explícita de memoria;
+- descubrimiento de metadata GGUF en Hugging Face, planificación y descarga
+  con reanudación HTTP Range, verificación SHA-256 y publicación atómica;
+- listado de artifacts locales con model_id, cuantización, tamaño y estado;
+- ejecución one-shot (`run`) y chat interactivo multi-turno (`chat`) sobre un
+  artifact local verificado, con el mismo pipeline de seguridad.
 
 Los comandos ausentes, salidas inválidas y datos no disponibles se muestran como
 `Unknown`, `Not detected` o `not available`; no provocan tracebacks al usuario.
+
+## Quickstart
+
+Entrypoint real: `python3 -m app.main`. Consulta todas las opciones con
+`python3 -m app.main --help`. No existe un comando `localai` instalable.
+
+### Paso 1 — descubrir modelos
+
+```bash
+python3 -m app.main models
+```
+
+Muestra, para cada modelo recomendado según tu hardware: el nombre amigable,
+el `Model ID` canónico y si está disponible para descarga. Offline.
+
+### Paso 2 — descargar (usando el Model ID)
+
+```bash
+python3 -m app.main download qwen2.5-coder-7b-instruct
+```
+
+El comando resuelve el modelo lógico hacia su artifact descargable, lista las
+cuantizaciones disponibles y descarga el artifact seleccionado. Puedes
+seleccionar explícitamente con `--quantization` o `--filename`. La descarga
+requiere conexión a Hugging Face.
+
+### Paso 3 — comprobar modelos locales
+
+```bash
+python3 -m app.main list
+```
+
+Muestra los artifacts locales: model_id, filename, cuantización, tamaño y
+estado (por ejemplo `VERIFIED`).
+
+### Paso 4 — ejecución one-shot
+
+```bash
+python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Write a Python hello world program."
+```
+
+`--prompt` pertenece a `run`: entrega un prompt y obtiene una respuesta.
+
+### Paso 5 — chat interactivo
+
+```bash
+python3 -m app.main chat qwen2.5-coder-7b-instruct
+```
+
+Inicia una sesión multi-turno sobre el artifact local. Escribe `/exit` o pulsa
+Ctrl+D para terminar; Ctrl+C cancela la generación en curso.
+
+## Model ID vs nombre amigable
+
+El nombre amigable es para humanos; el `Model ID` es la identidad canónica que
+usan los comandos del CLI:
+
+```text
+Qwen2.5-Coder 7B Instruct   ← nombre amigable
+qwen2.5-coder-7b-instruct   ← Model ID: úsalo en download, run y chat
+```
+
+Si pasas el nombre amigable, el comando falla con
+`Model not found in the local catalog`.
+
+## Modelos del catálogo
+
+El catálogo actual recomienda tres modelos:
+
+| Modelo | Model ID | Descargable hoy |
+| --- | --- | --- |
+| Qwen2.5-Coder 7B Instruct | `qwen2.5-coder-7b-instruct` | Sí |
+| Llama 3.1 8B Instruct | `llama-3.1-8b-instruct` | No (sin fuente mapeada) |
+| DeepSeek-R1-Distill-Qwen 14B | `deepseek-r1-distill-qwen-14b` | No (sin fuente mapeada) |
+
+`models` indica el estado de descarga de cada uno (`Download: available` /
+`not available yet`). Actualmente el flujo de descarga implementado soporta
+Hugging Face como única fuente; solo el modelo con un repositorio mapeado es
+descargable. Los modelos sin mapear pueden evaluarse con `models` pero aún no
+pueden descargarse.
+
+## Developer / inspection commands
+
+Herramientas técnicas de inspección, no parte del Quickstart:
+
+- `python3 -m app.main source huggingface <repository>`: descubre los
+  artifacts GGUF publicados en un repositorio de la fuente.
+- `python3 -m app.main plan <repository> <filename>`: planifica un artifact
+  concreto sin descargarlo (estado local, destino, espacio en disco).
 
 ## Instalación y uso
 
@@ -32,8 +119,9 @@ Se requiere Python 3.10 o posterior. No hay dependencias externas en el MVP:
 ```bash
 python3 -m unittest discover
 python3 -m app.main detect
-python3 -m app.main models
 ```
+
+Para el flujo de uso completo, sigue el [Quickstart](#quickstart).
 
 La aplicación no usa `sudo`, no modifica el sistema y no instala drivers,
 CUDA, ROCm, SYCL, oneAPI ni otros runtimes.
@@ -56,15 +144,22 @@ automáticamente y no se modifican drivers, kernel ni configuración del sistema
 
 ## Roadmap
 
-1. Detección de hardware y runtimes.
-2. Mejora de fuentes de GPU y VRAM (Fase 1.5).
-3. Catálogo de modelos y compatibilidad.
-4. Descarga de modelos.
-5. Ejecución mediante runners.
-6. API local compatible con OpenAI.
-7. Integración con Aider, Cline, Continue, VS Code y Qwen Code.
-8. Interfaz gráfica.
-9. Soporte avanzado para NVIDIA/CUDA, AMD/ROCm, Intel/SYCL, Vulkan y otros backends.
+Fases cerradas:
+
+1. Fase 1 — Detección de hardware y runtimes.
+2. Fase 1.5 — Mejora de fuentes de GPU y VRAM.
+3. Fase 2 — Catálogo de modelos y compatibilidad.
+4. Fase 3 — Gestión de modelos y artifacts (metadata, planificación, descarga,
+   reanudación, SHA-256, estado y recuperación).
+5. Fase 4 — Ejecución de artifacts locales (`run`).
+6. Fase 5 — Chat interactivo local (`chat`) y pulido del CLI.
+
+Pendiente:
+
+1. API local compatible con OpenAI.
+2. Integración con Aider, Cline, Continue, VS Code y Qwen Code.
+3. Interfaz gráfica.
+4. Soporte avanzado para NVIDIA/CUDA, AMD/ROCm, Intel/SYCL, Vulkan y otros backends.
 
 No se implementarán marketplace, cuentas, nube, Kubernetes, Docker obligatorio,
 telemetría ni gestión automática de drivers en esta fase.
