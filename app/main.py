@@ -733,18 +733,63 @@ def chat_model(
     return 0
 
 
+USAGE_FLOW = """\
+usage flow:
+  1. discover models:      python3 -m app.main models
+  2. download a model:     python3 -m app.main download <model-id>
+  3. list local artifacts: python3 -m app.main list
+  4. run a single prompt:  python3 -m app.main run <model-id> --prompt "..."
+  5. start a chat session: python3 -m app.main chat <model-id>
+
+model-id notes:
+  models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
+  with the canonical model id (e.g. "qwen2.5-coder-7b-instruct"). Always pass
+  the model id, never the friendly name, to download, run and chat.
+
+examples:
+  python3 -m app.main models
+  python3 -m app.main download qwen2.5-coder-7b-instruct
+  python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Hello"
+
+
+"""
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
+    parser = argparse.ArgumentParser(
+        prog="localai",
+        description="LocalAI Hub: local model discovery, download, execution and chat",
+        epilog=USAGE_FLOW,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "command",
         choices=("detect", "models", "list", "source", "plan", "download", "run", "chat"),
         help="command to execute",
     )
-    parser.add_argument("provider", nargs="?")
-    parser.add_argument("repository", nargs="?")
-    parser.add_argument("--prompt")
-    parser.add_argument("--quantization", help="quantization level to select for download")
-    parser.add_argument("--filename", help="exact artifact filename to select for download")
+    parser.add_argument(
+        "provider",
+        nargs="?",
+        help=(
+            "command-specific value: model-id for download/run/chat; "
+            "source provider for source; repository for plan"
+        ),
+    )
+    parser.add_argument(
+        "repository",
+        nargs="?",
+        help=(
+            "command-specific value: repository for source; "
+            "artifact filename for plan"
+        ),
+    )
+    parser.add_argument("--prompt", help="prompt text for run")
+    parser.add_argument(
+        "--quantization",
+        help="quantization level to select for download, run or chat",
+    )
+    parser.add_argument(
+        "--filename",
+        help="exact artifact filename to select for download, run or chat",
+    )
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()

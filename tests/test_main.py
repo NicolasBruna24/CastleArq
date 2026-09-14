@@ -593,6 +593,118 @@ class DownloadStatusTests(unittest.TestCase):
             "qwen2.5-coder-7b-instruct",
         )
 
+class CliHelpTests(unittest.TestCase):
+    """Tier 1 help: documentation-only changes must not alter command wiring."""
+
+    def _help_text(self) -> str:
+        from app.main import main
+
+        buffer = io.StringIO()
+        with patch.object(sys, "argv", ["localai", "--help"]), patch.object(
+            sys, "stdout", new=buffer
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                main()
+        self.assertEqual(ctx.exception.code, 0)
+        return buffer.getvalue()
+
+    def test_help_exits_zero(self):
+        self._help_text()
+
+    def test_help_has_current_product_description(self):
+        self.assertIn(
+            "LocalAI Hub: local model discovery, download, execution and chat",
+            self._help_text(),
+        )
+        self.assertNotIn("hardware detection", self._help_text())
+
+    def test_help_explains_provider_and_repository(self):
+        text = " ".join(self._help_text().split())
+        self.assertIn("model-id for download/run/chat", text)
+        self.assertIn("repository for source", text)
+        self.assertIn("artifact filename for plan", text)
+
+    def test_help_explains_flags(self):
+        text = " ".join(self._help_text().split())
+        self.assertIn("prompt text for run", text)
+        self.assertIn("quantization level to select for download, run or chat", text)
+        self.assertIn("exact artifact filename to select for download, run or chat", text)
+
+    def test_help_shows_usage_flow(self):
+        text = self._help_text()
+        for command in ("models", "download", "list", "run", "chat"):
+            self.assertIn(f"python3 -m app.main {command}", text)
+
+    def test_help_explains_model_id(self):
+        text = self._help_text()
+        self.assertIn("<model-id>", text)
+        self.assertIn("model id", text)
+        self.assertIn("qwen2.5-coder-7b-instruct", text)
+        self.assertIn("Qwen2.5-Coder 7B Instruct", text)
+        self.assertIn("never the friendly name", text)
+
+    def test_help_contains_examples(self):
+        text = self._help_text()
+        self.assertIn("python3 -m app.main models", text)
+        self.assertIn(
+            "python3 -m app.main download qwen2.5-coder-7b-instruct", text
+        )
+        self.assertIn(
+            'python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Hello"', text
+        )
+
+    def test_all_commands_are_recognized(self):
+        from app.main import main
+
+        for command in ("detect", "models", "list", "source", "plan", "download", "run", "chat"):
+            buffer = io.StringIO()
+            with patch.object(
+                sys, "argv", ["localai", command]
+            ), patch.object(sys, "stdout", new=buffer), patch.object(
+                sys, "stderr", new=io.StringIO()
+            ):
+                try:
+                    main()
+                    exit_code = 0
+                except SystemExit as exc:
+                    exit_code = exc.code if isinstance(exc.code, int) else 0
+            self.assertNotIn("invalid choice", buffer.getvalue(), command)
+            self.assertNotEqual(exit_code, 2, command)
+
+    def test_download_run_chat_wiring_unchanged(self):
+        from app.main import main
+
+        with patch.object(
+            sys, "argv", ["localai", "download", "some-model"]
+        ) as argv, patch("app.main.run_download") as run_download_mock:
+            main()
+        run_download_mock.assert_called_once_with(
+            "some-model", quantization=None, filename=None
+        )
+        self.assertEqual(argv[1:2], ["download"])
+
+        for command, function_name in (
+            ("run", "run_model"),
+            ("chat", "chat_model"),
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                ["localai", command, "some-model", "--prompt", "Hi"],
+            ), patch(f"app.main.{function_name}") as function_mock:
+                main()
+            if command == "run":
+                function_mock.assert_called_once_with(
+                    "some-model", "Hi", quantization=None, filename=None
+                )
+            else:
+                function_mock.assert_called_once_with(
+                    "some-model", quantization=None, filename=None
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 if __name__ == "__main__":
     unittest.main()
