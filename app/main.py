@@ -11,9 +11,16 @@ from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_mode
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
 from .model_catalog import get_catalog
-from .model_identity import logical_model_id
-from .model_store import ModelStore
-from .downloads import DownloadPlanStatus, DownloadPlanner
+from .model_identity import SOURCE_REPOSITORY_TO_MODEL_ID, logical_model_id
+from .model_store import ModelStore, UnsafePathError
+from .downloads import (
+    DownloadPlan,
+    DownloadPlanStatus,
+    DownloadPlanner,
+    DownloadResult,
+    DownloadResultStatus,
+    Downloader,
+)
 from .models import ArtifactSpec, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runtimes import (
@@ -351,6 +358,154 @@ def print_plan(repository: str | None, filename: str | None) -> int:
     return 0 if plan.status != DownloadPlanStatus.BLOCKED else 1
 
 
+def run_download(
+    model_id: str | None,
+    *,
+    source_factory=None,
+    planner_factory=None,
+    downloader_factory=None,
+    out=None,
+    err=None,
+) -> int:
+    """Download exactly one explicit artifact for a logical model ID.
+
+    Selection policy (explicit, no guessing):
+    - the logical ID must resolve to exactly one (source, repository)
+      via :mod:`app.model_identity`;
+    - ``HuggingFaceSource.discover_artifacts`` must return exactly one
+      GGUF artifact — otherwise the available artifacts are listed and
+      the command stops without downloading;
+    - ``DownloadPlanner.plan`` then owns all destination/state/space
+      validation and the ``Downloader`` performs the transfer.
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not model_id:
+        print("Usage: python3 -m app.main download <model-id>", file=err)
+        return 2
+
+    repositories = sorted(
+        repository
+        for (source, repository), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items()
+        if logical == model_id
+    )
+    if len(repositories) != 1:
+        print(
+            f"Download error: no unique source repository is mapped to model: {model_id}",
+            file=err,
+        )
+        return 1
+    repository = repositories[0]
+    source_name = next(
+        source
+        for (source, name), logical in SOURCE_REPOSITORY_TO_MODEL_ID.items()
+        if logical == model_id and name == repository
+    )
+    if source_name != "huggingface":
+        print(f"Download error: unsupported source: {source_name}", file=err)
+        return 1
+
+    source = (source_factory or HuggingFaceSource)()
+    try:
+        artifacts = source.discover_artifacts(repository)
+    except SourceError as error:
+        print(f"Download error: {error}", file=err)
+        return 1
+    if len(artifacts) != 1:
+        print(f"LocalAI Hub - Download candidates for model: {model_id}", file=out)
+        print("==========================", file=out)
+        if not artifacts:
+            print("No GGUF artifacts found.", file=out)
+        for artifact in artifacts:
+            size = artifact.size_bytes if artifact.size_bytes is not None else "Unknown"
+            print(f"\n  {artifact.filename}", file=out)
+            print(f"    Quantization: {artifact.quantization}", file=out)
+            print(f"    Size: {size}", file=out)
+            print(f"    SHA-256: {artifact.sha256 or 'Unknown'}", file=out)
+        print(
+            "\nDownload error: model maps to multiple artifacts; "
+            "explicit selection is not supported yet",
+            file=err,
+        )
+        return 1
+    artifact = artifacts[0]
+    if artifact.model_id != model_id:
+        print(
+            f"Download error: discovered artifact model_id "
+            f"{artifact.model_id!r} does not match {model_id!r}",
+            file=err,
+        )
+        return 1
+
+    planner = (planner_factory or DownloadPlanner)()
+    try:
+        plan = planner.plan(artifact)
+    except (UnsafePathError, ValueError, TypeError) as error:
+        print(f"Download error: {error}", file=err)
+        return 1
+    except SourceError as error:
+        print(f"Download error: {error}", file=err)
+        return 1
+
+    print(f"Model: {artifact.model_id}", file=out)
+    print(f"Artifact: {artifact.filename}", file=out)
+    print(
+        f"Size: {artifact.size_bytes if artifact.size_bytes is not None else 'Unknown'}",
+        file=out,
+    )
+    print(f"Source: Hugging Face", file=out)
+    print("", file=out)
+    print("Planning download...", file=out)
+
+    if plan.status == DownloadPlanStatus.ALREADY_DOWNLOADED:
+        print("Artifact already downloaded.", file=out)
+        return 0
+    if plan.status == DownloadPlanStatus.BLOCKED:
+        for reason in plan.reasons:
+            print(f"Download error: {reason}", file=err)
+        if not plan.reasons:
+            print("Download error: download plan is blocked", file=err)
+        return 1
+    if plan.status != DownloadPlanStatus.READY:
+        print(
+            f"Download error: cannot plan download (status: {plan.status.value})",
+            file=err,
+        )
+        return 1
+
+    print(f"Destination: {plan.destination}", file=out)
+    print("Downloading...", file=out)
+    downloader = (downloader_factory or Downloader)(ModelStore())
+    try:
+        result = downloader.download(plan)
+    except UnsafePathError as error:
+        print(f"Download error: {error}", file=err)
+        return 1
+    if result.success:
+        print("Download complete.", file=out)
+        if artifact.sha256:
+            print("SHA-256 verified.", file=out)
+        print("Artifact state: downloaded", file=out)
+        return 0
+    if result.status == DownloadResultStatus.CHECKSUM_MISMATCH:
+        print(f"Download error: SHA-256 verification failed: {result.error}", file=err)
+        return 1
+    if result.status in {
+        DownloadResultStatus.HTTP_ERROR,
+        DownloadResultStatus.NETWORK_ERROR,
+    }:
+        print(f"Download error: download failed: {result.error}", file=err)
+        return 1
+    if result.status == DownloadResultStatus.FILESYSTEM_ERROR:
+        print(f"Download error: filesystem error: {result.error}", file=err)
+        return 1
+    print(
+        f"Download error: download failed ({result.status.value}): {result.error}",
+        file=err,
+    )
+    return 1
+
+
 def run_model(model_id: str | None, prompt: str | None) -> int:
     if not model_id or prompt is None or not prompt.strip():
         print("Usage: python3 -m app.main run <model-id> --prompt <text>", file=sys.stderr)
@@ -507,7 +662,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="localai", description="LocalAI Hub hardware detection")
     parser.add_argument(
         "command",
-        choices=("detect", "models", "list", "source", "plan", "run", "chat"),
+        choices=("detect", "models", "list", "source", "plan", "download", "run", "chat"),
         help="command to execute",
     )
     parser.add_argument("provider", nargs="?")
@@ -524,6 +679,10 @@ def main() -> int:
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
         return print_plan(args.provider, args.repository)
+    elif args.command == "download":
+        if args.repository is not None:
+            parser.error("download accepts exactly one model-id")
+        return run_download(args.provider)
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")
