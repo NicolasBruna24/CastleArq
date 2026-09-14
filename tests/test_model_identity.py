@@ -9,7 +9,13 @@ from unittest.mock import patch
 from app.downloads import DownloadPlanStatus
 from app.main import print_local_models, print_plan
 from app.model_catalog import get_catalog
-from app.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID, logical_model_id
+from app.model_identity import (
+    SOURCE_REPOSITORY_TO_MODEL_ID,
+    SUPPORTED_DOWNLOAD_SOURCES,
+    downloadable_locator,
+    logical_model_id,
+    source_repositories_for_logical_model,
+)
 from app.model_store import ModelStore
 from app.models import ArtifactSpec, ArtifactState
 from app.resolver import (
@@ -127,6 +133,61 @@ class SharedVocabularyIntegrationTests(unittest.TestCase):
                 ModelArtifactResolutionError, "not found"
             ):
                 ModelArtifactResolver(store).resolve(QWEN_REPOSITORY)
+
+
+EXPECTED_CATALOG_IDS = (
+    "qwen2.5-coder-7b-instruct",
+    "llama-3.1-8b-instruct",
+    "deepseek-r1-distill-qwen-14b",
+)
+
+
+class ModelCatalogContractTests(unittest.TestCase):
+    """Contract tests for the model catalog identity (audit 5.6.10 / D1)."""
+
+    def test_every_model_has_explicit_non_empty_own_id(self):
+        for model in get_catalog():
+            with self.subTest(model_id=model.model_id):
+                self.assertTrue(model.id)
+                self.assertEqual(model.model_id, model.id)
+                self.assertNotEqual(model.model_id, model.name)
+
+    def test_catalog_model_ids_are_unique(self):
+        ids = [model.model_id for model in get_catalog()]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_catalog_contains_exactly_the_expected_ids(self):
+        self.assertEqual(
+            tuple(model.model_id for model in get_catalog()), EXPECTED_CATALOG_IDS
+        )
+
+    def test_every_catalog_id_is_a_valid_resolver_identity(self):
+        for model in get_catalog():
+            with self.subTest(model_id=model.model_id), tempfile.TemporaryDirectory() as d:
+                store = ModelStore(Path(d) / "models")
+                with self.assertRaises(ModelArtifactResolutionError):
+                    ModelArtifactResolver(store).resolve(model.model_id)
+
+    def test_mapped_model_is_downloadable_via_its_single_locator(self):
+        self.assertEqual(
+            downloadable_locator(QWEN_LOGICAL_ID), ("huggingface", QWEN_REPOSITORY)
+        )
+
+    def test_models_without_mapping_are_not_downloadable(self):
+        for model_id in EXPECTED_CATALOG_IDS[1:]:
+            with self.subTest(model_id=model_id):
+                self.assertIsNone(downloadable_locator(model_id))
+                self.assertEqual(source_repositories_for_logical_model(model_id), ())
+
+    def test_downloadability_matches_the_mapping_for_every_catalog_model(self):
+        for model in get_catalog():
+            locators = source_repositories_for_logical_model(model.model_id)
+            if len(locators) == 1 and locators[0][0] in SUPPORTED_DOWNLOAD_SOURCES:
+                expected = locators[0]
+            else:
+                expected = None
+            with self.subTest(model_id=model.model_id):
+                self.assertEqual(downloadable_locator(model.model_id), expected)
 
 
 if __name__ == "__main__":
