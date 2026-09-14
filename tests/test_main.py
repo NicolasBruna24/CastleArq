@@ -3,6 +3,7 @@ import math
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -257,6 +258,127 @@ class MainRunTests(unittest.TestCase):
                 quantization="Q4_K_M",
                 filename="model.Q4_K_M.gguf",
             )
+
+
+class PrintLocalModelsTests(unittest.TestCase):
+    def test_list_without_artifacts(self):
+        from app.main import print_local_models
+
+        mock_store = Mock()
+        mock_store.list_artifacts.return_value = []
+        out = io.StringIO()
+        with redirect_stdout(out):
+            print_local_models(mock_store)
+        text = out.getvalue()
+        self.assertIn("LocalAI Hub - Local models", text)
+        self.assertIn("No local model artifacts found.", text)
+
+    def test_list_with_single_artifact(self):
+        from app.main import print_local_models
+        from app.model_store import StoredArtifact
+        from app.models import ArtifactSpec, ArtifactState
+
+        artifact = ArtifactSpec(
+            model_id="qwen2.5-coder-7b-instruct",
+            source="huggingface",
+            repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            filename="qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+            format="GGUF",
+            quantization="Q4_K_M",
+            size_bytes=4831838208,  # ~4.5 GiB
+        )
+        entry = StoredArtifact(
+            artifact=artifact,
+            state=ArtifactState.VERIFIED,
+            manifest_path=Path("/models/manifest.json"),
+        )
+        mock_store = Mock()
+        mock_store.list_artifacts.return_value = [entry]
+        out = io.StringIO()
+        with redirect_stdout(out):
+            print_local_models(mock_store)
+        text = out.getvalue()
+        self.assertIn("qwen2.5-coder-7b-instruct", text)
+        self.assertIn("filename: qwen2.5-coder-7b-instruct-q4_k_m.gguf", text)
+        self.assertIn("quantization: Q4_K_M", text)
+        self.assertIn("size: 4.5 GiB", text)
+        self.assertIn("status: VERIFIED", text)
+
+    def test_list_with_multiple_artifacts_and_deterministic_order(self):
+        from app.main import print_local_models
+        from app.model_store import StoredArtifact
+        from app.models import ArtifactSpec, ArtifactState
+
+        art_q8 = ArtifactSpec(
+            model_id="qwen2.5-coder-7b-instruct",
+            source="huggingface",
+            repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            filename="z_qwen_q8_0.gguf",
+            format="GGUF",
+            quantization="Q8_0",
+            size_bytes=8 * 1024 * 1024 * 1024,
+        )
+        art_q4 = ArtifactSpec(
+            model_id="qwen2.5-coder-7b-instruct",
+            source="huggingface",
+            repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            filename="a_qwen_q4_k_m.gguf",
+            format="GGUF",
+            quantization="Q4_K_M",
+            size_bytes=4 * 1024 * 1024 * 1024,
+        )
+        entry_q8 = StoredArtifact(
+            artifact=art_q8,
+            state=ArtifactState.VERIFIED,
+            manifest_path=Path("/models/q8/manifest.json"),
+        )
+        entry_q4 = StoredArtifact(
+            artifact=art_q4,
+            state=ArtifactState.DOWNLOADED,
+            manifest_path=Path("/models/q4/manifest.json"),
+        )
+        # Store returns in non-sorted order
+        mock_store = Mock()
+        mock_store.list_artifacts.return_value = [entry_q8, entry_q4]
+        out = io.StringIO()
+        with redirect_stdout(out):
+            print_local_models(mock_store)
+        text = out.getvalue()
+        # a_qwen must appear before z_qwen
+        pos_q4 = text.find("a_qwen_q4_k_m.gguf")
+        pos_q8 = text.find("z_qwen_q8_0.gguf")
+        self.assertNotEqual(pos_q4, -1)
+        self.assertNotEqual(pos_q8, -1)
+        self.assertLess(pos_q4, pos_q8)
+        self.assertIn("status: DOWNLOADED", text)
+        self.assertIn("status: VERIFIED", text)
+
+    def test_list_with_size_bytes_none(self):
+        from app.main import print_local_models
+        from app.model_store import StoredArtifact
+        from app.models import ArtifactSpec, ArtifactState
+
+        artifact = ArtifactSpec(
+            model_id="qwen2.5-coder-7b-instruct",
+            source="huggingface",
+            repository="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+            filename="qwen.gguf",
+            format="GGUF",
+            quantization="Q4_K_M",
+            size_bytes=None,
+        )
+        entry = StoredArtifact(
+            artifact=artifact,
+            state=ArtifactState.VERIFIED,
+            manifest_path=Path("/models/manifest.json"),
+        )
+        mock_store = Mock()
+        mock_store.list_artifacts.return_value = [entry]
+        out = io.StringIO()
+        with redirect_stdout(out):
+            print_local_models(mock_store)
+        text = out.getvalue()
+        self.assertIn("size: Unknown", text)
 
 
 if __name__ == "__main__":

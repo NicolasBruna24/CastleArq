@@ -12,7 +12,7 @@ from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, Execu
 from .hardware import detect_hardware
 from .model_catalog import get_catalog
 from .model_identity import SOURCE_REPOSITORY_TO_MODEL_ID, logical_model_id
-from .model_store import ModelStore, UnsafePathError
+from .model_store import ModelStore, StoredArtifact, UnsafePathError
 from .downloads import (
     DownloadPlan,
     DownloadPlanStatus,
@@ -260,22 +260,57 @@ def print_models() -> None:
             print(f"  Warning: {warning}")
 
 
-def print_local_models() -> None:
+def _format_size(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "Unknown"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KiB"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MiB"
+    return f"{size_bytes / (1024 * 1024 * 1024):.1f} GiB"
+
+
+def print_local_models(model_store: ModelStore | None = None) -> None:
     print("LocalAI Hub - Local models")
     print("==========================")
-    entries = ModelStore().list_artifacts()
+    store = model_store or ModelStore()
+    entries = store.list_artifacts()
     if not entries:
         print("No local model artifacts found.")
         return
+
+    # Group valid artifacts by logical model_id
+    grouped: dict[str, list[StoredArtifact]] = {}
+    invalid_entries: list[StoredArtifact] = []
+
     for entry in entries:
         if entry.artifact is None:
-            print(f"  INVALID: {entry.manifest_path} ({entry.message})")
+            invalid_entries.append(entry)
             continue
-        print(f"  {entry.artifact.model_id} / {entry.artifact.filename}")
-        print(f"    State: {entry.state.value}")
-        print(f"    Source: {entry.artifact.source}")
-        if entry.message:
-            print(f"    Problem: {entry.message}")
+        grouped.setdefault(entry.artifact.model_id, []).append(entry)
+
+    for model_id in sorted(grouped.keys()):
+        print(f"\n{model_id}")
+        # Sort artifacts deterministically by filename
+        artifacts = sorted(grouped[model_id], key=lambda e: e.artifact.filename)  # type: ignore[union-attr]
+        for entry in artifacts:
+            artifact = entry.artifact
+            assert artifact is not None
+            size = _format_size(artifact.size_bytes)
+            status_str = entry.state.value.upper()
+            print(f"  - filename: {artifact.filename}")
+            print(f"    quantization: {artifact.quantization}")
+            print(f"    size: {size}")
+            print(f"    status: {status_str}")
+            if entry.message:
+                print(f"    problem: {entry.message}")
+
+    if invalid_entries:
+        print("\nInvalid artifacts:")
+        for entry in sorted(invalid_entries, key=lambda e: str(e.manifest_path)):
+            print(f"  - {entry.manifest_path} ({entry.message or 'invalid manifest'})")
 
 
 def print_source(provider: str | None, repository: str | None) -> int:
