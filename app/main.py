@@ -791,6 +791,19 @@ def main() -> int:
         help="exact artifact filename to select for download, run or chat",
     )
     args = parser.parse_args()
+    supported_flags = {
+        "detect": (),
+        "models": (),
+        "list": (),
+        "source": (),
+        "plan": (),
+        "download": ("quantization", "filename"),
+        "run": ("prompt", "quantization", "filename"),
+        "chat": ("quantization", "filename"),
+    }
+    for flag in ("prompt", "quantization", "filename"):
+        if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
+            parser.error(f"--{flag} is not valid for command '{args.command}'")
     if args.command == "detect":
         print_detection()
     elif args.command == "models":

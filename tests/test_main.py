@@ -690,12 +690,12 @@ class CliHelpTests(unittest.TestCase):
             with patch.object(
                 sys,
                 "argv",
-                ["localai", command, "some-model", "--prompt", "Hi"],
+                ["localai", command, "some-model"],
             ), patch(f"app.main.{function_name}") as function_mock:
                 main()
             if command == "run":
                 function_mock.assert_called_once_with(
-                    "some-model", "Hi", quantization=None, filename=None
+                    "some-model", None, quantization=None, filename=None
                 )
             else:
                 function_mock.assert_called_once_with(
@@ -703,8 +703,84 @@ class CliHelpTests(unittest.TestCase):
                 )
 
 
-if __name__ == "__main__":
-    unittest.main()
+class PerCommandFlagValidationTests(unittest.TestCase):
+    """H1: flags irrelevant for a command must be rejected by the parser."""
+
+    COMMANDS_WITHOUT_FLAGS = ("detect", "models", "source", "plan", "list")
+    ALL_FLAGS = ("prompt", "quantization", "filename")
+
+    def _run_cli(self, argv):
+        from app.main import main
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(sys, "argv", ["localai", *argv]), patch.object(
+            sys, "stdout", new=stdout
+        ), patch.object(sys, "stderr", new=stderr):
+            try:
+                exit_code = main()
+            except SystemExit as exc:
+                exit_code = exc.code if isinstance(exc.code, int) else 0
+        return exit_code, stdout.getvalue(), stderr.getvalue()
+
+    def test_commands_without_flags_reject_every_flag(self):
+        for command in self.COMMANDS_WITHOUT_FLAGS:
+            for flag in self.ALL_FLAGS:
+                with self.subTest(command=command, flag=flag):
+                    exit_code, _, stderr = self._run_cli(
+                        [command, f"--{flag}", "x"]
+                    )
+                    self.assertEqual(exit_code, 2)
+                    self.assertIn(f"--{flag} is not valid for command '{command}'", stderr)
+
+    def test_download_rejects_prompt(self):
+        exit_code, _, stderr = self._run_cli(["download", "--prompt", "x"])
+        self.assertEqual(exit_code, 2)
+        self.assertIn("--prompt is not valid for command 'download'", stderr)
+
+    def test_chat_rejects_prompt(self):
+        exit_code, _, stderr = self._run_cli(["chat", "--prompt", "x"])
+        self.assertEqual(exit_code, 2)
+        self.assertIn("--prompt is not valid for command 'chat'", stderr)
+
+    def test_valid_flag_combinations_reach_command_functions(self):
+        with patch("app.main.run_download") as download_mock:
+            self._run_cli(
+                ["download", "some-model", "--quantization", "Q4_K_M", "--filename", "a.gguf"]
+            )
+        download_mock.assert_called_once_with(
+            "some-model", quantization="Q4_K_M", filename="a.gguf"
+        )
+
+        with patch("app.main.run_model") as run_mock:
+            self._run_cli(
+                ["run", "some-model", "--prompt", "Hi", "--quantization", "Q4_K_M"]
+            )
+        run_mock.assert_called_once_with(
+            "some-model", "Hi", quantization="Q4_K_M", filename=None
+        )
+
+        with patch("app.main.chat_model") as chat_mock:
+            self._run_cli(["chat", "some-model", "--filename", "a.gguf"])
+        chat_mock.assert_called_once_with(
+            "some-model", quantization=None, filename="a.gguf"
+        )
+
+    def test_plan_positionals_still_work_with_no_flags(self):
+        exit_code, stdout, _ = self._run_cli(["plan", "owner/repository", "model.gguf"])
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Plan error: repository is not mapped to a catalog model", stdout)
+
+    def test_source_positionals_still_work_with_no_flags(self):
+        exit_code, stdout, _ = self._run_cli(["source", "huggingface", "owner/repository"])
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Source error: Repository is not mapped to a catalog model", stdout)
+
+    def test_invalid_flag_rejected_before_command_execution(self):
+        with patch("app.main.run_download") as download_mock:
+            exit_code, _, _ = self._run_cli(["download", "--prompt", "x"])
+        self.assertEqual(exit_code, 2)
+        download_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
