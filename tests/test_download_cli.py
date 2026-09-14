@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from app.downloads import (
     DownloadPlan,
@@ -378,6 +378,61 @@ class RunDownloadTests(unittest.TestCase):
         self.assertIn("Multiple artifacts match quantization 'Q4_K_M'", err)
         self.assertIn("--filename", err)
         planner.plan.assert_not_called()
+
+
+class DownloadablePredicateGateTests(unittest.TestCase):
+    """``run_download``'s initial gate must match ``downloadable_locator``."""
+
+    def _run(self, model_id, **kwargs):
+        kwargs.setdefault("out", io.StringIO())
+        kwargs.setdefault("err", io.StringIO())
+        source = Mock()
+        source.discover_artifacts.return_value = []
+        kwargs.setdefault("source_factory", lambda: source)
+        code = run_download(model_id, **kwargs)
+        return code, kwargs["err"].getvalue(), source
+
+    def test_zero_mappings_is_rejected_without_discovery(self):
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", {}):
+            code, err, source = self._run("some-model")
+        self.assertEqual(code, 1)
+        self.assertIn("no unique source repository", err)
+        source.discover_artifacts.assert_not_called()
+
+    def test_single_huggingface_mapping_uses_that_locator(self):
+        mapping = {("huggingface", "owner/repo"): "some-model"}
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+            code, err, source = self._run("some-model")
+        source.discover_artifacts.assert_called_once_with("owner/repo")
+        self.assertNotIn("no unique source repository", err)
+        self.assertNotIn("unsupported source", err)
+
+    def test_multiple_mappings_never_pick_the_first(self):
+        mapping = {
+            ("huggingface", "owner/one"): "some-model",
+            ("huggingface", "owner/two"): "some-model",
+        }
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+            code, err, source = self._run("some-model")
+        self.assertEqual(code, 1)
+        self.assertIn("no unique source repository", err)
+        source.discover_artifacts.assert_not_called()
+
+    def test_unsupported_source_is_rejected_before_discovery(self):
+        mapping = {("ollama", "qwen2.5-coder:7b"): "some-model"}
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+            code, err, source = self._run("some-model")
+        self.assertEqual(code, 1)
+        self.assertIn("unsupported source", err)
+        source.discover_artifacts.assert_not_called()
+
+    def test_real_qwen_mapping_reaches_discovery(self):
+        code, err, source = self._run("qwen2.5-coder-7b-instruct")
+        source.discover_artifacts.assert_called_once_with(
+            "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+        )
+        self.assertNotIn("no unique source repository", err)
+        self.assertNotIn("unsupported source", err)
 
 
 if __name__ == "__main__":

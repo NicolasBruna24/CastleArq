@@ -10,7 +10,13 @@ from unittest.mock import Mock, patch
 from app.compatibility import CompatibilityResult, CompatibilityStatus
 from app.execution import ExecutionRequest, ExecutionTarget
 from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
-from app.main import _DEFAULT_EXECUTION_TIMEOUT_SECONDS, print_models, run_model
+from app.main import (
+    _DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+    _download_status,
+    print_models,
+    run_download,
+    run_model,
+)
 from app.model_catalog import get_catalog
 from app.models import ArtifactSpec, Quantization
 from app.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
@@ -504,6 +510,88 @@ class PrintModelsTests(unittest.TestCase):
         first = self._render([self._result(qwen)])
         second = self._render([self._result(qwen)])
         self.assertEqual(first, second)
+
+
+class DownloadStatusTests(unittest.TestCase):
+    """``_download_status`` must agree with the ``download`` command gate."""
+
+    def _status(self, model_id, mapping):
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+            return _download_status(model_id)
+
+    def _gate_passes(self, model_id, mapping):
+        source = Mock()
+        source.discover_artifacts.return_value = []
+        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+            run_download(
+                model_id,
+                source_factory=lambda: source,
+                out=io.StringIO(),
+                err=io.StringIO(),
+            )
+        return source.discover_artifacts.called
+
+    def test_zero_mappings_is_not_available(self):
+        status = self._status("some-model", {})
+        self.assertEqual(status, "not available yet")
+        self.assertFalse(status.startswith("available"))
+
+    def test_single_huggingface_mapping_is_available(self):
+        status = self._status(
+            "some-model", {("huggingface", "owner/repo"): "some-model"}
+        )
+        self.assertEqual(status, "available (huggingface: owner/repo)")
+
+    def test_multiple_mappings_are_not_available(self):
+        status = self._status(
+            "some-model",
+            {
+                ("huggingface", "owner/one"): "some-model",
+                ("huggingface", "owner/two"): "some-model",
+            },
+        )
+        self.assertEqual(status, "unavailable (multiple sources mapped)")
+        self.assertFalse(status.startswith("available"))
+
+    def test_single_unsupported_source_is_not_available(self):
+        status = self._status(
+            "some-model", {("ollama", "qwen2.5-coder:7b"): "some-model"}
+        )
+        self.assertEqual(status, "unavailable (unsupported source)")
+        self.assertFalse(status.startswith("available"))
+
+    def test_status_matches_the_download_gate(self):
+        scenarios = {
+            "none": {},
+            "single": {("huggingface", "owner/repo"): "some-model"},
+            "multiple": {
+                ("huggingface", "owner/one"): "some-model",
+                ("huggingface", "owner/two"): "some-model",
+            },
+            "unsupported": {("ollama", "qwen2.5-coder:7b"): "some-model"},
+        }
+        for name, mapping in scenarios.items():
+            with self.subTest(scenario=name):
+                available = self._status("some-model", mapping).startswith(
+                    "available ("
+                )
+                self.assertEqual(
+                    available, self._gate_passes("some-model", mapping)
+                )
+
+    def test_real_qwen_mapping_stays_downloadable(self):
+        from app.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
+
+        status = _download_status("qwen2.5-coder-7b-instruct")
+        self.assertTrue(status.startswith("available ("))
+        self.assertIn("huggingface", status)
+        self.assertIn("Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", status)
+        self.assertEqual(
+            SOURCE_REPOSITORY_TO_MODEL_ID[
+                ("huggingface", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+            ],
+            "qwen2.5-coder-7b-instruct",
+        )
 
 
 if __name__ == "__main__":

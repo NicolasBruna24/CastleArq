@@ -40,3 +40,26 @@ def source_repositories_for_logical_model(
             if logical == model_id
         )
     )
+
+
+# Sources the current download flow is able to fetch from.
+SUPPORTED_DOWNLOAD_SOURCES: frozenset[str] = frozenset({"huggingface"})
+
+
+def downloadable_locator(model_id: str) -> tuple[str, str] | None:
+    """Return the single downloadable ``(source, repository)`` locator, or None.
+
+    This is the one predicate for "this logical model can currently be
+    downloaded". It is explicit and deterministic: a model qualifies only when
+    it maps to exactly one locator AND that locator's source is supported by the
+    download flow. Zero, multiple or unsupported locators never yield a result;
+    there is no first-match, no fuzzy or substring matching, no aliases, no I/O,
+    no network access and no local paths involved.
+    """
+    locators = source_repositories_for_logical_model(model_id)
+    if len(locators) != 1:
+        return None
+    source, repository = locators[0]
+    if source not in SUPPORTED_DOWNLOAD_SOURCES:
+        return None
+    return locators[0]

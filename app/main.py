@@ -11,7 +11,11 @@ from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_mode
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
 from .model_catalog import get_catalog
-from .model_identity import logical_model_id, source_repositories_for_logical_model
+from .model_identity import (
+    downloadable_locator,
+    logical_model_id,
+    source_repositories_for_logical_model,
+)
 from .model_store import ModelStore, StoredArtifact, UnsafePathError
 from .downloads import (
     DownloadPlan,
@@ -213,17 +217,21 @@ def print_detection() -> None:
 def _download_status(model_id: str) -> str:
     """Describe whether a logical model currently has a downloadable source.
 
-    Derived only from the static source/repository mapping, so ``models`` stays
-    offline. The rule is explicit and deterministic: exactly one mapped locator
-    offers a download; zero or multiple locators are never guessed.
+    Availability comes exclusively from ``downloadable_locator`` so this
+    presentation always agrees with the ``download`` command gate. The reason
+    text for non-available models is derived from the same static mapping, so
+    ``models`` stays offline and never guesses among multiple locators.
     """
-    locators = source_repositories_for_logical_model(model_id)
-    if len(locators) == 1:
-        source, repository = locators[0]
+    locator = downloadable_locator(model_id)
+    if locator is not None:
+        source, repository = locator
         return f"available ({source}: {repository})"
-    if not locators:
-        return "not available yet"
-    return "unavailable (multiple sources mapped)"
+    locators = source_repositories_for_logical_model(model_id)
+    if len(locators) > 1:
+        return "unavailable (multiple sources mapped)"
+    if len(locators) == 1:
+        return "unavailable (unsupported source)"
+    return "not available yet"
 
 
 def print_models() -> None:
@@ -440,17 +448,18 @@ def run_download(
         print("Usage: python3 -m app.main download <model-id>", file=err)
         return 2
 
-    locators = source_repositories_for_logical_model(model_id)
-    if len(locators) != 1:
-        print(
-            f"Download error: no unique source repository is mapped to model: {model_id}",
-            file=err,
-        )
+    locator = downloadable_locator(model_id)
+    if locator is None:
+        locators = source_repositories_for_logical_model(model_id)
+        if len(locators) == 1:
+            print(f"Download error: unsupported source: {locators[0][0]}", file=err)
+        else:
+            print(
+                f"Download error: no unique source repository is mapped to model: {model_id}",
+                file=err,
+            )
         return 1
-    source_name, repository = locators[0]
-    if source_name != "huggingface":
-        print(f"Download error: unsupported source: {source_name}", file=err)
-        return 1
+    _, repository = locator
 
     source = (source_factory or HuggingFaceSource)()
     try:
