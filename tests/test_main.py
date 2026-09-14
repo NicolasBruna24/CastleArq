@@ -159,6 +159,105 @@ class MainRunTests(unittest.TestCase):
         self.assertGreater(request.timeout_seconds, 0)
         self.assertTrue(math.isfinite(request.timeout_seconds))
 
+    def test_run_model_forwards_quantization_and_filename_to_resolver(self):
+        resolver_mock = Mock()
+        resolver_mock.resolve.return_value = self.resolved
+        with patch("app.main.ModelArtifactResolver", return_value=resolver_mock), patch(
+            "app.main._prepare", return_value=self.preparation
+        ), patch("app.main.LlamaCppRunner", return_value=self._runner(ExecutionResult(True, 0, "ok\n", ""))):
+            code = run_model(
+                self.model.model_id,
+                "hello",
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+            )
+            self.assertEqual(code, 0)
+            resolver_mock.resolve.assert_called_once_with(
+                self.model.model_id,
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+            )
+
+    def test_chat_model_forwards_quantization_and_filename_to_resolver(self):
+        from app.main import chat_model
+
+        resolver_mock = Mock()
+        resolver_mock.resolve.return_value = self.resolved
+        session_mock = Mock()
+        session_mock.state = Mock(value="closed")
+        capability = Mock()
+        capability.invocable = True
+        with patch("app.main.ModelArtifactResolver", return_value=resolver_mock), patch(
+            "app.main.detect_llama_capability", return_value=capability
+        ), patch(
+            "app.main._prepare", return_value=self.preparation
+        ), patch("app.main.start_chat_session", return_value=session_mock):
+            out = io.StringIO()
+            err = io.StringIO()
+            code = chat_model(
+                self.model.model_id,
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+                input_fn=lambda: "/exit",
+                out=out,
+                err=err,
+            )
+            self.assertEqual(code, 0)
+            resolver_mock.resolve.assert_called_once_with(
+                self.model.model_id,
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+            )
+
+    def test_main_cli_forwards_selection_to_run(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "app.main",
+                "run",
+                self.model.model_id,
+                "--prompt",
+                "hello",
+                "--quantization",
+                "Q4_K_M",
+                "--filename",
+                "model.Q4_K_M.gguf",
+            ],
+        ), patch("app.main.run_model", return_value=0) as run_mock:
+            from app.main import main
+
+            self.assertEqual(main(), 0)
+            run_mock.assert_called_once_with(
+                self.model.model_id,
+                "hello",
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+            )
+
+    def test_main_cli_forwards_selection_to_chat(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "app.main",
+                "chat",
+                self.model.model_id,
+                "--quantization",
+                "Q4_K_M",
+                "--filename",
+                "model.Q4_K_M.gguf",
+            ],
+        ), patch("app.main.chat_model", return_value=0) as chat_mock:
+            from app.main import main
+
+            self.assertEqual(main(), 0)
+            chat_mock.assert_called_once_with(
+                self.model.model_id,
+                quantization="Q4_K_M",
+                filename="model.Q4_K_M.gguf",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .artifact_selection import ArtifactSelectionError, select_artifact
 from .model_catalog import get_catalog
 from .model_store import ModelStore
 from .models import ArtifactState, ArtifactSpec, ModelSpec
@@ -36,7 +37,13 @@ class ModelArtifactResolver:
         self.model_store = model_store or ModelStore()
         self.models = models if models is not None else get_catalog()
 
-    def resolve(self, model_id: str) -> ResolvedModelArtifact:
+    def resolve(
+        self,
+        model_id: str,
+        *,
+        quantization: str | None = None,
+        filename: str | None = None,
+    ) -> ResolvedModelArtifact:
         model = next((item for item in self.models if item.model_id == model_id), None)
         if model is None:
             raise ModelArtifactResolutionError(
@@ -81,12 +88,19 @@ class ModelArtifactResolver:
             for entry in matching
             if entry.state in {ArtifactState.VERIFIED, ArtifactState.DOWNLOADED}
         ]
-        if len(usable) > 1:
-            raise ModelArtifactResolutionError(
-                f"Multiple local artifacts match model: {model_id}"
-            )
         if not usable:
             raise ModelArtifactResolutionError(
                 f"No usable local artifact is installed for model: {model_id}"
             )
-        return ResolvedModelArtifact(model, usable[0].artifact)
+
+        candidates = [entry.artifact for entry in usable if entry.artifact is not None]
+        try:
+            selected = select_artifact(
+                candidates,
+                quantization=quantization,
+                filename=filename,
+            )
+        except ArtifactSelectionError as error:
+            raise ModelArtifactResolutionError(str(error)) from error
+
+        return ResolvedModelArtifact(model, selected)

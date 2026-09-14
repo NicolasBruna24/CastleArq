@@ -512,14 +512,24 @@ def run_download(
     return 1
 
 
-def run_model(model_id: str | None, prompt: str | None) -> int:
+def run_model(
+    model_id: str | None,
+    prompt: str | None,
+    *,
+    quantization: str | None = None,
+    filename: str | None = None,
+) -> int:
     if not model_id or prompt is None or not prompt.strip():
         print("Usage: python3 -m app.main run <model-id> --prompt <text>", file=sys.stderr)
         return 2
     try:
         model_store = ModelStore()
         resolver = ModelArtifactResolver(model_store)
-        resolved = resolver.resolve(model_id)
+        resolved = resolver.resolve(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+        )
     except ModelArtifactResolutionError as error:
         print(f"Run error: {error}", file=sys.stderr)
         return 1
@@ -570,6 +580,8 @@ def run_model(model_id: str | None, prompt: str | None) -> int:
 def chat_model(
     model_id: str | None,
     *,
+    quantization: str | None = None,
+    filename: str | None = None,
     input_fn=None,
     out=None,
     err=None,
@@ -587,7 +599,11 @@ def chat_model(
     try:
         model_store = ModelStore()
         resolver = ModelArtifactResolver(model_store)
-        resolved = resolver.resolve(model_id)
+        resolved = resolver.resolve(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+        )
     except ModelArtifactResolutionError as error:
         print(f"Chat error: {error}", file=err)
         return 1
@@ -698,11 +714,20 @@ def main() -> int:
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")
-        return run_model(args.provider, args.prompt)
+        return run_model(
+            args.provider,
+            args.prompt,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
     elif args.command == "chat":
         if args.repository is not None:
             parser.error("chat accepts exactly one model-id")
-        return chat_model(args.provider)
+        return chat_model(
+            args.provider,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
     return 0
 
 

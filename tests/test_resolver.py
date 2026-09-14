@@ -117,8 +117,80 @@ class ModelArtifactResolverTests(unittest.TestCase):
         self._store_artifact(self._artifact(filename="model.Q4_K_M.gguf"))
         self._store_artifact(self._artifact(filename="model.Q8_0.gguf"))
 
-        with self.assertRaisesRegex(ModelArtifactResolutionError, "Multiple"):
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "(?i)multiple"):
             ModelArtifactResolver(self.store).resolve(self.model.model_id)
+
+    def test_multiple_usable_artifacts_quantization_selects_correct(self):
+        q4 = self._artifact(filename="model.Q4_K_M.gguf")
+        q8 = self._artifact(filename="model.Q8_0.gguf")
+        self._store_artifact(q4)
+        self._store_artifact(q8)
+
+        result = ModelArtifactResolver(self.store).resolve(
+            self.model.model_id, quantization="Q4_K_M"
+        )
+        self.assertEqual(result.artifact, q4)
+
+        result8 = ModelArtifactResolver(self.store).resolve(
+            self.model.model_id, quantization="q8_0"
+        )
+        self.assertEqual(result8.artifact, q8)
+
+    def test_multiple_usable_artifacts_filename_selects_correct(self):
+        q4 = self._artifact(filename="model.Q4_K_M.gguf")
+        q8 = self._artifact(filename="model.Q8_0.gguf")
+        self._store_artifact(q4)
+        self._store_artifact(q8)
+
+        result = ModelArtifactResolver(self.store).resolve(
+            self.model.model_id, filename="model.Q8_0.gguf"
+        )
+        self.assertEqual(result.artifact, q8)
+
+    def test_multiple_usable_artifacts_both_selectors_succeeds(self):
+        q4 = self._artifact(filename="model.Q4_K_M.gguf")
+        q8 = self._artifact(filename="model.Q8_0.gguf")
+        self._store_artifact(q4)
+        self._store_artifact(q8)
+
+        result = ModelArtifactResolver(self.store).resolve(
+            self.model.model_id, quantization="Q4_K_M", filename="model.Q4_K_M.gguf"
+        )
+        self.assertEqual(result.artifact, q4)
+
+    def test_multiple_usable_artifacts_both_selectors_conflicting_raises(self):
+        self._store_artifact(self._artifact(filename="model.Q4_K_M.gguf"))
+        self._store_artifact(self._artifact(filename="model.Q8_0.gguf"))
+
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "No artifact matches both"):
+            ModelArtifactResolver(self.store).resolve(
+                self.model.model_id, quantization="Q4_K_M", filename="model.Q8_0.gguf"
+            )
+
+    def test_multiple_usable_artifacts_invalid_quantization_raises(self):
+        self._store_artifact(self._artifact(filename="model.Q4_K_M.gguf"))
+
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "No artifact matches quantization"):
+            ModelArtifactResolver(self.store).resolve(
+                self.model.model_id, quantization="Q9_K_M"
+            )
+
+    def test_multiple_usable_artifacts_invalid_filename_raises(self):
+        self._store_artifact(self._artifact(filename="model.Q4_K_M.gguf"))
+
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "No artifact matches filename"):
+            ModelArtifactResolver(self.store).resolve(
+                self.model.model_id, filename="missing.gguf"
+            )
+
+    def test_multiple_usable_artifacts_ambiguous_quantization_demands_filename(self):
+        self._store_artifact(self._artifact(filename="shard1.Q4_K_M.gguf"))
+        self._store_artifact(self._artifact(filename="shard2.Q4_K_M.gguf"))
+
+        with self.assertRaisesRegex(ModelArtifactResolutionError, "--filename"):
+            ModelArtifactResolver(self.store).resolve(
+                self.model.model_id, quantization="Q4_K_M"
+            )
 
     def test_arbitrary_path_is_not_a_model_identity(self):
         with self.assertRaises(ModelArtifactResolutionError):
