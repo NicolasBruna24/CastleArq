@@ -36,6 +36,7 @@ from .selection import RuntimeBackendSelector, RuntimeSelection, RuntimeSelectio
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
 from .chat import ChatSessionError, start_chat_session
+from .artifact_selection import ArtifactSelectionError, select_artifact
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -361,6 +362,8 @@ def print_plan(repository: str | None, filename: str | None) -> int:
 def run_download(
     model_id: str | None,
     *,
+    quantization: str | None = None,
+    filename: str | None = None,
     source_factory=None,
     planner_factory=None,
     downloader_factory=None,
@@ -372,9 +375,9 @@ def run_download(
     Selection policy (explicit, no guessing):
     - the logical ID must resolve to exactly one (source, repository)
       via :mod:`app.model_identity`;
-    - ``HuggingFaceSource.discover_artifacts`` must return exactly one
-      GGUF artifact — otherwise the available artifacts are listed and
-      the command stops without downloading;
+    - ``HuggingFaceSource.discover_artifacts`` returns available GGUF artifacts;
+    - ``select_artifact`` selects exactly one artifact deterministically if
+      no ambiguity exists or matching the given selectors;
     - ``DownloadPlanner.plan`` then owns all destination/state/space
       validation and the ``Downloader`` performs the transfer.
     """
@@ -411,24 +414,27 @@ def run_download(
     except SourceError as error:
         print(f"Download error: {error}", file=err)
         return 1
-    if len(artifacts) != 1:
-        print(f"LocalAI Hub - Download candidates for model: {model_id}", file=out)
-        print("==========================", file=out)
-        if not artifacts:
-            print("No GGUF artifacts found.", file=out)
-        for artifact in artifacts:
-            size = artifact.size_bytes if artifact.size_bytes is not None else "Unknown"
-            print(f"\n  {artifact.filename}", file=out)
-            print(f"    Quantization: {artifact.quantization}", file=out)
-            print(f"    Size: {size}", file=out)
-            print(f"    SHA-256: {artifact.sha256 or 'Unknown'}", file=out)
-        print(
-            "\nDownload error: model maps to multiple artifacts; "
-            "explicit selection is not supported yet",
-            file=err,
+
+    try:
+        artifact = select_artifact(
+            artifacts, quantization=quantization, filename=filename
         )
+    except ArtifactSelectionError as error:
+        if not quantization and not filename:
+            print(f"LocalAI Hub - Download candidates for model: {model_id}", file=out)
+            print("==========================", file=out)
+            if not artifacts:
+                print("No GGUF artifacts found.", file=out)
+            for item in artifacts:
+                size = item.size_bytes if item.size_bytes is not None else "Unknown"
+                print(f"\n  {item.filename}", file=out)
+                print(f"    Quantization: {item.quantization}", file=out)
+                print(f"    Size: {size}", file=out)
+                print(f"    SHA-256: {item.sha256 or 'Unknown'}", file=out)
+            print(f"\nDownload error: {error}", file=err)
+        else:
+            print(f"Download error: {error}", file=err)
         return 1
-    artifact = artifacts[0]
     if artifact.model_id != model_id:
         print(
             f"Download error: discovered artifact model_id "
@@ -668,6 +674,8 @@ def main() -> int:
     parser.add_argument("provider", nargs="?")
     parser.add_argument("repository", nargs="?")
     parser.add_argument("--prompt")
+    parser.add_argument("--quantization", help="quantization level to select for download")
+    parser.add_argument("--filename", help="exact artifact filename to select for download")
     args = parser.parse_args()
     if args.command == "detect":
         print_detection()
@@ -682,7 +690,11 @@ def main() -> int:
     elif args.command == "download":
         if args.repository is not None:
             parser.error("download accepts exactly one model-id")
-        return run_download(args.provider)
+        return run_download(
+            args.provider,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")

@@ -263,16 +263,12 @@ class RunDownloadTests(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_zero_artifacts_lists_and_stops(self):
         code, out, err = self._run(source_factory=_source_factory([]))
         self.assertEqual(code, 1)
         self.assertIn("No GGUF artifacts found", out)
-        self.assertIn("multiple artifacts", err)
 
-    def test_multiple_artifacts_list_and_stop_without_download(self):
+    def test_multiple_artifacts_without_selector_lists_and_stops_without_download(self):
         first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
         second = _artifact(filename="b-q8.gguf", quantization="Q8_0")
         planner = Mock()
@@ -281,12 +277,108 @@ if __name__ == "__main__":
         )
         code, out, err = self._run(
             source_factory=_source_factory([first, second]),
-            planner_factory=_planner_factory(_plan(first)),
+            planner_factory=lambda: planner,
             downloader_factory=downloader_factory,
         )
         self.assertEqual(code, 1)
         self.assertIn("a-q4.gguf", out)
         self.assertIn("b-q8.gguf", out)
-        self.assertIn("multiple artifacts", err)
+        self.assertIn("specify --quantization or --filename", err)
         downloader_factory.downloader.download.assert_not_called()
         planner.plan.assert_not_called()
+
+    def test_explicit_quantization_selects_and_downloads(self):
+        first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
+        second = _artifact(filename="b-q8.gguf", quantization="Q8_0")
+        plan = _plan(first)
+        downloader_factory = _downloader_factory(
+            DownloadResult(True, DownloadResultStatus.SUCCESS, plan.destination, 10)
+        )
+        code, out, err = self._run(
+            quantization="Q4_K_M",
+            source_factory=_source_factory([first, second]),
+            planner_factory=_planner_factory(plan),
+            downloader_factory=downloader_factory,
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Artifact: a-q4.gguf", out)
+        downloader_factory.downloader.download.assert_called_once()
+
+    def test_explicit_filename_selects_and_downloads(self):
+        first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
+        second = _artifact(filename="b-q8.gguf", quantization="Q8_0")
+        plan = _plan(second)
+        downloader_factory = _downloader_factory(
+            DownloadResult(True, DownloadResultStatus.SUCCESS, plan.destination, 10)
+        )
+        code, out, err = self._run(
+            filename="b-q8.gguf",
+            source_factory=_source_factory([first, second]),
+            planner_factory=_planner_factory(plan),
+            downloader_factory=downloader_factory,
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Artifact: b-q8.gguf", out)
+        downloader_factory.downloader.download.assert_called_once()
+
+    def test_explicit_quantization_invalid_fails(self):
+        first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
+        planner = Mock()
+        code, out, err = self._run(
+            quantization="Q9_K_M",
+            source_factory=_source_factory([first]),
+            planner_factory=lambda: planner,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("No artifact matches quantization 'Q9_K_M'", err)
+        planner.plan.assert_not_called()
+
+    def test_both_selectors_matching_succeeds(self):
+        first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
+        second = _artifact(filename="b-q8.gguf", quantization="Q8_0")
+        plan = _plan(first)
+        downloader_factory = _downloader_factory(
+            DownloadResult(True, DownloadResultStatus.SUCCESS, plan.destination, 10)
+        )
+        code, out, err = self._run(
+            quantization="Q4_K_M",
+            filename="a-q4.gguf",
+            source_factory=_source_factory([first, second]),
+            planner_factory=_planner_factory(plan),
+            downloader_factory=downloader_factory,
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Artifact: a-q4.gguf", out)
+        downloader_factory.downloader.download.assert_called_once()
+
+    def test_both_selectors_conflicting_fails(self):
+        first = _artifact(filename="a-q4.gguf", quantization="Q4_K_M")
+        second = _artifact(filename="b-q8.gguf", quantization="Q8_0")
+        planner = Mock()
+        code, out, err = self._run(
+            quantization="Q4_K_M",
+            filename="b-q8.gguf",
+            source_factory=_source_factory([first, second]),
+            planner_factory=lambda: planner,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("No artifact matches both", err)
+        planner.plan.assert_not_called()
+
+    def test_ambiguous_quantization_fails_without_calling_planner(self):
+        shard1 = _artifact(filename="model-q4-00001.gguf", quantization="Q4_K_M")
+        shard2 = _artifact(filename="model-q4-00002.gguf", quantization="Q4_K_M")
+        planner = Mock()
+        code, out, err = self._run(
+            quantization="Q4_K_M",
+            source_factory=_source_factory([shard1, shard2]),
+            planner_factory=lambda: planner,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("Multiple artifacts match quantization 'Q4_K_M'", err)
+        self.assertIn("--filename", err)
+        planner.plan.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
