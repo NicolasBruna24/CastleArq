@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Local HTTP API (Fase 6.1, bloques 1-3.1).
+"""Local HTTP API (Fase 6.1, bloques 1-3.2).
 
 Transport: ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``
 (stdlib only; no third-party dependencies).
@@ -36,17 +36,35 @@ Block 2 endpoint:
   pipeline (``app.run_service.run_once``), guarded by one global
   execution lock: a second concurrent run gets HTTP 409.
 
-Block 3.1 endpoints (chat session lifecycle, no turns yet):
+Block 3.1 endpoints (chat session lifecycle):
 
 - ``POST /v1/chat/sessions``          -> open a session through the shared
   chat pipeline (``app.run_service.open_chat_session``); HTTP 201.
 - ``GET /v1/chat/sessions/{id}``      -> session metadata (no history yet).
-- ``DELETE /v1/chat/sessions/{id}``   -> ``session.close()`` + unregister.
+- ``DELETE /v1/chat/sessions/{id}``   -> ``session.close()`` + unregister;
+  204 when the session exists and is idle, 409 while it is processing a turn
+  (full contract in the handler docstring).
 
-Sessions live only in memory, are capped by ``MAX_CHAT_SESSIONS`` and are
-closed in an orderly fashion when the server shuts down. Turn submission
-(``POST .../turns``), streaming, OpenAI compatibility, downloads via
-API, auth/TLS, persistence and Ollama integration are NOT part of 3.1.
+Block 3.2 endpoint (turns, per-session concurrency):
+
+- ``POST /v1/chat/sessions/{id}/turns`` -> one prompt on a live session,
+  submitted through the session's own ``send()`` (the existing state machine
+  in ``app.chat`` decides what a session accepts); HTTP 200 with
+  ``session_id``, ``response`` and ``turn_count``.
+
+  Exclusion is strictly per session: every registered session owns one turn
+  slot (``_ChatSessionEntry.turn_lock``) claimed non-blockingly for the whole
+  generation, so a second concurrent turn for the same session is rejected
+  immediately with HTTP 409 while different sessions run independently (there
+  is no server-wide turn lock, and no queue, scheduling or retry). A turn is
+  counted only after a successful generation, and ``turn_count`` is read from
+  the session's own completed-turn log rather than a parallel API counter.
+  ``DELETE`` uses the same slot, so a session whose turn is generating is
+  reported as busy (409) instead of being closed underneath it. Sessions live
+  only in memory, are capped by ``MAX_CHAT_SESSIONS`` and are closed in an
+  orderly fashion when the server shuts down. Streaming/SSE, OpenAI
+  compatibility, downloads via API, auth/TLS, persistence, job queues and
+  Ollama integration are NOT part of this block.
 
 Safety rules enforced here:
 
@@ -63,11 +81,12 @@ import json
 import threading
 import tomllib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from .chat import ChatSessionClosedError, ChatSessionError
 from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
@@ -92,6 +111,8 @@ __all__ = [
     "MAX_REQUEST_BODY_BYTES",
     "ChatSessionRequestDTO",
     "ChatSessionResponseDTO",
+    "ChatTurnRequestDTO",
+    "ChatTurnResponseDTO",
     "ModelDTO",
     "RunRequestDTO",
     "RunResponseDTO",
@@ -100,6 +121,7 @@ __all__ = [
     "list_artifact_dtos",
     "list_model_dtos",
     "parse_chat_session_request",
+    "parse_chat_turn_request",
     "serve",
 ]
 
@@ -335,6 +357,32 @@ class ChatSessionResponseDTO:
         }
 
 
+@dataclass(frozen=True)
+class ChatTurnRequestDTO:
+    """Validated ``POST /v1/chat/sessions/{id}/turns`` payload.
+
+    Deliberately minimal for this block: a single prompt, nothing else.
+    """
+
+    prompt: str
+
+
+@dataclass(frozen=True)
+class ChatTurnResponseDTO:
+    """API-safe projection of one completed turn (never paths or processes)."""
+
+    session_id: str
+    response: str
+    turn_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "session_id": self.session_id,
+            "response": self.response,
+            "turn_count": self.turn_count,
+        }
+
+
 _CHAT_SESSION_ALLOWED_FIELDS = frozenset({"model_id", "quantization", "filename"})
 
 
@@ -363,6 +411,28 @@ def parse_chat_session_request(payload: object) -> ChatSessionRequestDTO:
         quantization=quantization.strip() if quantization is not None else None,
         filename=filename.strip() if filename is not None else None,
     )
+
+
+_CHAT_TURN_ALLOWED_FIELDS = frozenset({"prompt"})
+
+
+def parse_chat_turn_request(payload: object) -> ChatTurnRequestDTO:
+    """Validate a chat-turn payload with the same run-style strictness.
+
+    Only a single non-empty string ``prompt`` is accepted: no coercion (e.g.
+    ``{"prompt": 123}`` is rejected, never stringified) and no unknown fields.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("request body must be a JSON object")
+    unknown = sorted(set(payload) - _CHAT_TURN_ALLOWED_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown field: {unknown[0]}")
+    if "prompt" not in payload:
+        raise ValueError("missing required field: prompt")
+    prompt = payload["prompt"]
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt must be a non-empty string")
+    return ChatTurnRequestDTO(prompt=prompt)
 
 
 def parse_session_id(raw: str) -> str:
@@ -403,12 +473,29 @@ def _session_turn_count(session: Any) -> int:
 
 @dataclass
 class _ChatSessionEntry:
+    """One live session plus its per-session turn slot (Block 3.2).
+
+    ``turn_lock`` provides the per-session mutual exclusion: at most one turn
+    may generate on a session at a time. It is only acquired/released through
+    the registry, never held across the registry lock, and it is independent
+    per session (there is no server-wide turn lock).
+    """
+
     session: Any
     model_id: str
+    turn_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class _ChatSessionLimitReached(Exception):
     """Internal signal: the registry is at MAX_CHAT_SESSIONS."""
+
+
+class _ChatSessionNotFound(Exception):
+    """Internal signal: no live session is registered under that id."""
+
+
+class _ChatSessionBusy(Exception):
+    """Internal signal: the session is already processing a turn."""
 
 
 class _ChatSessionRegistry:
@@ -437,12 +524,72 @@ class _ChatSessionRegistry:
         with self._lock:
             return self._sessions.get(session_id)
 
-    def remove(self, session_id: str) -> _ChatSessionEntry | None:
+    def begin_turn(self, session_id: str) -> _ChatSessionEntry:
+        """Claim the session's turn slot for one generation, or raise.
+
+        The registry lock is held only for the non-blocking claim, so no
+        thread ever waits on it while a generation runs and different sessions
+        never influence each other. Raises :class:`_ChatSessionNotFound` for an
+        unknown id and :class:`_ChatSessionBusy` when a turn is already in
+        progress (the caller answers 409 immediately; there is no queue).
+
+        The caller must always release the slot with :meth:`end_turn`.
+        """
         with self._lock:
-            return self._sessions.pop(session_id, None)
+            entry = self._sessions.get(session_id)
+            if entry is None:
+                raise _ChatSessionNotFound(session_id)
+            if not entry.turn_lock.acquire(blocking=False):
+                raise _ChatSessionBusy(session_id)
+            return entry
+
+    def end_turn(self, entry: _ChatSessionEntry) -> None:
+        """Release a claimed turn slot; never raises (safe on double release)."""
+        try:
+            entry.turn_lock.release()
+        except RuntimeError:  # already released: never propagate
+            pass
+
+    def claim_for_removal(self, session_id: str) -> _ChatSessionEntry:
+        """Atomically unregister an idle session and return it.
+
+        Uses the same per-session claim as :meth:`begin_turn`, so a session
+        generating a turn is never removed/closed underneath it (the caller
+        answers 409 for a busy session). Raises :class:`_ChatSessionNotFound`
+        for an unknown id. The caller must call :meth:`end_turn` once the
+        session has been closed.
+
+        Close invariant (shared with :meth:`close_all`): the entry is deleted
+        from the registry *before* ``session.close()`` runs, so
+        ``session.close()`` is only ever invoked on sessions that are already
+        unreachable by :meth:`begin_turn`. Preserve this order: closing a
+        session that is still registered would race the session's own state
+        machine in ``app.chat`` (``send()`` may set ``READY`` after
+        ``close()`` set ``CLOSED``), so a future ``cancel``/force-delete must
+        unregister first and close afterwards.
+        """
+        with self._lock:
+            entry = self._sessions.get(session_id)
+            if entry is None:
+                raise _ChatSessionNotFound(session_id)
+            if not entry.turn_lock.acquire(blocking=False):
+                raise _ChatSessionBusy(session_id)
+            # Unregister before returning: the caller closes the session only
+            # after this point (see the close invariant above).
+            del self._sessions[session_id]
+            return entry
 
     def close_all(self) -> None:
-        """Close every registered session; one bad session never blocks others."""
+        """Close every registered session; one bad session never blocks others.
+
+        Ordering invariant shared with :meth:`claim_for_removal`: the map is
+        cleared *before* any ``entry.session.close()`` is called, so every
+        closed session has already been unregistered (``begin_turn`` can no
+        longer reach it) and no close happens on a session that is still
+        registered. Shutdown deliberately does not take the per-session turn
+        slots: an in-flight turn is expected to fail on its own when its
+        runtime disappears, and the API must not wait for it.
+        """
         with self._lock:
             entries = list(self._sessions.items())
             self._sessions.clear()
@@ -807,23 +954,135 @@ def _make_handler(
             self._send_json(201, dto.to_create_json())
 
         def _handle_chat_delete(self, raw_id: str) -> None:
+            """``DELETE /v1/chat/sessions/{id}`` contract (Blocks 3.1 + 3.2).
+
+            - ``204``: the session exists and is idle. ``claim_for_removal``
+              unregisters it and ``session.close()`` runs exactly once.
+            - ``409``: the session is processing a turn, i.e. another request
+              holds its per-session turn slot while the session is still
+              registered. The session stays registered and usable, and the
+              busy message is the same one the turn endpoint uses.
+            - ``404``: no session is registered under that id.
+            - ``400``: the ``session_id`` is not a valid session id.
+
+            Two concurrent DELETEs cannot produce a 409: the winner
+            unregisters the entry inside the same registry-lock section in
+            which it claims the turn slot, so the loser sees the session
+            already gone (404) and never closes it. Only an in-flight turn
+            (which keeps the entry registered while holding the slot) can
+            yield the 409 above.
+
+            The session's turn slot is claimed first (same per-session
+            exclusion as a turn), so a session that is generating is reported
+            as busy instead of being closed underneath an in-flight turn. The
+            session is always unregistered before it is closed (see the close
+            invariant in :meth:`_ChatSessionRegistry.claim_for_removal`).
+            """
             try:
                 session_id = parse_session_id(raw_id)
             except ValueError as error:
                 self._send_json(400, {"error": str(error)})
                 return
-            entry = sessions.remove(session_id)
-            if entry is None:
+            try:
+                entry = sessions.claim_for_removal(session_id)
+            except _ChatSessionNotFound:
                 self._send_json(404, {"error": "chat session not found"})
                 return
-            try:
-                entry.session.close()
-            except Exception as error:
-                self.log_error("chat session close failed: %r", error)
-                self._send_json(500, {"error": "internal server error"})
+            except _ChatSessionBusy:
+                self._send_json(
+                    409, {"error": "chat session is already processing a turn"}
+                )
                 return
+            try:
+                try:
+                    entry.session.close()
+                except Exception as error:
+                    self.log_error("chat session close failed: %r", error)
+                    self._send_json(500, {"error": "internal server error"})
+                    return
+            finally:
+                # Always release the slot: no lock may survive the request.
+                sessions.end_turn(entry)
             self.send_response(204)
             self.end_headers()
+
+        def _handle_chat_turn(self, raw_id: str) -> None:
+            """Validate ``POST /v1/chat/sessions/{id}/turns`` and run one turn.
+
+            The session's own ``send()`` owns the state machine (ready /
+            generating / closed / failed); this handler only maps its outcome
+            to HTTP. At most one turn per session may generate at a time: the
+            turn slot is claimed non-blockingly, so a second concurrent turn
+            for the same session is rejected immediately with 409 while other
+            sessions keep running.
+            """
+            try:
+                session_id = parse_session_id(raw_id)
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            content_type = self.headers.get("Content-Type", "")
+            media_type = content_type.split(";")[0].strip().lower()
+            if media_type != "application/json":
+                self._send_json(
+                    400, {"error": "Content-Type must be application/json"}
+                )
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            try:
+                request = parse_chat_turn_request(payload)
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            try:
+                entry = sessions.begin_turn(session_id)
+            except _ChatSessionNotFound:
+                self._send_json(404, {"error": "chat session not found"})
+                return
+            except _ChatSessionBusy:
+                self._send_json(
+                    409, {"error": "chat session is already processing a turn"}
+                )
+                return
+            try:
+                try:
+                    turn = entry.session.send(request.prompt)
+                    # Count only completed generations, read from the
+                    # session's own turn log (no parallel API counter).
+                    turn_count = _session_turn_count(entry.session)
+                except ChatSessionClosedError:
+                    self._send_json(409, {"error": "chat session is closed"})
+                    return
+                except ChatSessionError as error:
+                    # Includes ChatProcessError: the runtime died or the turn
+                    # timed out. Details stay in the server log.
+                    self.log_error("chat turn failed: %r", error)
+                    self._send_json(
+                        503, {"error": "chat runtime failed to generate a response"}
+                    )
+                    return
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                except Exception as error:  # never leak details to the client
+                    self.log_error(
+                        "internal error handling %s: %r", self.path, error
+                    )
+                    try:
+                        self._send_json(500, {"error": "internal server error"})
+                    except OSError:
+                        pass
+                    return
+            finally:
+                # Released on success, on failure and on client disconnect.
+                sessions.end_turn(entry)
+            dto = ChatTurnResponseDTO(
+                session_id=session_id,
+                response=turn.assistant,
+                turn_count=turn_count,
+            )
+            self._send_json(200, dto.to_dict())
 
         def do_POST(self) -> None:  # noqa: N802 (http.server naming)
             try:
@@ -834,8 +1093,14 @@ def _make_handler(
                 if path == "/v1/chat/sessions":
                     self._handle_chat_create()
                     return
-                # POST is only defined for /v1/run and chat session
-                # creation; everything else keeps Block 1 behaviour (405).
+                if path.startswith("/v1/chat/sessions/"):
+                    remainder = path[len("/v1/chat/sessions/"):]
+                    parts = remainder.split("/")
+                    if len(parts) == 2 and parts[1] == "turns":
+                        self._handle_chat_turn(parts[0])
+                        return
+                # POST is only defined for /v1/run, chat session creation and
+                # chat turns; everything else keeps Block 1 behaviour (405).
                 self._method_not_allowed()
                 return
             except (BrokenPipeError, ConnectionResetError):
