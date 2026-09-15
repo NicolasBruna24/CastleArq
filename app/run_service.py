@@ -7,11 +7,18 @@ resolver -> compatibility -> preflight -> selection -> runner.
 It executes no subprocess itself and prints nothing; it is a pure
 domain/application layer. The HTTP API (``app.api``) adapts this pipeline
 over HTTP without calling the CLI or ``subprocess``.
+
+Block 3.1 adds :func:`open_chat_session`, the session-opening counterpart
+of :func:`run_once`: same resolver -> ``prepare`` sequence, but the final
+step launches a persistent interactive session via ``app.chat`` instead of
+a one-shot runner. The HTTP layer calls this service; it never touches the
+resolver, preflight, selector, argv or subprocess directly.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Callable
 
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model
 from .execution import (
@@ -36,12 +43,16 @@ from .runtimes import (
 from .selection import RuntimeBackendSelector, RuntimeSelectionError
 
 __all__ = [
+    "ChatDependencies",
+    "ChatLaunchFailedError",
+    "ChatSessionOpened",
     "ExecutionPreparation",
     "PreparationError",
     "RunDependencies",
     "RunOutcome",
     "RunServiceError",
     "detect_runtime_statuses",
+    "open_chat_session",
     "prepare",
     "run_once",
 ]
@@ -265,3 +276,79 @@ def run_once(
         )
     detail = result.error.message if result.error is not None else "execution failed"
     raise RunExecutionFailedError(detail)
+
+
+class ChatLaunchFailedError(RunServiceError):
+    """The artifact was prepared but the interactive runtime failed to launch."""
+
+
+@dataclass(frozen=True)
+class ChatDependencies:
+    """Injectable collaborators for :func:`open_chat_session`."""
+
+    model_store: ModelStore | None = None
+    models: tuple[ModelSpec, ...] | None = None
+    capability: RuntimeCapability | None = None
+    session_factory: Callable[..., Any] | None = None
+
+
+@dataclass(frozen=True)
+class ChatSessionOpened:
+    """A launched interactive session plus API-safe metadata (no paths)."""
+
+    session: Any
+    model_id: str
+
+
+def open_chat_session(
+    model_id: str,
+    *,
+    quantization: str | None = None,
+    filename: str | None = None,
+    dependencies: ChatDependencies | None = None,
+) -> ChatSessionOpened:
+    """Resolve, prepare and launch one persistent interactive chat session.
+
+    Same sequence CLI ``chat`` uses (resolver -> ``prepare`` ->
+    ``start_chat_session``). Raises :class:`ModelNotFoundError` for unknown
+    model ids, :class:`RunPreparationFailedError` when selection/preflight
+    rejects the request, and :class:`ChatLaunchFailedError` when the runtime
+    subprocess cannot be started. Never prints, never touches the CLI.
+    """
+    from .chat import ChatSessionError, start_chat_session
+
+    deps = dependencies or ChatDependencies()
+    store = deps.model_store if deps.model_store is not None else ModelStore()
+    models = deps.models if deps.models is not None else get_catalog()
+    capability = (
+        deps.capability if deps.capability is not None else detect_llama_capability()
+    )
+
+    resolver = ModelArtifactResolver(store, models=models)
+    try:
+        resolved = resolver.resolve(
+            model_id, quantization=quantization, filename=filename
+        )
+    except ModelArtifactResolutionError as error:
+        message = str(error)
+        if message.startswith("Model not found in the local catalog:"):
+            raise ModelNotFoundError(message) from error
+        raise RunPreparationFailedError(message) from error
+
+    try:
+        preparation = prepare(
+            resolved.model, resolved.artifact, capability, store
+        )
+    except PreparationError as error:
+        raise RunPreparationFailedError(error.message) from error
+
+    factory = deps.session_factory or start_chat_session
+    try:
+        session = factory(
+            capability,
+            preparation.executable_artifact,
+            preparation.target,
+        )
+    except ChatSessionError as error:
+        raise ChatLaunchFailedError(str(error)) from error
+    return ChatSessionOpened(session=session, model_id=resolved.model.model_id)

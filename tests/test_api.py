@@ -368,7 +368,7 @@ class ServerLifecycleTests(unittest.TestCase):
             server.server_close()
 
     def test_cli_serve_wiring(self):
-        argv = ["localai", "serve"]
+        argv = ["castlearq", "serve"]
         with mock.patch("app.main.serve", return_value=0) as serve_mock, mock.patch(
             "sys.argv", argv
         ):
@@ -377,7 +377,7 @@ class ServerLifecycleTests(unittest.TestCase):
         serve_mock.assert_called_once_with(host="127.0.0.1", port=8000)
 
     def test_cli_rejects_host_flag_for_non_serve_commands(self):
-        argv = ["localai", "models", "--host", "127.0.0.1"]
+        argv = ["castlearq", "models", "--host", "127.0.0.1"]
         with mock.patch("sys.argv", argv), self.assertRaises(SystemExit) as caught:
             cli_main()
         self.assertEqual(caught.exception.code, 2)

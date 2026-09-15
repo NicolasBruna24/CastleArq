@@ -1,4 +1,4 @@
-"""Local HTTP API (Fase 6.1, bloques 1-2).
+"""Local HTTP API (Fase 6.1, bloques 1-3.1).
 
 Transport: ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``
 (stdlib only; no third-party dependencies).
@@ -21,9 +21,17 @@ Block 2 endpoint:
   pipeline (``app.run_service.run_once``), guarded by one global
   execution lock: a second concurrent run gets HTTP 409.
 
-Not implemented in this block (by design): chat HTTP, HTTP
-sessions, streaming, OpenAI compatibility, downloads via
-API, auth/TLS, persistence and Ollama integration.
+Block 3.1 endpoints (chat session lifecycle, no turns yet):
+
+- ``POST /v1/chat/sessions``          -> open a session through the shared
+  chat pipeline (``app.run_service.open_chat_session``); HTTP 201.
+- ``GET /v1/chat/sessions/{id}``      -> session metadata (no history yet).
+- ``DELETE /v1/chat/sessions/{id}``   -> ``session.close()`` + unregister.
+
+Sessions live only in memory, are capped by ``MAX_CHAT_SESSIONS`` and are
+closed in an orderly fashion when the server shuts down. Turn submission
+(``POST .../turns``), streaming, OpenAI compatibility, downloads via
+API, auth/TLS, persistence and Ollama integration are NOT part of 3.1.
 
 Safety rules enforced here:
 
@@ -39,27 +47,36 @@ import ipaddress
 import json
 import threading
 import tomllib
+import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
 from .models import ModelSpec
 from .run_service import (
+    ChatDependencies,
+    ChatLaunchFailedError,
+    ChatSessionOpened,
     ModelNotFoundError,
     RunDependencies,
     RunExecutionFailedError,
     RunOutcome,
     RunPreparationFailedError,
+    open_chat_session,
     run_once,
 )
 
 __all__ = [
     "APIConfigurationError",
     "ArtifactDTO",
+    "MAX_CHAT_SESSIONS",
     "MAX_REQUEST_BODY_BYTES",
+    "ChatSessionRequestDTO",
+    "ChatSessionResponseDTO",
     "ModelDTO",
     "RunRequestDTO",
     "RunResponseDTO",
@@ -67,12 +84,17 @@ __all__ = [
     "get_version",
     "list_artifact_dtos",
     "list_model_dtos",
+    "parse_chat_session_request",
     "serve",
 ]
 
 # Requests are GET-only in this block; a generous limit guards against
 # oversized (or future) request bodies even though GET carries no body.
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
+
+# Block 3.1: hard cap on concurrent in-memory chat sessions. Small on
+# purpose (each session holds a loaded model process); no dynamic config yet.
+MAX_CHAT_SESSIONS = 4
 
 _LOOPBACK_HOSTNAMES = frozenset({"localhost"})
 
@@ -264,6 +286,158 @@ def parse_run_request(payload: object) -> RunRequestDTO:
     )
 
 
+@dataclass(frozen=True)
+class ChatSessionRequestDTO:
+    """Validated ``POST /v1/chat/sessions`` payload (logical selectors only)."""
+
+    model_id: str
+    quantization: str | None = None
+    filename: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatSessionResponseDTO:
+    """Safe session metadata; never carries paths, argv, env or processes."""
+
+    session_id: str
+    model_id: str
+    status: str
+    turn_count: int = 0
+
+    def to_create_json(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "model_id": self.model_id,
+            "status": self.status,
+        }
+
+    def to_json(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "model_id": self.model_id,
+            "status": self.status,
+            "turn_count": self.turn_count,
+        }
+
+
+_CHAT_SESSION_ALLOWED_FIELDS = frozenset({"model_id", "quantization", "filename"})
+
+
+def parse_chat_session_request(payload: object) -> ChatSessionRequestDTO:
+    """Validate a chat-session creation payload with run-style strictness."""
+    if not isinstance(payload, dict):
+        raise ValueError("request body must be a JSON object")
+    unknown = sorted(set(payload) - _CHAT_SESSION_ALLOWED_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown field: {unknown[0]}")
+    model_id = payload.get("model_id")
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("model_id must be a non-empty string")
+    quantization = payload.get("quantization")
+    if quantization is not None and (
+        not isinstance(quantization, str) or not quantization.strip()
+    ):
+        raise ValueError("quantization must be a non-empty string when provided")
+    filename = payload.get("filename")
+    if filename is not None and (
+        not isinstance(filename, str) or not filename.strip()
+    ):
+        raise ValueError("filename must be a non-empty string when provided")
+    return ChatSessionRequestDTO(
+        model_id=model_id.strip(),
+        quantization=quantization.strip() if quantization is not None else None,
+        filename=filename.strip() if filename is not None else None,
+    )
+
+
+def parse_session_id(raw: str) -> str:
+    """Validate a ``{session_id}`` path segment as a server-issued UUID."""
+    candidate = (raw or "").strip()
+    if not candidate:
+        raise ValueError("session_id must be a non-empty string")
+    try:
+        return str(uuid.UUID(candidate, version=4))
+    except (ValueError, AttributeError, TypeError) as error:
+        raise ValueError(f"invalid session_id: {raw!r}") from error
+
+
+def _public_chat_status(session: Any) -> str:
+    """Map the internal session state to the public lifecycle vocabulary."""
+    state = getattr(session, "state", None)
+    value = getattr(state, "value", state)
+    text = str(value) if value is not None else ""
+    mapping = {
+        "starting": "starting",
+        "ready": "ready",
+        "generating": "generating",
+        "cancelling": "canceling",
+        "canceling": "canceling",
+        "closed": "closed",
+        "failed": "failed",
+    }
+    return mapping.get(text.strip().lower(), "ready")
+
+
+def _session_turn_count(session: Any) -> int:
+    turns = getattr(session, "turns", ())
+    try:
+        return int(len(turns))
+    except TypeError:
+        return 0
+
+
+@dataclass
+class _ChatSessionEntry:
+    session: Any
+    model_id: str
+
+
+class _ChatSessionLimitReached(Exception):
+    """Internal signal: the registry is at MAX_CHAT_SESSIONS."""
+
+
+class _ChatSessionRegistry:
+    """Thread-safe in-memory store of live chat sessions (no persistence)."""
+
+    def __init__(self, max_sessions: int = MAX_CHAT_SESSIONS) -> None:
+        self._lock = threading.Lock()
+        self._sessions: dict[str, _ChatSessionEntry] = {}
+        self._max_sessions = max_sessions
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._sessions)
+
+    def is_full(self) -> bool:
+        with self._lock:
+            return len(self._sessions) >= self._max_sessions
+
+    def register(self, session_id: str, entry: _ChatSessionEntry) -> None:
+        with self._lock:
+            if len(self._sessions) >= self._max_sessions:
+                raise _ChatSessionLimitReached
+            self._sessions[session_id] = entry
+
+    def get(self, session_id: str) -> _ChatSessionEntry | None:
+        with self._lock:
+            return self._sessions.get(session_id)
+
+    def remove(self, session_id: str) -> _ChatSessionEntry | None:
+        with self._lock:
+            return self._sessions.pop(session_id, None)
+
+    def close_all(self) -> None:
+        """Close every registered session; one bad session never blocks others."""
+        with self._lock:
+            entries = list(self._sessions.items())
+            self._sessions.clear()
+        for _, entry in entries:
+            try:
+                entry.session.close()
+            except Exception:
+                continue
+
+
 def run_response_from_outcome(outcome: RunOutcome) -> RunResponseDTO:
     """Project a :class:`RunOutcome` into its API-safe DTO."""
     return RunResponseDTO(
@@ -361,12 +535,16 @@ def _make_handler(
     version: str,
     run_dependencies: RunDependencies | None,
     run_lock: threading.Lock,
+    chat_dependencies: ChatDependencies | None = None,
+    chat_registry: _ChatSessionRegistry | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Build a handler class with the injected core dependencies."""
     from urllib.parse import urlsplit
 
+    sessions = chat_registry if chat_registry is not None else _ChatSessionRegistry()
+
     class APIRequestHandler(BaseHTTPRequestHandler):
-        server_version = "LocalAIHub/" + version
+        server_version = "CastleArq/" + version
         sys_version = ""
 
         def _send_json(
@@ -408,6 +586,27 @@ def _make_handler(
             elif path == "/v1/artifacts":
                 payload = {"artifacts": [dto.to_dict() for dto in list_artifact_dtos(store)]}
                 self._send_json(200, payload)
+            elif path.startswith("/v1/chat/sessions/"):
+                remainder = path[len("/v1/chat/sessions/"):]
+                if not remainder or "/" in remainder:
+                    self._send_json(404, {"error": "not found"})
+                    return
+                try:
+                    session_id = parse_session_id(remainder)
+                except ValueError as error:
+                    self._send_json(400, {"error": str(error)})
+                    return
+                entry = sessions.get(session_id)
+                if entry is None:
+                    self._send_json(404, {"error": "chat session not found"})
+                    return
+                dto = ChatSessionResponseDTO(
+                    session_id=session_id,
+                    model_id=entry.model_id,
+                    status=_public_chat_status(entry.session),
+                    turn_count=_session_turn_count(entry.session),
+                )
+                self._send_json(200, dto.to_json())
             else:
                 self._send_json(404, {"error": "not found"})
 
@@ -521,14 +720,109 @@ def _make_handler(
                 run_lock.release()
             self._send_json(200, run_response_from_outcome(outcome).to_dict())
 
+        def _handle_chat_create(self) -> None:
+            """Validate ``POST /v1/chat/sessions`` and open one session."""
+            content_type = self.headers.get("Content-Type", "")
+            media_type = content_type.split(";")[0].strip().lower()
+            if media_type != "application/json":
+                self._send_json(
+                    400, {"error": "Content-Type must be application/json"}
+                )
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            try:
+                request = parse_chat_session_request(payload)
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            if sessions.is_full():
+                self._send_json(
+                    409, {"error": "maximum chat sessions reached"}
+                )
+                return
+            try:
+                opened = open_chat_session(
+                    request.model_id,
+                    quantization=request.quantization,
+                    filename=request.filename,
+                    dependencies=chat_dependencies,
+                )
+            except ModelNotFoundError as error:
+                self._send_json(404, {"error": str(error)})
+                return
+            except RunPreparationFailedError as error:
+                self._send_json(422, {"error": str(error)})
+                return
+            except ChatLaunchFailedError as error:
+                self.log_error("chat session launch failed: %r", error)
+                self._send_json(503, {"error": "chat runtime failed to start"})
+                return
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except Exception as error:  # never leak details to the client
+                self.log_error("internal error handling %s: %r", self.path, error)
+                try:
+                    self._send_json(500, {"error": "internal server error"})
+                except OSError:
+                    pass
+                return
+            # Register only after a successful launch; never a partial entry.
+            session_id = str(uuid.uuid4())
+            try:
+                sessions.register(
+                    session_id,
+                    _ChatSessionEntry(
+                        session=opened.session, model_id=opened.model_id
+                    ),
+                )
+            except _ChatSessionLimitReached:
+                try:
+                    opened.session.close()
+                except Exception:
+                    pass
+                self._send_json(409, {"error": "maximum chat sessions reached"})
+                return
+            dto = ChatSessionResponseDTO(
+                session_id=session_id,
+                model_id=opened.model_id,
+                status=_public_chat_status(opened.session),
+            )
+            self._send_json(201, dto.to_create_json())
+
+        def _handle_chat_delete(self, raw_id: str) -> None:
+            try:
+                session_id = parse_session_id(raw_id)
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            entry = sessions.remove(session_id)
+            if entry is None:
+                self._send_json(404, {"error": "chat session not found"})
+                return
+            try:
+                entry.session.close()
+            except Exception as error:
+                self.log_error("chat session close failed: %r", error)
+                self._send_json(500, {"error": "internal server error"})
+                return
+            self.send_response(204)
+            self.end_headers()
+
         def do_POST(self) -> None:  # noqa: N802 (http.server naming)
             try:
-                if urlsplit(self.path).path != "/v1/run":
-                    # POST is only defined for /v1/run; the GET-only
-                    # resources keep their Block 1 behaviour (405).
-                    self._method_not_allowed()
+                path = urlsplit(self.path).path
+                if path == "/v1/run":
+                    self._handle_run()
                     return
-                self._handle_run()
+                if path == "/v1/chat/sessions":
+                    self._handle_chat_create()
+                    return
+                # POST is only defined for /v1/run and chat session
+                # creation; everything else keeps Block 1 behaviour (405).
+                self._method_not_allowed()
+                return
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as error:  # never leak details to the client
@@ -542,8 +836,28 @@ def _make_handler(
             self._send_json(
                 405, {"error": "method not allowed"}, allow="GET, POST"
             )
+
+        def do_DELETE(self) -> None:  # noqa: N802 (http.server naming)
+            try:
+                path = urlsplit(self.path).path
+                if path.startswith("/v1/chat/sessions/"):
+                    remainder = path[len("/v1/chat/sessions/"):]
+                    if not remainder or "/" in remainder:
+                        self._send_json(404, {"error": "not found"})
+                        return
+                    self._handle_chat_delete(remainder)
+                    return
+                self._method_not_allowed()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as error:  # never leak details to the client
+                self.log_error("internal error handling %s: %r", self.path, error)
+                try:
+                    self._send_json(500, {"error": "internal server error"})
+                except OSError:
+                    pass
+
         do_PUT = _method_not_allowed  # noqa: N802
-        do_DELETE = _method_not_allowed  # noqa: N802
         do_PATCH = _method_not_allowed  # noqa: N802
         do_HEAD = _method_not_allowed  # noqa: N802
         do_OPTIONS = _method_not_allowed  # noqa: N802
@@ -559,6 +873,22 @@ def _make_handler(
 class _APIServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def __init__(self, *args: Any, chat_registry: _ChatSessionRegistry | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._chat_registry = chat_registry
+
+    def server_close(self) -> None:
+        # Orderly shutdown: close every live chat session (each close is the
+        # existing idempotent session.close(); one bad session never blocks
+        # the others) before releasing the listening socket.
+        registry = self._chat_registry
+        if registry is not None:
+            try:
+                registry.close_all()
+            except Exception:
+                pass
+        super().server_close()
 
 
 def _validate_loopback_host(host: str) -> str:
@@ -587,6 +917,8 @@ def build_server(
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
     run_dependencies: RunDependencies | None = None,
+    chat_dependencies: ChatDependencies | None = None,
+    chat_registry: _ChatSessionRegistry | None = None,
 ) -> ThreadingHTTPServer:
     """Build the API server (not yet serving).
 
@@ -599,10 +931,13 @@ def build_server(
     store = model_store if model_store is not None else ModelStore()
     if run_dependencies is None:
         run_dependencies = RunDependencies(model_store=store, models=specs)
+    if chat_registry is None:
+        chat_registry = _ChatSessionRegistry()
     handler = _make_handler(
-        specs, store, get_version(), run_dependencies, threading.Lock()
+        specs, store, get_version(), run_dependencies, threading.Lock(),
+        chat_dependencies, chat_registry,
     )
-    return _APIServer((resolved_host, port), handler)
+    return _APIServer((resolved_host, port), handler, chat_registry=chat_registry)
 
 
 def serve(
@@ -612,14 +947,15 @@ def serve(
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
     run_dependencies: RunDependencies | None = None,
+    chat_dependencies: ChatDependencies | None = None,
 ) -> int:
     """Run the API server until interrupted. Returns a process exit code."""
     server = build_server(
         host, port, catalog=catalog, model_store=model_store,
-        run_dependencies=run_dependencies,
+        run_dependencies=run_dependencies, chat_dependencies=chat_dependencies,
     )
     bound_host, bound_port = server.server_address[:2]
-    print(f"LocalAI Hub API listening on http://{bound_host}:{bound_port}")
+    print(f"CastleArq API listening on http://{bound_host}:{bound_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

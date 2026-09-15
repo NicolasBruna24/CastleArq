@@ -1,8 +1,10 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from app.model_store import ModelStore, UnsafePathError, default_models_directory
 from app.models import ArtifactSpec, ArtifactState
@@ -216,6 +218,47 @@ class ModelStoreTests(unittest.TestCase):
             config = Path(directory) / "config.toml"
             config.write_text('[models]\ndirectory = "~/localai-test"\n', encoding="utf-8")
             self.assertNotIn("~", str(default_models_directory(config)))
+
+    def test_new_default_used_when_no_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = os.path.join(directory, "fake-home")
+            os.makedirs(home)
+            missing_config = Path(directory) / "does-not-exist.toml"
+            with mock.patch(
+                "app.model_store.os.path.expanduser",
+                lambda p: p.replace("~", home) if p.startswith("~") else p,
+            ):
+                result = default_models_directory(missing_config)
+            self.assertIn("castlearq", str(result))
+            self.assertNotIn("localai-hub", str(result))
+
+    def test_fallback_to_legacy_when_new_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = os.path.join(directory, "fake-home")
+            legacy = os.path.join(home, ".local", "share", "localai-hub", "models")
+            os.makedirs(legacy)
+            missing_config = Path(directory) / "does-not-exist.toml"
+            with mock.patch(
+                "app.model_store.os.path.expanduser",
+                lambda p: p.replace("~", home) if p.startswith("~") else p,
+            ):
+                result = default_models_directory(missing_config)
+            self.assertIn("localai-hub", str(result))
+
+    def test_new_takes_priority_over_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = os.path.join(directory, "fake-home")
+            legacy = os.path.join(home, ".local", "share", "localai-hub", "models")
+            new = os.path.join(home, ".local", "share", "castlearq", "models")
+            os.makedirs(legacy)
+            os.makedirs(new)
+            missing_config = Path(directory) / "does-not-exist.toml"
+            with mock.patch(
+                "app.model_store.os.path.expanduser",
+                lambda p: p.replace("~", home) if p.startswith("~") else p,
+            ):
+                result = default_models_directory(missing_config)
+            self.assertIn("castlearq", str(result))
 
     def test_manifest_is_json(self):
         with tempfile.TemporaryDirectory() as directory:

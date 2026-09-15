@@ -34,7 +34,32 @@ class StoredArtifact:
     message: str | None = None
 
 
+_LEGACY_MODELS_DIRECTORY = "~/.local/share/localai-hub/models"
+_DEFAULT_MODELS_DIRECTORY = "~/.local/share/castlearq/models"
+LEGACY_MODELS_DIRECTORY = _LEGACY_MODELS_DIRECTORY
+DEFAULT_MODELS_DIRECTORY = _DEFAULT_MODELS_DIRECTORY
+
+
+def _expand(path: str) -> Path:
+    return Path(os.path.expanduser(path))
+
+
 def default_models_directory(config_path: Path = Path("config/config.toml")) -> Path:
+    """Resolve the model store root directory.
+
+    Priority:
+
+    1. ``[models] directory`` in ``config/config.toml`` (honored verbatim),
+       unless it points at the new default and that path does not exist while
+       the legacy directory does — in which case the legacy directory is used
+       so existing installs keep seeing their already-downloaded artifacts.
+    2. Otherwise the new default ``castlearq`` directory.
+
+    No files are copied, moved or deleted: ``ModelStore`` simply reads whatever
+    directory this resolves to.
+    """
+    new_default = _expand(DEFAULT_MODELS_DIRECTORY)
+    legacy_default = _expand(LEGACY_MODELS_DIRECTORY)
     value: str | None = None
     try:
         in_models = False
@@ -46,7 +71,12 @@ def default_models_directory(config_path: Path = Path("config/config.toml")) -> 
                 value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
     except OSError:
         pass
-    return Path(os.path.expanduser(value or "~/.local/share/localai-hub/models"))
+    candidate = _expand(value) if value else new_default
+    # Backwards-compatible fallback ONLY for the project's own default paths:
+    # if the new default is absent but the legacy one exists, use the legacy.
+    if candidate == new_default and not candidate.exists() and legacy_default.exists():
+        return legacy_default
+    return candidate
 
 
 class ModelStore:

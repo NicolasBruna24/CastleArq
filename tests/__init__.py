@@ -1,1 +1,1 @@
-"""Unit tests for LocalAI Hub."""
+"""Unit tests for CastleArq."""

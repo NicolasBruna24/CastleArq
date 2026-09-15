@@ -1,4 +1,4 @@
-"""Command-line interface for LocalAI Hub."""
+"""Command-line interface for CastleArq."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def print_detection() -> None:
     backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
     runtime, backend = recommend(runtimes, backends)
 
-    print("LocalAI Hub")
+    print("CastleArq")
     print("==========================")
     print("\nSystem")
     print(f"  OS: {hardware.operating_system}")
@@ -144,7 +144,7 @@ def print_models() -> None:
     results = recommend_models(
         hardware, runtimes, backends, get_catalog(), config=load_config()
     )
-    print("LocalAI Hub - Model recommendations")
+    print("CastleArq - Model recommendations")
     print("==========================")
     if not results:
         print("No models available in the catalog.")
@@ -199,7 +199,7 @@ def _format_size(size_bytes: int | None) -> str:
 
 
 def print_local_models(model_store: ModelStore | None = None) -> None:
-    print("LocalAI Hub - Local models")
+    print("CastleArq - Local models")
     print("==========================")
     store = model_store or ModelStore()
     entries = store.list_artifacts()
@@ -248,7 +248,7 @@ def print_source(provider: str | None, repository: str | None) -> int:
     except SourceError as error:
         print(f"Source error: {error}")
         return 1
-    print(f"LocalAI Hub - Hugging Face metadata: {repository}")
+    print(f"CastleArq - Hugging Face metadata: {repository}")
     print("==========================")
     if not artifacts:
         print("No GGUF artifacts found.")
@@ -300,7 +300,7 @@ def print_plan(repository: str | None, filename: str | None) -> int:
         download_url=download_url,
     )
     plan = DownloadPlanner().plan(artifact)
-    print("LocalAI Hub - Offline download plan")
+    print("CastleArq - Offline download plan")
     print("==========================")
     print(f"  Model: {artifact.model_id}")
     print(f"  Repository: {artifact.repository}")
@@ -374,7 +374,7 @@ def run_download(
         )
     except ArtifactSelectionError as error:
         if not quantization and not filename:
-            print(f"LocalAI Hub - Download candidates for model: {model_id}", file=out)
+            print(f"CastleArq - Download candidates for model: {model_id}", file=out)
             print("==========================", file=out)
             if not artifacts:
                 print("No GGUF artifacts found.", file=out)
@@ -598,7 +598,7 @@ def chat_model(
             chunk_callback=stream,
         )
 
-    print("LocalAI Hub — chat", file=out)
+    print("CastleArq — chat", file=out)
     print(f"Model: {model_id}", file=out)
     print("Type /exit to quit.", file=out)
     try:
@@ -681,8 +681,8 @@ class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="localai",
-        description="LocalAI Hub: local model discovery, download, execution and chat",
+        prog="castlearq",
+        description="CastleArq: local model discovery, download, execution and chat",
         epilog=USAGE_FLOW,
         formatter_class=_HelpFormatter,
     )

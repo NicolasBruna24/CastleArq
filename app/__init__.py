@@ -1,2 +1,2 @@
-"""LocalAI Hub application package."""
+"""CastleArq application package."""
 

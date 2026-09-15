@@ -54,7 +54,7 @@ ResponseOpener = Callable[..., BinaryIO]
 def _open_url(
     url: str, timeout: float, headers: Mapping[str, str] | None = None
 ) -> BinaryIO:
-    request_headers = {"User-Agent": "LocalAI-Hub"}
+    request_headers = {"User-Agent": "CastleArq"}
     if headers:
         request_headers.update(headers)
     return urlopen(

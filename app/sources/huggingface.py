@@ -220,6 +220,6 @@ def _extract_tree_oid(entry: dict[str, object]) -> str | None:
 
 
 def _http_get(url: str, timeout: float) -> bytes:
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": "LocalAI-Hub"})
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": "CastleArq"})
     with urlopen(request, timeout=timeout) as response:
         return response.read()

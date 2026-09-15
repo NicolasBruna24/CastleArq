@@ -3,10 +3,11 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "localai-hub"
+name = "castlearq"
 version = "0.1.0"
-description = "Simple local hardware and AI runtime detection"
+description = "CastleArq — Local AI Runtime Architecture"
 requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

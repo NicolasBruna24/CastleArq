@@ -1,4 +1,4 @@
-"""External metadata sources for LocalAI Hub."""
+"""External metadata sources for CastleArq."""
 
 from .huggingface import HuggingFaceSource, SourceError
 

@@ -277,7 +277,7 @@ class PrintLocalModelsTests(unittest.TestCase):
         with redirect_stdout(out):
             print_local_models(mock_store)
         text = out.getvalue()
-        self.assertIn("LocalAI Hub - Local models", text)
+        self.assertIn("CastleArq - Local models", text)
         self.assertIn("No local model artifacts found.", text)
 
     def test_list_with_single_artifact(self):
@@ -428,7 +428,7 @@ class PrintModelsTests(unittest.TestCase):
 
     def test_empty_recommendations_keep_existing_message(self):
         text = self._render([])
-        self.assertIn("LocalAI Hub - Model recommendations", text)
+        self.assertIn("CastleArq - Model recommendations", text)
         self.assertIn("No models available in the catalog.", text)
         self.assertNotIn("Model ID:", text)
 
@@ -600,7 +600,7 @@ class CliHelpTests(unittest.TestCase):
         from app.main import main
 
         buffer = io.StringIO()
-        with patch.object(sys, "argv", ["localai", "--help"]), patch.object(
+        with patch.object(sys, "argv", ["castlearq", "--help"]), patch.object(
             sys, "stdout", new=buffer
         ):
             with self.assertRaises(SystemExit) as ctx:
@@ -613,7 +613,7 @@ class CliHelpTests(unittest.TestCase):
 
     def test_help_has_current_product_description(self):
         self.assertIn(
-            "LocalAI Hub: local model discovery, download, execution and chat",
+            "CastleArq: local model discovery, download, execution and chat",
             self._help_text(),
         )
         self.assertNotIn("hardware detection", self._help_text())
@@ -659,7 +659,7 @@ class CliHelpTests(unittest.TestCase):
         for command in ("detect", "models", "list", "source", "plan", "download", "run", "chat"):
             buffer = io.StringIO()
             with patch.object(
-                sys, "argv", ["localai", command]
+                sys, "argv", ["castlearq", command]
             ), patch.object(sys, "stdout", new=buffer), patch.object(
                 sys, "stderr", new=io.StringIO()
             ):
@@ -675,7 +675,7 @@ class CliHelpTests(unittest.TestCase):
         from app.main import main
 
         with patch.object(
-            sys, "argv", ["localai", "download", "some-model"]
+            sys, "argv", ["castlearq", "download", "some-model"]
         ) as argv, patch("app.main.run_download") as run_download_mock:
             main()
         run_download_mock.assert_called_once_with(
@@ -690,7 +690,7 @@ class CliHelpTests(unittest.TestCase):
             with patch.object(
                 sys,
                 "argv",
-                ["localai", command, "some-model"],
+                ["castlearq", command, "some-model"],
             ), patch(f"app.main.{function_name}") as function_mock:
                 main()
             if command == "run":
@@ -713,7 +713,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
         from app.main import main
 
         stdout, stderr = io.StringIO(), io.StringIO()
-        with patch.object(sys, "argv", ["localai", *argv]), patch.object(
+        with patch.object(sys, "argv", ["castlearq", *argv]), patch.object(
             sys, "stdout", new=stdout
         ), patch.object(sys, "stderr", new=stderr):
             try:

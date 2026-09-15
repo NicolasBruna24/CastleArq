@@ -1,6 +1,8 @@
-# LocalAI Hub
+# CastleArq
 
-LocalAI Hub busca ocultar la complejidad de ejecutar modelos de IA localmente
+CastleArq — Local AI Runtime Architecture.
+
+CastleArq busca ocultar la complejidad de ejecutar modelos de IA localmente
 mediante detección automática de hardware, runtimes y backends. El proyecto
 prioriza simplicidad, fiabilidad y mantenibilidad, sin instalar drivers,
 runtimes ni dependencias del sistema.
@@ -26,7 +28,8 @@ Los comandos ausentes, salidas inválidas y datos no disponibles se muestran com
 ## Quickstart
 
 Entrypoint real: `python3 -m app.main`. Consulta todas las opciones con
-`python3 -m app.main --help`. No existe un comando `localai` instalable.
+`python3 -m app.main --help`. No existe un comando `castlearq` instalable
+(usa `prog=castlearq` solo como nombre visible en la ayuda).
 
 ### Paso 1 — descubrir modelos
 
@@ -184,8 +187,13 @@ CPU explícito; en ese caso el resultado se marca como `marginal`.
 
 La subfase inicial de Fase 3 separa un modelo lógico de un `ArtifactSpec`
 descargable y añade manifests JSON al almacenamiento local. Por defecto se usa
-`~/.local/share/localai-hub/models`, configurable en `[models]` de
-`config/config.toml`. El comando `list` solo inspecciona artifacts locales:
+`~/.local/share/castlearq/models`, configurable en `[models]` de
+`config/config.toml`. Las instalaciones existentes que ya usaban
+`~/.local/share/localai-hub/models` siguen funcionando: si el directorio
+nuevo no existe pero el antiguo sí, se utiliza el antiguo como fallback
+(sin copiar, mover ni borrar datos).
+`config/config.toml` documenta el nuevo directorio por defecto.
+El comando `list` solo inspecciona artifacts locales:
 
 ```bash
 python3 -m app.main list
@@ -320,3 +328,7 @@ sobre el `ModelStore` podría reemplazar o modificar el archivo en ese
 intervalo. Eliminarla por completo requeriría mecanismos adicionales (file
 descriptors, locks o publicación por inodo), fuera del alcance actual de
 Fase 4.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See `LICENSE` for the full text.
