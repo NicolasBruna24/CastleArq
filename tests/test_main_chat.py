@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import app.main as main_module
+import app.run_service as run_service_module
 from app.chat import ChatProcessError
 from app.compatibility import CompatibilityResult, CompatibilityStatus
 from app.execution import ExecutableArtifact
@@ -136,17 +137,17 @@ def pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "ModelStore", lambda: object())
     monkeypatch.setattr(main_module, "ModelArtifactResolver", FakeResolver)
     monkeypatch.setattr(
-        main_module, "detect_hardware", lambda: SimpleNamespace(gpus=())
+        run_service_module, "detect_hardware", lambda: SimpleNamespace(gpus=())
     )
     monkeypatch.setattr(
         main_module, "detect_llama_capability", lambda: capability
     )
     monkeypatch.setattr(
-        main_module,
+        run_service_module,
         "assess_model",
         lambda *args, **kwargs: compatibility,
     )
-    monkeypatch.setattr(main_module, "ArtifactExecutionPreflight", FakePreflight)
+    monkeypatch.setattr(run_service_module, "ArtifactExecutionPreflight", FakePreflight)
     return SimpleNamespace(
         capability=capability,
         artifact=artifact,
@@ -321,7 +322,7 @@ def test_chat_preflight_failure_returns_1(pipeline, monkeypatch):
             )
 
     monkeypatch.setattr(
-        main_module, "ArtifactExecutionPreflight", FailingPreflight
+        run_service_module, "ArtifactExecutionPreflight", FailingPreflight
     )
     err = io.StringIO()
     code = chat_model(
@@ -343,7 +344,7 @@ def test_chat_selection_failure_returns_1(pipeline, monkeypatch):
                 "Recommended backend is not supported by the runtime",
             )
 
-    monkeypatch.setattr(main_module, "RuntimeBackendSelector", FailingSelector)
+    monkeypatch.setattr(run_service_module, "RuntimeBackendSelector", FailingSelector)
     err = io.StringIO()
     code = chat_model(
         "some-model",

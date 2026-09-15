@@ -1,4 +1,4 @@
-"""Read-only local HTTP API (Fase 6.1, bloque 1).
+"""Local HTTP API (Fase 6.1, bloques 1-2).
 
 Transport: ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``
 (stdlib only; no third-party dependencies).
@@ -15,8 +15,14 @@ Block 1 endpoints (read-only):
 - ``GET /v1/models``   -> catalog models with safe, API-appropriate fields.
 - ``GET /v1/artifacts``-> locally stored artifacts, deterministic order.
 
-Not implemented in this block (by design): POST /v1/run, chat HTTP, HTTP
-sessions, execution locks, streaming, OpenAI compatibility, downloads via
+Block 2 endpoint:
+
+- ``POST /v1/run``     -> one-shot execution through the shared run
+  pipeline (``app.run_service.run_once``), guarded by one global
+  execution lock: a second concurrent run gets HTTP 409.
+
+Not implemented in this block (by design): chat HTTP, HTTP
+sessions, streaming, OpenAI compatibility, downloads via
 API, auth/TLS, persistence and Ollama integration.
 
 Safety rules enforced here:
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import threading
 import tomllib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -40,12 +47,22 @@ from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
 from .models import ModelSpec
+from .run_service import (
+    ModelNotFoundError,
+    RunDependencies,
+    RunExecutionFailedError,
+    RunOutcome,
+    RunPreparationFailedError,
+    run_once,
+)
 
 __all__ = [
     "APIConfigurationError",
     "ArtifactDTO",
     "MAX_REQUEST_BODY_BYTES",
     "ModelDTO",
+    "RunRequestDTO",
+    "RunResponseDTO",
     "build_server",
     "get_version",
     "list_artifact_dtos",
@@ -167,6 +184,96 @@ class ArtifactDTO:
         }
 
 
+_RUN_REQUEST_FIELDS = frozenset(
+    {"model_id", "prompt", "quantization", "filename", "timeout"}
+)
+
+
+@dataclass(frozen=True)
+class RunRequestDTO:
+    """Validated ``POST /v1/run`` input. Only process-safe selection fields."""
+
+    model_id: str
+    prompt: str
+    quantization: str | None = None
+    filename: str | None = None
+    timeout: float | None = None
+
+
+@dataclass(frozen=True)
+class RunResponseDTO:
+    """API-safe projection of a successful run (never argv/env/paths)."""
+
+    model_id: str
+    output: str
+    exit_code: int | None
+    warnings: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "model_id": self.model_id,
+            "output": self.output,
+            "exit_code": self.exit_code,
+            "warnings": list(self.warnings),
+        }
+
+
+def parse_run_request(payload: object) -> RunRequestDTO:
+    """Validate raw JSON into a :class:`RunRequestDTO` or raise ``ValueError``."""
+    if not isinstance(payload, dict):
+        raise ValueError("request body must be a JSON object")
+    unknown = sorted(set(payload) - _RUN_REQUEST_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown field: {unknown[0]}")
+    for required in ("model_id", "prompt"):
+        if required not in payload:
+            raise ValueError(f"missing required field: {required}")
+    model_id = payload["model_id"]
+    prompt = payload["prompt"]
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("model_id must be a non-empty string")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt must be a non-empty string")
+    quantization = payload.get("quantization")
+    if quantization is not None and (
+        not isinstance(quantization, str) or not quantization.strip()
+    ):
+        raise ValueError("quantization must be a non-empty string")
+    filename = payload.get("filename")
+    if filename is not None and (
+        not isinstance(filename, str) or not filename.strip()
+    ):
+        raise ValueError("filename must be a non-empty string")
+    timeout = payload.get("timeout")
+    if timeout is not None:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or timeout != timeout  # NaN
+            or timeout in (float("inf"), float("-inf"))
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive number")
+        timeout = float(timeout)
+    return RunRequestDTO(
+        model_id=model_id,
+        prompt=prompt,
+        quantization=quantization,
+        filename=filename,
+        timeout=timeout,
+    )
+
+
+def run_response_from_outcome(outcome: RunOutcome) -> RunResponseDTO:
+    """Project a :class:`RunOutcome` into its API-safe DTO."""
+    return RunResponseDTO(
+        model_id=outcome.model_id,
+        output=outcome.output,
+        exit_code=outcome.exit_code,
+        warnings=tuple(outcome.warnings),
+    )
+
+
 def _model_dto(spec: ModelSpec) -> ModelDTO:
     locator = downloadable_locator(spec.model_id)
     downloadable = locator is not None
@@ -252,6 +359,8 @@ def _make_handler(
     catalog: tuple[ModelSpec, ...],
     store: ModelStore,
     version: str,
+    run_dependencies: RunDependencies | None,
+    run_lock: threading.Lock,
 ) -> type[BaseHTTPRequestHandler]:
     """Build a handler class with the injected core dependencies."""
     from urllib.parse import urlsplit
@@ -316,10 +425,123 @@ def _make_handler(
                 except OSError:
                     pass
 
-        def _method_not_allowed(self) -> None:
-            self._send_json(405, {"error": "method not allowed"}, allow="GET")
+        def _read_body(self) -> bytes | None:
+            """Read the request body, enforcing the 1 MiB limit.
 
-        do_POST = _method_not_allowed  # noqa: N802
+            Returns ``None`` when there is no body or when an error
+            response was already sent (invalid/oversized Content-Length).
+            """
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None:
+                return None
+            try:
+                length = int(raw_length)
+            except ValueError:
+                self._send_json(400, {"error": "invalid Content-Length"})
+                return None
+            if length < 0:
+                self._send_json(400, {"error": "invalid Content-Length"})
+                return None
+            if length > MAX_REQUEST_BODY_BYTES:
+                self._send_json(413, {"error": "request body too large"})
+                return None
+            if length == 0:
+                return None
+            try:
+                return self.rfile.read(length)
+            except OSError:
+                self._send_json(400, {"error": "could not read request body"})
+                return None
+
+        def _read_json_body(self) -> object | None:
+            raw = self._read_body()
+            if raw is None:
+                if self.headers.get("Content-Length") is None:
+                    self._send_json(400, {"error": "request body is required"})
+                return None
+            if not raw.strip():
+                self._send_json(400, {"error": "request body is required"})
+                return None
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                self._send_json(400, {"error": "invalid JSON"})
+                return None
+
+        def _handle_run(self) -> None:
+            """Validate ``POST /v1/run`` and execute it under the global lock."""
+            content_type = self.headers.get("Content-Type", "")
+            media_type = content_type.split(";")[0].strip().lower()
+            if media_type != "application/json":
+                self._send_json(
+                    400, {"error": "Content-Type must be application/json"}
+                )
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            try:
+                request = parse_run_request(payload)
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            if not run_lock.acquire(blocking=False):
+                self._send_json(
+                    409, {"error": "another execution is already running"}
+                )
+                return
+            try:
+                outcome = run_once(
+                    request.model_id,
+                    request.prompt,
+                    quantization=request.quantization,
+                    filename=request.filename,
+                    timeout_seconds=request.timeout,
+                    dependencies=run_dependencies,
+                )
+            except ModelNotFoundError as error:
+                self._send_json(404, {"error": str(error)})
+                return
+            except RunPreparationFailedError as error:
+                self._send_json(422, {"error": str(error)})
+                return
+            except RunExecutionFailedError as error:
+                self._send_json(503, {"error": str(error)})
+                return
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except Exception as error:  # never leak details to the client
+                self.log_error("internal error handling %s: %r", self.path, error)
+                try:
+                    self._send_json(500, {"error": "internal server error"})
+                except OSError:
+                    pass
+                return
+            finally:
+                run_lock.release()
+            self._send_json(200, run_response_from_outcome(outcome).to_dict())
+
+        def do_POST(self) -> None:  # noqa: N802 (http.server naming)
+            try:
+                if urlsplit(self.path).path != "/v1/run":
+                    # POST is only defined for /v1/run; the GET-only
+                    # resources keep their Block 1 behaviour (405).
+                    self._method_not_allowed()
+                    return
+                self._handle_run()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as error:  # never leak details to the client
+                self.log_error("internal error handling %s: %r", self.path, error)
+                try:
+                    self._send_json(500, {"error": "internal server error"})
+                except OSError:
+                    pass
+
+        def _method_not_allowed(self) -> None:
+            self._send_json(
+                405, {"error": "method not allowed"}, allow="GET, POST"
+            )
         do_PUT = _method_not_allowed  # noqa: N802
         do_DELETE = _method_not_allowed  # noqa: N802
         do_PATCH = _method_not_allowed  # noqa: N802
@@ -364,8 +586,9 @@ def build_server(
     *,
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
+    run_dependencies: RunDependencies | None = None,
 ) -> ThreadingHTTPServer:
-    """Build the read-only API server (not yet serving).
+    """Build the API server (not yet serving).
 
     ``port=0`` binds an ephemeral loopback port, which is what tests use.
     Non-loopback hosts are rejected explicitly so the API cannot be exposed
@@ -374,7 +597,11 @@ def build_server(
     resolved_host = _validate_loopback_host(host)
     specs = tuple(catalog) if catalog is not None else get_catalog()
     store = model_store if model_store is not None else ModelStore()
-    handler = _make_handler(specs, store, get_version())
+    if run_dependencies is None:
+        run_dependencies = RunDependencies(model_store=store, models=specs)
+    handler = _make_handler(
+        specs, store, get_version(), run_dependencies, threading.Lock()
+    )
     return _APIServer((resolved_host, port), handler)
 
 
@@ -384,9 +611,13 @@ def serve(
     *,
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
+    run_dependencies: RunDependencies | None = None,
 ) -> int:
     """Run the API server until interrupted. Returns a process exit code."""
-    server = build_server(host, port, catalog=catalog, model_store=model_store)
+    server = build_server(
+        host, port, catalog=catalog, model_store=model_store,
+        run_dependencies=run_dependencies,
+    )
     bound_host, bound_port = server.server_address[:2]
     print(f"LocalAI Hub API listening on http://{bound_host}:{bound_port}")
     try:

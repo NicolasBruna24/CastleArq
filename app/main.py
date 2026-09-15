@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from .api import serve
+from .run_service import (
+    ExecutionPreparation,
+    PreparationError,
+    detect_runtime_statuses as _detect_runtime_statuses,
+    prepare as _prepare,
+)
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
@@ -57,113 +63,6 @@ def _catalog_model_ids() -> frozenset[str]:
 
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
 
-
-
-@dataclass(frozen=True)
-class ExecutionPreparation:
-    """Inputs shared by one-shot run and interactive chat.
-
-    This type is deliberately minimal and immutable: it carries only the
-    information that both execution paths need AFTER resolution but BEFORE
-    any runtime process is launched. It does not execute anything.
-
-    ``compatibility_warnings`` and ``selection_warnings`` are kept separate so
-    that each execution path can preserve its exact historical warning
-    behaviour (one-shot run prints both; interactive chat prints only
-    selection warnings).
-    """
-
-    executable_artifact: ExecutableArtifact
-    target: ExecutionTarget
-    compatibility_warnings: tuple[str, ...]
-    selection_warnings: tuple[str, ...]
-
-
-class PreparationError(Exception):
-    """Raised when an artifact cannot be prepared for any execution path."""
-
-    def __init__(
-        self,
-        message: str,
-        compatibility_warnings: tuple[str, ...] = (),
-        selection_warnings: tuple[str, ...] = (),
-    ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.compatibility_warnings = compatibility_warnings
-        self.selection_warnings = selection_warnings
-
-    @property
-    def warnings(self) -> tuple[str, ...]:
-        """Merged warnings, deduplicated, for callers that treat them uniformly."""
-        return tuple(dict.fromkeys((*self.compatibility_warnings, *self.selection_warnings)))
-
-
-def _detect_runtime_statuses(
-    capability: RuntimeCapability,
-) -> list[RuntimeStatus]:
-    """Build the runtime list that both run and chat currently construct inline."""
-    return [
-        RuntimeStatus(
-            "llama.cpp / llama.app",
-            installed=capability.executable_path is not None,
-            available=capability.available,
-            gpu_backend_detected=False,
-            supported_backends=capability.supported_backends,
-        )
-    ]
-
-
-def _prepare(
-    model: ModelSpec,
-    artifact: ArtifactSpec,
-    capability: "RuntimeCapability",
-    model_store: ModelStore,
-) -> ExecutionPreparation:
-    """Resolve compatibility, preflight and selection without launching anything.
-
-    Both ``run_model`` and ``chat_model`` need exactly this sequence. Keeping it
-    here guarantees both paths make the same decisions from the same inputs.
-    """
-    hardware = detect_hardware()
-    runtimes = _detect_runtime_statuses(capability)
-    detected_gpu_backends = {backend for gpu in hardware.gpus for backend in gpu.backends}
-    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
-
-    compatibility = assess_model(
-        hardware, runtimes, backends, model, config=CompatibilityConfig()
-    )
-    if compatibility.status in {
-        CompatibilityStatus.INCOMPATIBLE,
-        CompatibilityStatus.UNKNOWN,
-    }:
-        raise PreparationError(
-            "Model compatibility does not permit execution",
-            compatibility_warnings=compatibility.warnings,
-        )
-
-    try:
-        executable_artifact = ArtifactExecutionPreflight(model_store).validate(artifact)
-    except ArtifactPreflightError as error:
-        raise PreparationError(
-            error.message, compatibility_warnings=compatibility.warnings
-        ) from error
-
-    try:
-        selection = RuntimeBackendSelector().select(
-            compatibility, capability, executable_artifact
-        )
-    except RuntimeSelectionError as error:
-        raise PreparationError(
-            error.message, compatibility_warnings=compatibility.warnings
-        ) from error
-
-    return ExecutionPreparation(
-        executable_artifact=executable_artifact,
-        target=selection.target,
-        compatibility_warnings=compatibility.warnings,
-        selection_warnings=selection.warnings,
-    )
 
 def _format_gib(value: float | None) -> str:
     return f"{value:.0f} GB" if value is not None else "Unknown"

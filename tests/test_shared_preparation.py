@@ -70,33 +70,33 @@ class SharedPreparationTests(unittest.TestCase):
         self.model_store = Mock()
 
     def test_prepare_evaluates_compatibility_once(self):
-        with patch("app.main.assess_model") as assess_model, patch(
-            "app.main.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.main.RuntimeBackendSelector", return_value=self.selector):
+        with patch("app.run_service.assess_model") as assess_model, patch(
+            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             assess_model.assert_called_once()
 
     def test_prepare_runs_preflight_once(self):
-        with patch("app.main.assess_model") as assess_model, patch(
-            "app.main.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.main.RuntimeBackendSelector", return_value=self.selector):
+        with patch("app.run_service.assess_model") as assess_model, patch(
+            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             self.preflight.validate.assert_called_once_with(self.artifact)
 
     def test_prepare_runs_selection_once(self):
-        with patch("app.main.assess_model") as assess_model, patch(
-            "app.main.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.main.RuntimeBackendSelector", return_value=self.selector):
+        with patch("app.run_service.assess_model") as assess_model, patch(
+            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             self.selector.select.assert_called_once()
 
     def test_prepare_returns_same_target_for_run_and_chat(self):
-        with patch("app.main.assess_model") as assess_model, patch(
-            "app.main.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.main.RuntimeBackendSelector", return_value=self.selector):
+        with patch("app.run_service.assess_model") as assess_model, patch(
+            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             preparation = _prepare(
                 self.model, self.artifact, self.capability, self.model_store
@@ -108,7 +108,7 @@ class SharedPreparationTests(unittest.TestCase):
             self.assertIn("marginal", preparation.selection_warnings)
 
     def test_prepare_refuses_incompatible_model(self):
-        with patch("app.main.assess_model") as assess_model:
+        with patch("app.run_service.assess_model") as assess_model:
             assess_model.return_value = CompatibilityResult(
                 model=self.model,
                 status=CompatibilityStatus.INCOMPATIBLE,
