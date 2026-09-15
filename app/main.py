@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+from .api import serve
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
 from .hardware import detect_hardware
@@ -753,16 +754,42 @@ examples:
 
 
 """
+def serve_command(host: str | None = None, port: int | None = None) -> int:
+    """Start the read-only HTTP API server (loopback-only)."""
+    return serve(host=host or "127.0.0.1", port=8000 if port is None else port)
+
+
+class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Help formatter that never breaks hyphenated terms mid-word.
+
+    ``textwrap``'s default ``break_on_hyphens=True`` can wrap tokens such as
+    ``model-id`` as ``model-`` / ``id`` depending on terminal width, which
+    corrupts the documented CLI contract (``model-id for download/run/chat``).
+    Wrapping only at spaces keeps those terms intact at any width.
+    """
+
+    def _split_lines(self, text: str, width: int) -> list[str]:
+        import textwrap
+
+        text = self._whitespace_matcher.sub(" ", text).strip()
+        wrapper = textwrap.TextWrapper(
+            width=width,
+            break_on_hyphens=False,
+            break_long_words=False,
+        )
+        return wrapper.wrap(text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="localai",
         description="LocalAI Hub: local model discovery, download, execution and chat",
         epilog=USAGE_FLOW,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_HelpFormatter,
     )
     parser.add_argument(
         "command",
-        choices=("detect", "models", "list", "source", "plan", "download", "run", "chat"),
+        choices=("detect", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
         help="command to execute",
     )
     parser.add_argument(
@@ -783,6 +810,15 @@ def main() -> int:
     )
     parser.add_argument("--prompt", help="prompt text for run")
     parser.add_argument(
+        "--host",
+        help="bind address for serve (loopback only; default 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="TCP port for serve (default 8000)",
+    )
+    parser.add_argument(
         "--quantization",
         help="quantization level to select for download, run or chat",
     )
@@ -800,9 +836,13 @@ def main() -> int:
         "download": ("quantization", "filename"),
         "run": ("prompt", "quantization", "filename"),
         "chat": ("quantization", "filename"),
+        "serve": (),
     }
     for flag in ("prompt", "quantization", "filename"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
+            parser.error(f"--{flag} is not valid for command '{args.command}'")
+    for flag in ("host", "port"):
+        if getattr(args, flag) is not None and args.command != "serve":
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     if args.command == "detect":
         print_detection()
@@ -839,6 +879,8 @@ def main() -> int:
             quantization=args.quantization,
             filename=args.filename,
         )
+    elif args.command == "serve":
+        return serve_command(host=args.host, port=args.port)
     return 0
 
 
