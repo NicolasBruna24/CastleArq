@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Local HTTP API (Fase 6.1, bloques 1-3.2).
+"""Local HTTP API (Fase 6.1, bloques 1-3.4).
 
 Transport: ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``
 (stdlib only; no third-party dependencies).
@@ -78,6 +78,22 @@ Block 3.3 (lifecycle hardening, shutdown gate):
   session can ever be registered (create answers 503 "server is shutting
   down"). ``close_all()`` never waits for in-flight turns.
 
+Block 3.4 (contract & reliability hardening):
+
+- ``Content-Length: 0`` (or a missing Content-Length) on any POST that shares
+  ``_read_json_body`` (``/v1/run``, session create, turns) now answers a
+  deterministic 400 ``"request body is required"`` instead of silently closing
+  the connection. Invalid/oversized/read-error bodies keep their own answers
+  and never get a second response.
+- Error messages match the session's observable state: a FAILED session
+  answers 409 ``"chat session has failed"`` (GET reports ``status: failed``);
+  a CLOSED session keeps answering 409 ``"chat session is closed"``. No new
+  states, codes or exception hierarchy.
+- Infrastructure error paths are traced in the log (module logger
+  ``castlearq.api``): failed session closes in ``close_all``/``server_close``,
+  a released-unheld turn slot, and expected client disconnects mid-turn.
+  Prompts and client payloads are never logged.
+
 Safety rules enforced here:
 
 - The server only binds loopback interfaces (default ``127.0.0.1``);
@@ -90,6 +106,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import threading
 import tomllib
 import uuid
@@ -115,6 +132,12 @@ from .run_service import (
     open_chat_session,
     run_once,
 )
+
+# Module-level logger for infrastructure paths that run outside a request
+# handler (registry bookkeeping, shutdown) and therefore cannot use the
+# handler's ``log_error``. Only failure details are logged, never prompts or
+# client payloads.
+_LOG = logging.getLogger("castlearq.api")
 
 __all__ = [
     "APIConfigurationError",
@@ -581,8 +604,10 @@ class _ChatSessionRegistry:
         """Release a claimed turn slot; never raises (safe on double release)."""
         try:
             entry.turn_lock.release()
-        except RuntimeError:  # already released: never propagate
-            pass
+        except RuntimeError as error:
+            # Already released: never propagate, but leave a trace — a real
+            # double release would be a bookkeeping bug worth noticing.
+            _LOG.warning("end_turn released an unheld turn slot: %s", error)
 
     def claim_for_removal(self, session_id: str) -> _ChatSessionEntry:
         """Atomically unregister an idle session and return it.
@@ -643,11 +668,15 @@ class _ChatSessionRegistry:
             self._closing = True
             entries = list(self._sessions.items())
             self._sessions.clear()
-        for _, entry in entries:
+        for session_id, entry in entries:
             try:
                 entry.session.close()
-            except Exception:
-                continue
+            except Exception as error:
+                # One bad session never blocks the others, but a close
+                # failure may leave a runtime process alive: log it.
+                _LOG.warning(
+                    "close_all: closing chat session %s failed: %r",
+                    session_id, error)
 
 
 def run_response_from_outcome(outcome: RunOutcome) -> RunResponseDTO:
@@ -841,6 +870,8 @@ def _make_handler(
 
             Returns ``None`` when there is no body or when an error
             response was already sent (invalid/oversized Content-Length).
+            In the latter case ``self._body_error_sent`` is set so
+            ``_read_json_body`` does not send a second response.
             """
             raw_length = self.headers.get("Content-Length")
             if raw_length is None:
@@ -848,12 +879,15 @@ def _make_handler(
             try:
                 length = int(raw_length)
             except ValueError:
+                self._body_error_sent = True
                 self._send_json(400, {"error": "invalid Content-Length"})
                 return None
             if length < 0:
+                self._body_error_sent = True
                 self._send_json(400, {"error": "invalid Content-Length"})
                 return None
             if length > MAX_REQUEST_BODY_BYTES:
+                self._body_error_sent = True
                 self._send_json(413, {"error": "request body too large"})
                 return None
             if length == 0:
@@ -861,13 +895,20 @@ def _make_handler(
             try:
                 return self.rfile.read(length)
             except OSError:
+                self._body_error_sent = True
                 self._send_json(400, {"error": "could not read request body"})
                 return None
 
         def _read_json_body(self) -> object | None:
             raw = self._read_body()
             if raw is None:
-                if self.headers.get("Content-Length") is None:
+                # Deterministic answer for a request without a body: a missing
+                # Content-Length and a ``Content-Length: 0`` are both an empty
+                # body (Block 3.4), and the client always gets a 400 instead of
+                # a silently closed connection. Nothing extra is sent when
+                # ``_read_body`` already answered (invalid length / 413 / read
+                # error).
+                if not getattr(self, "_body_error_sent", False):
                     self._send_json(400, {"error": "request body is required"})
                 return None
             if not raw.strip():
@@ -1123,7 +1164,17 @@ def _make_handler(
                     # session's own turn log (no parallel API counter).
                     turn_count = _session_turn_count(entry.session)
                 except ChatSessionClosedError:
-                    self._send_json(409, {"error": "chat session is closed"})
+                    # Block 3.4: the message must match the session's
+                    # observable state (GET reports ``status``), without
+                    # inventing new states or codes. ``app.chat`` raises this
+                    # exception for both CLOSED and FAILED sessions; the
+                    # exception text itself is never echoed to the client.
+                    if getattr(entry.session.state, "value", None) == "failed":
+                        self._send_json(
+                            409, {"error": "chat session has failed"})
+                    else:
+                        self._send_json(
+                            409, {"error": "chat session is closed"})
                     return
                 except ChatSessionError as error:
                     # Includes ChatProcessError: the runtime died or the turn
@@ -1134,6 +1185,11 @@ def _make_handler(
                     )
                     return
                 except (BrokenPipeError, ConnectionResetError):
+                    # Expected client disconnect mid-generation: one log line
+                    # for traceability (the generation result is lost), no
+                    # prompt data, no second response attempt.
+                    _LOG.info(
+                        "client disconnected during chat turn %s", session_id)
                     return
                 except Exception as error:  # never leak details to the client
                     self.log_error(
@@ -1236,8 +1292,11 @@ class _APIServer(ThreadingHTTPServer):
         if registry is not None:
             try:
                 registry.close_all()
-            except Exception:
-                pass
+            except Exception as error:
+                # Shutdown must never crash on registry cleanup, but a failed
+                # cleanup can leave orphaned sessions/runtimes: log it.
+                _LOG.warning(
+                    "server_close: chat registry cleanup failed: %r", error)
         super().server_close()
 
 

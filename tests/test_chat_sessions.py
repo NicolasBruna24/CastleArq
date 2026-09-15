@@ -658,9 +658,10 @@ class ChatTurnHttpTests(unittest.TestCase):
             second, _, second_raw = h.post_json(path, {"prompt": "two"})
             self.assertEqual(second, 409)
             body = json.loads(second_raw.decode())
-            self.assertIn("closed", body["error"])
-            # "closed", not "already processing": the slot was free, the
+            # Block 3.4: a FAILED session answers "failed" (coherent with the
+            # GET status), not the generic "closed"; the slot was free, the
             # session state machine rejected the turn (not the API lock).
+            self.assertIn("failed", body["error"])
             self.assertNotIn("already processing", second_raw.decode())
             self.assertEqual(session.generations, 1)       # never re-ran
             self.assertEqual(session.prompts, ["one", "two"])
@@ -743,32 +744,23 @@ class ChatTurnHttpTests(unittest.TestCase):
         self.assertEqual(status, 413)
         self.assertEqual(session.prompts, [])
 
-    def test_empty_body_behaves_like_the_existing_run_endpoint(self):
-        """Parity with ``POST /v1/run`` for ``Content-Length: 0``.
-
-        Both endpoints share ``_read_json_body`` and the API's existing
-        behaviour for a truly empty body is a closed connection with no
-        response. This test pins that the turn endpoint neither diverges nor
-        hangs differently; the missing 400 is pre-existing technical debt of
-        the shared helper (reported with this block), not new behaviour.
-        """
+    def test_empty_body_gets_deterministic_400_on_shared_endpoints(self):
+        """Block 3.4: ``Content-Length: 0`` now answers 400 on every POST
+        that shares ``_read_json_body`` (previously the connection was closed
+        with no response, pre-existing debt of the shared helper)."""
         session = TurnSession()
         with ServerHarness() as h:
             sid = self._create(h, session)
             outcomes = []
-            for path in ("/v1/run", f"/v1/chat/sessions/{sid}/turns"):
-                connection = http.client.HTTPConnection(HOST, h.port, timeout=5)
-                try:
-                    connection.request(
-                        "POST", path, body=None,
-                        headers={"Content-Type": "application/json"})
-                    connection.getresponse()
-                    outcomes.append("response")
-                except http.client.RemoteDisconnected:
-                    outcomes.append("closed")
-                finally:
-                    connection.close()
-        self.assertEqual(outcomes, ["closed", "closed"])
+            for path in ("/v1/run", "/v1/chat/sessions",
+                         f"/v1/chat/sessions/{sid}/turns"):
+                status, _, raw = h.post_json(path, None)
+                outcomes.append((status, json.loads(raw.decode())["error"]))
+        self.assertEqual(
+            outcomes,
+            [(400, "request body is required"),
+             (400, "request body is required"),
+             (400, "request body is required")])
         self.assertEqual(session.prompts, [])
 
 
