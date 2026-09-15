@@ -1030,6 +1030,255 @@ class ChatTurnLifecycleTests(unittest.TestCase):
             harness.stop()
 
 
+class LifecycleHardeningTests(unittest.TestCase):
+    """Block 3.3: registry/shutdown races never orphan a session.
+
+    Races are exercised with real threads plus barriers/gates; the core
+    register-vs-shutdown race repeats 10 rounds inside the test so that every
+    interleaving (register wins / drain wins) is exercised many times.
+    """
+
+    def _post_create(self, harness):
+        return harness.post_json("/v1/chat/sessions", {"model_id": "m"})
+
+    @staticmethod
+    def _spawn(n, target_factory):
+        threads = [threading.Thread(
+            target=target_factory(i), daemon=True) for i in range(n)]
+        for thread in threads:
+            thread.start()
+        return threads
+
+    @staticmethod
+    def _join_all(threads, timeout: float = 10.0) -> None:
+        for thread in threads:
+            thread.join(timeout=timeout)
+            if thread.is_alive():  # pragma: no cover - would hang the suite
+                raise AssertionError("thread did not finish (deadlock?)")
+
+    def test_close_all_empty_registry_is_noop(self):
+        registry = _ChatSessionRegistry()
+        registry.close_all()
+        self.assertEqual(len(registry), 0)
+        self.assertTrue(registry.is_closing())
+
+    def test_shutdown_with_four_idle_sessions(self):
+        registry = _ChatSessionRegistry()
+        sessions = [FakeSession() for _ in range(MAX_CHAT_SESSIONS)]
+        server = build_server(HOST, 0, chat_registry=registry)
+        for session in sessions:
+            registry.register(
+                str(uuid.uuid4()),
+                api_module._ChatSessionEntry(session, "m"))
+        server.server_close()
+        self.assertEqual(len(registry), 0)
+        self.assertTrue(registry.is_closing())
+        self.assertEqual([s.close_count for s in sessions], [1] * 4)
+
+    def test_create_after_shutdown_is_503_without_launch(self):
+        """Invariant 1: after shutdown, create never launches a runtime."""
+        launches = []
+
+        def factory(*args, **kwargs):
+            launches.append(1)
+            return _opened("m")
+
+        registry = _ChatSessionRegistry()
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session", side_effect=factory):
+            registry.close_all()
+            status, _, raw = self._post_create(h)
+        self.assertEqual(status, 503)
+        self.assertEqual(json.loads(raw.decode())["error"],
+                         "server is shutting down")
+        self.assertEqual(launches, [])
+
+    def test_delete_and_turn_after_shutdown_are_404(self):
+        session = FakeSession()
+        registry = _ChatSessionRegistry()
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session",
+                return_value=ChatSessionOpened(session=session, model_id="m")):
+            _, _, raw = self._post_create(h)
+            sid = json.loads(raw.decode())["session_id"]
+            registry.close_all()
+            deleted, _, _ = h.request("DELETE", f"/v1/chat/sessions/{sid}")
+            turn_status, _, _ = h.post_json(
+                f"/v1/chat/sessions/{sid}/turns", {"prompt": "hi"})
+        self.assertEqual(deleted, 404)
+        self.assertEqual(turn_status, 404)
+        self.assertEqual(session.close_count, 1)
+
+
+
+    def test_register_race_vs_close_all_never_orphans(self):
+        """Unit race, 10 rounds: every interleaving closes each session once.
+
+        Workers register freshly launched sessions while the main thread
+        drains. If the register wins, ``close_all`` closes the session; if the
+        drain wins, ``register`` raises ``_ChatRegistryClosing`` and the
+        worker mimics the create handler (close immediately). Either way the
+        final state must be: empty registry, every session closed exactly once.
+        """
+        for _ in range(10):
+            registry = _ChatSessionRegistry(max_sessions=64)
+            sessions = [FakeSession() for _ in range(8)]
+            start = threading.Barrier(len(sessions) + 1)
+
+            def worker(session):
+                start.wait(timeout=10)
+                try:
+                    registry.register(
+                        str(uuid.uuid4()),
+                        api_module._ChatSessionEntry(session, "m"))
+                except api_module._ChatRegistryClosing:
+                    session.close()
+
+            threads = self._spawn(
+                len(sessions), lambda i: (lambda s=sessions[i]: worker(s)))
+            start.wait(timeout=10)
+            registry.close_all()
+            self._join_all(threads)
+            self.assertEqual(len(registry), 0)
+            self.assertEqual([s.close_count for s in sessions], [1] * 8)
+
+    def test_create_concurrent_with_shutdown_never_orphans_http(self):
+        """HTTP race, drain wins: 3 blocked creates answer 503 and self-close.
+
+        The patched factory blocks the create handlers *between* the launch
+        and the registration, so ``close_all`` is guaranteed to drain the
+        (still empty) registry first. This is the exact race that leaked
+        orphaned runtimes before Block 3.3.
+        """
+        for _ in range(3):
+            registry = _ChatSessionRegistry()
+            created = []
+            lock = threading.Lock()
+            all_launched = threading.Event()
+            release = threading.Event()
+
+            def factory(*args, **kwargs):
+                session = FakeSession()
+                with lock:
+                    created.append(session)
+                    if len(created) == 3:
+                        all_launched.set()
+                release.wait(timeout=10)
+                return ChatSessionOpened(session=session, model_id="m")
+
+            outcomes = {}
+            with ServerHarness(chat_registry=registry) as h, mock.patch(
+                    "app.api.open_chat_session", side_effect=factory):
+                def create(i):
+                    outcomes[i] = self._post_create(h)
+
+                threads = self._spawn(3, lambda i: (lambda i=i: create(i)))
+                self.assertTrue(all_launched.wait(timeout=10))
+                registry.close_all()  # drain wins: registration is rejected
+                release.set()
+                self._join_all(threads)
+            self.assertEqual(
+                sorted(status for status, _, _ in outcomes.values()),
+                [503, 503, 503])
+            self.assertEqual(len(registry), 0)
+            self.assertEqual([s.close_count for s in created], [1, 1, 1])
+
+    def test_create_registered_before_shutdown_is_closed_by_close_all(self):
+        """HTTP race, register wins: close_all closes the registered session."""
+        session = FakeSession()
+        registry = _ChatSessionRegistry()
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session",
+                return_value=ChatSessionOpened(session=session, model_id="m")):
+            status, _, raw = self._post_create(h)
+            self.assertEqual(status, 201)
+            sid = json.loads(raw.decode())["session_id"]
+            registry.close_all()
+            after, _, _ = h.request("GET", f"/v1/chat/sessions/{sid}")
+        self.assertEqual(after, 404)
+        self.assertEqual(session.close_count, 1)
+        self.assertEqual(len(registry), 0)
+
+    def test_creation_concurrent_around_limit(self):
+        """4 concurrent creates against max=2: exactly two 201, two 409."""
+        registry = _ChatSessionRegistry(max_sessions=2)
+        opened = [_opened("m") for _ in range(4)]
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session", side_effect=list(opened)):
+            barrier = threading.Barrier(4)
+            outcomes = {}
+
+            def worker(i):
+                barrier.wait(timeout=10)
+                outcomes[i] = self._post_create(h)
+
+            threads = self._spawn(4, lambda i: (lambda i=i: worker(i)))
+            self._join_all(threads)
+            codes = sorted(status for status, _, _ in outcomes.values())
+            # Assert *inside* the with-block: ServerHarness.__exit__ triggers
+            # server_close(), which drains the registry.
+            self.assertEqual(codes, [201, 201, 409, 409])
+            self.assertEqual(len(registry), 2)
+        # The two registered sessions are closed exactly once by the harness
+        # shutdown; the two limit-rejected ones were closed at rejection time
+        # (or never launched if is_full() answered first). Nothing is left
+        # open and nothing is closed twice.
+        close_counts = sorted(
+            s.close_count for s in (o.session for o in opened))
+        self.assertEqual(sum(close_counts), 2)
+        self.assertTrue(all(count in (0, 1) for count in close_counts))
+
+    def test_fifth_session_concurrent_is_409(self):
+        with ServerHarness() as h, mock.patch(
+                "app.api.open_chat_session",
+                side_effect=[_opened("m") for _ in range(6)]):
+            for _ in range(MAX_CHAT_SESSIONS):
+                status, _, _ = self._post_create(h)
+                self.assertEqual(status, 201)
+            barrier = threading.Barrier(2)
+            outcomes = {}
+
+            def worker(i):
+                barrier.wait(timeout=10)
+                outcomes[i] = self._post_create(h)
+
+            threads = self._spawn(2, lambda i: (lambda i=i: worker(i)))
+            self._join_all(threads)
+        codes = sorted(status for status, _, _ in outcomes.values())
+        self.assertEqual(codes, [409, 409])
+
+    def test_delete_and_post_concurrent(self):
+        first = FakeSession()
+        registry = _ChatSessionRegistry()
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session",
+                side_effect=[ChatSessionOpened(session=first, model_id="m"),
+                             ChatSessionOpened(
+                                 session=FakeSession(), model_id="m")]):
+            _, _, raw = self._post_create(h)
+            sid = json.loads(raw.decode())["session_id"]
+            barrier = threading.Barrier(2)
+            outcomes = {}
+
+            def do_delete(i):
+                barrier.wait(timeout=10)
+                outcomes[i] = h.request("DELETE", f"/v1/chat/sessions/{sid}")
+
+            def do_create(i):
+                barrier.wait(timeout=10)
+                outcomes[i] = self._post_create(h)
+
+            threads = self._spawn(
+                2, lambda i: (lambda i=i: do_delete(i) if i == 0
+                              else do_create(i)))
+            self._join_all(threads)
+            # Assert inside the with-block: ServerHarness.__exit__ drains.
+            self.assertEqual(outcomes[0][0], 204)
+            self.assertEqual(outcomes[1][0], 201)
+            self.assertEqual(first.close_count, 1)
+            self.assertEqual(len(registry), 1)
+
+
 class ServiceTests(unittest.TestCase):
     def test_open_ok(self):
         from app import run_service as rs

@@ -66,6 +66,18 @@ Block 3.2 endpoint (turns, per-session concurrency):
   compatibility, downloads via API, auth/TLS, persistence, job queues and
   Ollama integration are NOT part of this block.
 
+Block 3.3 (lifecycle hardening, shutdown gate):
+
+- ``_ChatSessionRegistry.close_all()`` flips a shutdown gate in the same
+  critical section that drains the map, and ``register()`` checks that gate
+  under the same lock. A create request racing shutdown therefore has exactly
+  two deterministic outcomes: its already-registered session is closed by
+  ``close_all()``, or its registration is rejected and the create handler
+  closes the just-launched session immediately (503). No session or runtime
+  can outlive the shutdown as an orphan, and once the gate is set no new
+  session can ever be registered (create answers 503 "server is shutting
+  down"). ``close_all()`` never waits for in-flight turns.
+
 Safety rules enforced here:
 
 - The server only binds loopback interfaces (default ``127.0.0.1``);
@@ -498,6 +510,10 @@ class _ChatSessionBusy(Exception):
     """Internal signal: the session is already processing a turn."""
 
 
+class _ChatRegistryClosing(Exception):
+    """Internal signal: shutdown started; no new session may be registered."""
+
+
 class _ChatSessionRegistry:
     """Thread-safe in-memory store of live chat sessions (no persistence)."""
 
@@ -505,6 +521,10 @@ class _ChatSessionRegistry:
         self._lock = threading.Lock()
         self._sessions: dict[str, _ChatSessionEntry] = {}
         self._max_sessions = max_sessions
+        # Block 3.3 shutdown gate: flipped under ``self._lock`` by
+        # ``close_all()`` and checked under the same lock by ``register()``,
+        # so the gate and the drain are atomic with respect to registration.
+        self._closing = False
 
     def __len__(self) -> int:
         with self._lock:
@@ -514,8 +534,22 @@ class _ChatSessionRegistry:
         with self._lock:
             return len(self._sessions) >= self._max_sessions
 
-    def register(self, session_id: str, entry: _ChatSessionEntry) -> None:
+    def is_closing(self) -> bool:
+        """``True`` once shutdown has started (no new registrations accepted)."""
         with self._lock:
+            return self._closing
+
+    def register(self, session_id: str, entry: _ChatSessionEntry) -> None:
+        """Register a freshly launched session, or raise.
+
+        Raises :class:`_ChatRegistryClosing` once shutdown started (Block 3.3
+        invariant 1) and :class:`_ChatSessionLimitReached` at capacity. In the
+        shutdown case the caller must close the launched session immediately
+        (see :meth:`close_all` for why no session can be orphaned either way).
+        """
+        with self._lock:
+            if self._closing:
+                raise _ChatRegistryClosing
             if len(self._sessions) >= self._max_sessions:
                 raise _ChatSessionLimitReached
             self._sessions[session_id] = entry
@@ -589,8 +623,24 @@ class _ChatSessionRegistry:
         registered. Shutdown deliberately does not take the per-session turn
         slots: an in-flight turn is expected to fail on its own when its
         runtime disappears, and the API must not wait for it.
+
+        Shutdown gate (Block 3.3): ``_closing`` is flipped inside the *same*
+        critical section that drains the map. Because :meth:`register` checks
+        the flag under that same lock, exactly one of two orderings is possible
+        for a registration racing the drain:
+
+        - the register wins: the entry is already in the map before the clear,
+          so ``close_all`` closes it;
+        - the drain wins: ``register`` sees ``_closing`` and raises
+          :class:`_ChatRegistryClosing`, so the create handler closes the
+          launched session immediately.
+
+        Either way a session launched by a losing create request is closed
+        exactly once and nothing can be registered after this method returns
+        (invariants 1, 3, 12 and 13 of Block 3.3).
         """
         with self._lock:
+            self._closing = True
             entries = list(self._sessions.items())
             self._sessions.clear()
         for _, entry in entries:
@@ -899,6 +949,13 @@ def _make_handler(
             except ValueError as error:
                 self._send_json(400, {"error": str(error)})
                 return
+            if sessions.is_closing():
+                # Block 3.3: a create request that arrives after shutdown has
+                # started is answered deterministically instead of launching a
+                # session that would race the registry drain.
+                self._send_json(
+                    503, {"error": "server is shutting down"})
+                return
             if sessions.is_full():
                 self._send_json(
                     409, {"error": "maximum chat sessions reached"}
@@ -945,6 +1002,19 @@ def _make_handler(
                 except Exception:
                     pass
                 self._send_json(409, {"error": "maximum chat sessions reached"})
+                return
+            except _ChatRegistryClosing:
+                # Block 3.3: shutdown drained the registry between the launch
+                # and this registration. Close the launched session right here
+                # (it exists only in this handler frame) so it cannot outlive
+                # the shutdown as an orphan; the answer is deterministic 503.
+                try:
+                    opened.session.close()
+                except Exception:
+                    pass
+                self.log_error(
+                    "chat session creation raced shutdown; session discarded")
+                self._send_json(503, {"error": "server is shutting down"})
                 return
             dto = ChatSessionResponseDTO(
                 session_id=session_id,
