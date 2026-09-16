@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .hardware import CommandRunner, Which, default_command_runner
+from .runtimes import RuntimeProbeResult, query_llama_devices
 
 OS_RELEASE_PATH = Path("/etc/os-release")
 DRI_PATH = Path("/dev/dri")
@@ -192,7 +193,13 @@ def _llama_devices_text(
     llama_devices: str | None,
     probe_llama: bool,
 ) -> str | None:
-    """Return ``llama --list-devices`` output, or ``None`` when unavailable."""
+    """Return ``--list-devices`` output, or ``None`` when unavailable.
+
+    Delegates to :func:`app.runtimes.query_llama_devices` so every caller
+    tries the same subcommand variants in the same order; adapts the
+    read-only string-based ``CommandRunner`` to the probe protocol.
+    System-wide evidence semantics (H1) are unchanged.
+    """
     if llama_devices is not None:
         return llama_devices
     if not probe_llama:
@@ -203,11 +210,14 @@ def _llama_devices_text(
     )
     if binary is None:
         return None
-    for command in ((binary, "--list-devices"), (binary, "serve", "--list-devices")):
-        output = run(command)
-        if output is not None:
-            return output
-    return None
+
+    def _probe(command: Sequence[str]) -> RuntimeProbeResult:
+        output = run(tuple(command))
+        if output is None:
+            return RuntimeProbeResult(1, "", "")
+        return RuntimeProbeResult(0, output, "")
+
+    return query_llama_devices(binary, _probe)
 
 
 def probe_vulkan(

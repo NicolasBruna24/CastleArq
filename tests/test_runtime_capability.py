@@ -20,6 +20,7 @@ from app.runtimes import (
     RuntimeCapability,
     RuntimeProbeResult,
     detect_llama_capability,
+    query_llama_devices,
 )
 
 
@@ -105,6 +106,71 @@ class RuntimeCapabilityTests(unittest.TestCase):
         )
         with self.assertRaises(AttributeError):
             capability.name = "other"
+
+    def test_devices_query_tries_cli_then_serve_then_bare_in_order(self):
+        calls = []
+
+        def run(command):
+            calls.append(command)
+            if command == ("/opt/llama", "serve", "--list-devices"):
+                return RuntimeProbeResult(0, "Vulkan0: Intel GPU", "")
+            return RuntimeProbeResult(1, "", "nope")
+
+        text = query_llama_devices("/opt/llama", run)
+        self.assertEqual(text, "Vulkan0: Intel GPU\n")
+        self.assertEqual(
+            calls,
+            [
+                ("/opt/llama", "cli", "--list-devices"),
+                ("/opt/llama", "serve", "--list-devices"),
+            ],
+        )
+
+    def test_devices_query_falls_back_to_bare_variant(self):
+        calls = []
+
+        def run(command):
+            calls.append(command)
+            if command == ("/opt/llama", "--list-devices"):
+                return RuntimeProbeResult(0, "Vulkan0: Intel GPU", "")
+            return RuntimeProbeResult(1, "", "nope")
+
+        text = query_llama_devices("/opt/llama", run)
+        self.assertEqual(text, "Vulkan0: Intel GPU\n")
+        self.assertEqual(
+            calls,
+            [
+                ("/opt/llama", "cli", "--list-devices"),
+                ("/opt/llama", "serve", "--list-devices"),
+                ("/opt/llama", "--list-devices"),
+            ],
+        )
+
+    def test_devices_query_returns_none_when_all_variants_fail(self):
+        text = query_llama_devices(
+            "/opt/llama",
+            lambda command: RuntimeProbeResult(1, "", "nope"),
+        )
+        self.assertIsNone(text)
+
+    def test_devices_query_rejects_nonzero_returncode_with_stdout(self):
+        def run(command):
+            if command == ("/opt/llama", "--list-devices"):
+                return RuntimeProbeResult(0, "Vulkan0: Intel GPU", "")
+            return RuntimeProbeResult(1, "Vulkan0: Intel GPU", "")
+
+        text = query_llama_devices("/opt/llama", run)
+        # First success wins: cli variant returns stdout despite rc != 0 is
+        # rejected only when it is the failing one; here cli fails with
+        # stdout and bare succeeds.
+        self.assertEqual(text, "Vulkan0: Intel GPU\n")
+
+    def test_devices_query_ignores_stdout_on_failure(self):
+        text = query_llama_devices(
+            "/opt/llama",
+            lambda command: RuntimeProbeResult(1, "Vulkan0: Intel GPU", ""),
+        )
+        self.assertIsNone(text)
 
     def test_probe_does_not_receive_model_store_or_user_command(self):
         commands = []

@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from .runtimes import RuntimeProbeResult, query_llama_devices
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -243,9 +244,21 @@ class LinuxHardwareDetector:
             commands.append((("vulkaninfo", "--summary"), "vulkan"))
         llama = next((self._which(name) for name in ("llama", "llama.app", "llama-cli") if self._which(name)), None)
         if llama:
-            commands.append(((llama, "serve", "--list-devices"), "llama.app"))
+            def _probe(command: Sequence[str]) -> RuntimeProbeResult:
+                output = self._run(tuple(command))
+                if output is None:
+                    return RuntimeProbeResult(1, "", "")
+                return RuntimeProbeResult(0, output, "")
+
+            devices = query_llama_devices(llama, _probe)
+            if devices is not None:
+                commands.append((devices, "llama.app"))
         for command, source in commands:
-            observations = parse_external_gpu_memory(self._run(command) or "", source)
+            if isinstance(command, str):
+                text = command
+            else:
+                text = self._run(command) or ""
+            observations = parse_external_gpu_memory(text, source)
             for name, total, available, backend in observations:
                 gpu = self._match_gpu(gpus, name)
                 if gpu is not None:

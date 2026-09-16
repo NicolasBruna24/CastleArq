@@ -107,6 +107,27 @@ class RuntimeCapability:
         return dict(self.backend_arguments).get(backend)
 
 
+def query_llama_devices(executable: str, run: Run) -> str | None:
+    """Query ``--list-devices`` output trying known llama subcommands.
+
+    Tries, in order, ``cli --list-devices``, ``serve --list-devices`` and
+    bare ``--list-devices``; only a probe with ``returncode == 0`` is
+    accepted. Returns the combined ``stdout``/``stderr`` text of the first
+    successful variant, or ``None`` when no variant works. Never raises for
+    normal probe failures (a raising ``run`` propagates, as with every
+    other probe caller). Read-only: delegates execution to ``run``.
+    """
+    for command in (
+        (executable, "cli", "--list-devices"),
+        (executable, "serve", "--list-devices"),
+        (executable, "--list-devices"),
+    ):
+        result = run(command)
+        if result.returncode == 0:
+            return f"{result.stdout}\n{result.stderr}"
+    return None
+
+
 def detect_llama_capability(
     which: Which = shutil.which,
     run: Run | None = None,
@@ -162,10 +183,11 @@ def detect_llama_capability(
             reason="llama cli lacks required model or prompt options",
         )
 
-    devices_result = probe((executable, "cli", "--list-devices"))
-    devices_text = f"{devices_result.stdout}\n{devices_result.stderr}"
+    devices_text = query_llama_devices(executable, probe)
+    if devices_text is None:
+        devices_text = ""
     backends = ["CPU"]
-    if devices_result.returncode == 0 and "Vulkan" in devices_text:
+    if "Vulkan" in devices_text:
         backends.append("Vulkan")
     prompt_modes = [PromptInputMode.ARGUMENT]
     if "--file" in help_text:
