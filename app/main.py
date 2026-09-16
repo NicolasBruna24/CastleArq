@@ -31,7 +31,20 @@ from .run_service import (
 )
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
-from .hardware import detect_hardware
+from . import gpu_diagnosis
+from .gpu_diagnosis import (
+    DiagnosisResult,
+    DiagnosisStatus,
+    GpuComponent,
+    Recommendation,
+)
+from .gpu_setup import GpuSoftwareStatus, diagnose_gpu_software
+from .hardware import (
+    GPUInfo,
+    HardwareSnapshot,
+    detect_hardware,
+    detect_platform,
+)
 from .model_catalog import get_catalog
 from .model_identity import (
     downloadable_locator,
@@ -127,6 +140,177 @@ def print_detection() -> None:
     print("\nRecommendation")
     print(f"  Recommended runtime: {runtime}")
     print(f"  Recommended backend: {backend}")
+
+
+_GPU_COMPONENT_LABELS: dict[GpuComponent, str] = {
+    GpuComponent.KERNEL_DRIVER: "Kernel driver",
+    GpuComponent.DRM_DEVICE: "DRM render device",
+    GpuComponent.VULKAN_FUNCTIONAL: "Vulkan runtime",
+    GpuComponent.OPENCL: "OpenCL runtime",
+    GpuComponent.LEVEL_ZERO: "Level Zero runtime",
+}
+
+
+@dataclass(frozen=True)
+class GpuDiagnosisReport:
+    """Read-only result of the CLI ``diagnose`` command."""
+
+    hardware: HardwareSnapshot
+    software: GpuSoftwareStatus
+    gpu: GPUInfo | None
+    runtime: str
+    backend: str
+    platform: str
+    diagnosis: DiagnosisResult
+    recommendation: Recommendation
+
+
+def _diagnosis_runtime_key(runtime_label: str) -> str:
+    """Map a detected runtime label to the canonical diagnosis key.
+
+    Detection labels look like ``"llama.cpp / llama.app"`` while the B2
+    matrix is keyed by the canonical runtime (``"llama.cpp"``). Unmodelled
+    labels are preserved so the diagnosis reports them as unknown instead of
+    inventing support.
+    """
+    return runtime_label.split("/", 1)[0].strip().lower()
+
+
+def _component_state(component: GpuComponent, diagnosis: DiagnosisResult) -> str:
+    """Project one component's state from the diagnosis public output."""
+    if any(item.component is component for item in diagnosis.missing_components):
+        return "MISSING"
+    if f"{component.value} status unknown" in diagnosis.warnings:
+        return "UNKNOWN"
+    return "READY"
+
+
+def build_gpu_diagnosis_report(
+    *,
+    hardware: HardwareSnapshot,
+    software: GpuSoftwareStatus,
+    runtime: str,
+    backend: str,
+    platform: str,
+) -> GpuDiagnosisReport:
+    """Run the pure B2/B3 pipeline over already-detected facts (no I/O)."""
+    gpu = hardware.gpus[0] if hardware.gpus else None
+    canonical_runtime = _diagnosis_runtime_key(runtime)
+    diagnosis = gpu_diagnosis.diagnose(
+        software=software,
+        runtime=canonical_runtime,
+        backend=backend,
+        gpu=gpu,
+        platform=platform,
+    )
+    recommendation = gpu_diagnosis.recommend(diagnosis)
+    return GpuDiagnosisReport(
+        hardware=hardware,
+        software=software,
+        gpu=gpu,
+        runtime=canonical_runtime,
+        backend=backend,
+        platform=platform,
+        diagnosis=diagnosis,
+        recommendation=recommendation,
+    )
+
+
+def format_gpu_diagnosis_report(report: GpuDiagnosisReport) -> str:
+    """Render a report as human-readable text (never a Python object dump)."""
+    lines = [
+        "CastleArq — GPU diagnosis",
+        "==========================",
+        "",
+        "System",
+        f"  OS: {report.hardware.operating_system}",
+        f"  Architecture: {report.hardware.architecture}",
+        "",
+        "GPU",
+    ]
+    if report.gpu is not None:
+        lines.extend(
+            (
+                f"  {report.gpu.name}",
+                f"  Vendor: {report.gpu.vendor}",
+                f"  Driver: {report.gpu.driver}",
+            )
+        )
+    else:
+        lines.append("  Not detected")
+    lines.extend(
+        (
+            "",
+            "Target",
+            f"  Platform: {report.platform or 'Unknown'}",
+            f"  Runtime: {report.runtime or 'Unknown'}",
+            f"  Backend: {report.backend or 'Unknown'}",
+            "",
+            "GPU software",
+        )
+    )
+    requirements = gpu_diagnosis.requirements_for(report.runtime, report.backend)
+    if requirements is None:
+        lines.append("  No requirement model for this runtime/backend pair.")
+    elif not requirements:
+        lines.append("  No GPU software components are required.")
+    else:
+        for requirement in requirements:
+            label = _GPU_COMPONENT_LABELS.get(
+                requirement.component, requirement.component.value)
+            state = _component_state(requirement.component, report.diagnosis)
+            lines.append(f"  {label}: {state}")
+    lines.extend(
+        (
+            "",
+            "Diagnosis",
+            f"  Overall status: {report.diagnosis.status.value.upper()}",
+        )
+    )
+    if report.diagnosis.warnings:
+        lines.extend(("", "Warnings"))
+        lines.extend(f"  - {warning}" for warning in report.diagnosis.warnings)
+    lines.extend(("", "Recommendations"))
+    if report.recommendation.recipe_refs:
+        lines.extend(
+            f"  - {recipe}" for recipe in report.recommendation.recipe_refs)
+    elif report.diagnosis.status is DiagnosisStatus.MISSING_COMPONENT:
+        lines.append("  No compatible recipe found for this platform.")
+    elif report.diagnosis.status is DiagnosisStatus.READY:
+        lines.append("  No remediation required.")
+    else:
+        lines.append("  No remediation available until the status is confirmed.")
+    return "\n".join(lines)
+
+
+def print_gpu_diagnosis() -> int:
+    """Observe the environment and print the GPU software diagnosis.
+
+    Reuses the existing detection pipeline (``hardware`` + ``gpu_setup``) and
+    the pure B2/B3 modules. Read-only: it never installs, downloads or
+    modifies the system, and never executes a recipe.
+    """
+    hardware = detect_hardware()
+    runtime_label, backend_label = recommend(
+        detect_runtimes(),
+        detect_backends(
+            detected_gpu_backends={
+                backend for gpu in hardware.gpus for backend in gpu.backends
+            }
+        ),
+    )
+    gpu = hardware.gpus[0] if hardware.gpus else None
+    software = diagnose_gpu_software(
+        driver=gpu.driver if gpu is not None else "Unknown")
+    report = build_gpu_diagnosis_report(
+        hardware=hardware,
+        software=software,
+        runtime=runtime_label,
+        backend=backend_label,
+        platform=detect_platform(hardware.operating_system),
+    )
+    print(format_gpu_diagnosis_report(report))
+    return 0
 
 
 def _download_status(model_id: str) -> str:
@@ -655,6 +839,7 @@ usage flow:
   3. list local artifacts: python3 -m app.main list
   4. run a single prompt:  python3 -m app.main run <model-id> --prompt "..."
   5. start a chat session: python3 -m app.main chat <model-id>
+  6. diagnose GPU software: python3 -m app.main diagnose
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
@@ -665,6 +850,7 @@ examples:
   python3 -m app.main models
   python3 -m app.main download qwen2.5-coder-7b-instruct
   python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Hello"
+  python3 -m app.main diagnose
 
 
 """
@@ -703,7 +889,7 @@ def main() -> int:
     )
     parser.add_argument(
         "command",
-        choices=("detect", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
+        choices=("detect", "diagnose", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
         help="command to execute",
     )
     parser.add_argument(
@@ -743,6 +929,7 @@ def main() -> int:
     args = parser.parse_args()
     supported_flags = {
         "detect": (),
+        "diagnose": (),
         "models": (),
         "list": (),
         "source": (),
@@ -758,8 +945,14 @@ def main() -> int:
     for flag in ("host", "port"):
         if getattr(args, flag) is not None and args.command != "serve":
             parser.error(f"--{flag} is not valid for command '{args.command}'")
+    if args.command == "diagnose" and (
+        args.provider is not None or args.repository is not None
+    ):
+        parser.error("diagnose takes no arguments")
     if args.command == "detect":
         print_detection()
+    elif args.command == "diagnose":
+        return print_gpu_diagnosis()
     elif args.command == "models":
         print_models()
     elif args.command == "list":

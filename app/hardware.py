@@ -333,6 +333,37 @@ def detect_hardware() -> HardwareSnapshot:
     )
 
 
+_PLATFORM_MARKERS: tuple[tuple[str, str], ...] = (
+    ("linux", "linux"),
+    ("windows", "windows"),
+    ("mac os", "macos"),
+    ("macos", "macos"),
+    ("darwin", "macos"),
+)
+_PLATFORM_TOKENS: dict[str, str] = {
+    "linux": "linux",
+    "windows": "windows",
+    "darwin": "macos",
+}
+
+
+def detect_platform(operating_system: str | None = None) -> str:
+    """Canonical platform token used to match platform-specific recipes.
+
+    Prefers the OS text the project already detected
+    (``HardwareSnapshot.operating_system``). When that text does not name a
+    known family (e.g. a distro pretty name such as ``"Ubuntu 24.04"``), it
+    falls back to the same ``platform.system()`` primitive the hardware
+    detector uses. Unknown platforms yield ``""`` and Linux is never assumed.
+    """
+    text = (operating_system or "").strip().lower()
+    for marker, token in _PLATFORM_MARKERS:
+        if marker in text:
+            return token
+    system = platform.system().strip().lower()
+    return _PLATFORM_TOKENS.get(system, "")
+
+
 def _vendor_from_pci(pci_id: str | None) -> str:
     vendors = {"10de": "NVIDIA", "1002": "AMD", "8086": "Intel"}
     return vendors.get(pci_id.split(":", 1)[0].lower(), "Unknown") if pci_id else "Unknown"
