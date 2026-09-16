@@ -56,13 +56,15 @@ class MatrixTests(unittest.TestCase):
         )
         for values, component in cases:
             with self.subTest(values=values):
-                result = dg.diagnose(_status(*values), "llama.cpp", "Vulkan")
+                result = dg.diagnose(
+                    _status(*values), "llama.cpp", "Vulkan", platform="linux")
                 self.assertEqual(result.status, dg.DiagnosisStatus.MISSING_COMPONENT)
                 self.assertEqual(
                     [m.component for m in result.missing_components], [component])
                 rec = dg.recommend(result)
                 self.assertEqual(rec.status, dg.DiagnosisStatus.MISSING_COMPONENT)
-                self.assertIsNone(rec.recipe_ref)
+                self.assertIsNotNone(rec.recipe_ref)
+                self.assertEqual(rec.recipe_refs, (rec.recipe_ref,))
 
     def test_each_none_is_unknown_never_missing(self):
         for values in ((None, True, True), (True, None, True), (True, True, None)):
@@ -271,12 +273,42 @@ class UnknownMatrixTests(unittest.TestCase):
             self.assertEqual(result.status, dg.DiagnosisStatus.UNKNOWN)
 
 
+class DiagnosisContextTests(unittest.TestCase):
+    """A diagnosis must retain enough context to resolve a recipe later."""
+
+    def test_diagnosis_retains_canonical_context(self):
+        result = dg.diagnose(
+            _status(True, True, True), " llama.cpp ", " Vulkan ")
+        self.assertEqual(result.runtime, "llama.cpp")
+        self.assertEqual(result.backend, "vulkan")
+        self.assertEqual(result.platform, "")
+
+    def test_diagnosis_retains_explicit_platform(self):
+        result = dg.diagnose(
+            _status(True, True, True), "llama.cpp", "Vulkan",
+            platform=" LiNuX ")
+        self.assertEqual(result.platform, "linux")
+
+    def test_diagnosis_platform_is_unknown_by_default(self):
+        """No operating system is assumed: the default platform is unknown."""
+        result = dg.diagnose(_status(False, True, True), "llama.cpp", "Vulkan")
+        self.assertEqual(result.status, dg.DiagnosisStatus.MISSING_COMPONENT)
+        self.assertEqual(result.platform, "")
+        rec = dg.recommend(result)
+        self.assertIsNone(rec.recipe_ref)
+        self.assertEqual(rec.recipe_refs, ())
+
+    def test_unmodelled_diagnosis_retains_context(self):
+        result = dg.diagnose(_status(True, True, True), "Ollama", "Vulkan")
+        self.assertEqual(result.runtime, "ollama")
+        self.assertEqual(result.backend, "vulkan")
+
+
 class RecommendTests(unittest.TestCase):
-    def test_recommend_covers_all_statuses_without_recipes(self):
+    def test_recommend_ready_and_unknown_have_no_recipe(self):
         diagnoses = (
             dg.diagnose(_status(True, True, True), "llama.cpp", "Vulkan"),
-            dg.diagnose(_status(True, False, None), "llama.cpp", "Vulkan"),
-            dg.diagnose(_status(False, None, None), "llama.cpp", "Vulkan"),
+            dg.diagnose(_status(None, None, None), "llama.cpp", "Vulkan"),
             dg.diagnose(None, "llama.cpp", "Vulkan"),
         )
         for diagnosis in diagnoses:
@@ -287,7 +319,60 @@ class RecommendTests(unittest.TestCase):
                     rec.missing_components, diagnosis.missing_components)
                 self.assertEqual(rec.warnings, diagnosis.warnings)
                 self.assertIsNone(rec.recipe_ref)
+                self.assertEqual(rec.recipe_refs, ())
                 self.assertEqual(rec.verify_commands, ())
+
+    def test_recommend_unknown_has_no_recipe(self):
+        result = dg.diagnose(_status(False, False, False), "Ollama", "Vulkan")
+        self.assertEqual(result.status, dg.DiagnosisStatus.UNKNOWN)
+        rec = dg.recommend(result)
+        self.assertIsNone(rec.recipe_ref)
+        self.assertEqual(rec.recipe_refs, ())
+
+    def test_recommend_propagates_missing_components_and_warnings(self):
+        result = dg.diagnose(_status(True, False, None), "llama.cpp", "Vulkan")
+        rec = dg.recommend(result)
+        self.assertEqual(rec.status, dg.DiagnosisStatus.MISSING_COMPONENT)
+        self.assertEqual(rec.missing_components, result.missing_components)
+        self.assertEqual(rec.warnings, result.warnings)
+
+    def test_recommend_missing_component_resolves_recipe(self):
+        result = dg.diagnose(
+            _status(True, False, True), "llama.cpp", "Vulkan",
+            platform="linux")
+        rec = dg.recommend(result)
+        self.assertEqual(rec.status, dg.DiagnosisStatus.MISSING_COMPONENT)
+        self.assertEqual(
+            rec.recipe_ref, "linux-llama-cpp-vulkan-drm-device")
+        self.assertEqual(
+            rec.recipe_refs, ("linux-llama-cpp-vulkan-drm-device",))
+        self.assertEqual(rec.missing_components, result.missing_components)
+
+    def test_recommend_keeps_a_recipe_per_missing_component(self):
+        result = dg.diagnose(
+            _status(False, False, False), "llama.cpp", "Vulkan",
+            platform="linux")
+        self.assertEqual(len(result.missing_components), 3)
+        rec = dg.recommend(result)
+        self.assertEqual(len(rec.recipe_refs), 3)
+        self.assertEqual(len(set(rec.recipe_refs)), 3)
+        self.assertEqual(rec.recipe_ref, rec.recipe_refs[0])
+
+    def test_recommend_unsupported_or_unknown_platform_has_no_recipe(self):
+        for platform in ("windows", ""):
+            with self.subTest(platform=platform):
+                result = dg.diagnose(
+                    _status(False, True, True), "llama.cpp", "Vulkan",
+                    platform=platform)
+                self.assertEqual(
+                    result.status, dg.DiagnosisStatus.MISSING_COMPONENT)
+                rec = dg.recommend(result)
+                self.assertIsNone(rec.recipe_ref)
+                self.assertEqual(rec.recipe_refs, ())
+                # A missing component without a compatible recipe is not an
+                # error: the missing component is still preserved.
+                self.assertEqual(
+                    len(rec.missing_components), 1)
 
     def test_recommend_missing_component_state_is_explicit(self):
         result = dg.diagnose(_status(False, None, None), "llama.cpp", "Vulkan")
@@ -312,7 +397,8 @@ class ModelTests(unittest.TestCase):
         field_names = (
             "status", "component", "required_for", "why", "evidence",
             "required_by", "missing_components", "warnings",
-            "recipe_ref", "verify_commands",
+            "recipe_ref", "verify_commands", "recipe_refs",
+            "runtime", "backend", "platform",
         )
         for obj in objs:
             for field_name in field_names:
@@ -322,16 +408,32 @@ class ModelTests(unittest.TestCase):
                     with self.assertRaises(AttributeError):
                         setattr(obj, field_name, None)
 
-    def test_no_recipes_and_no_commands(self):
-        result = dg.diagnose(_status(False, True, True), "llama.cpp", "Vulkan")
+    def test_missing_component_recommends_recipe_without_install(self):
+        result = dg.diagnose(
+            _status(False, True, True), "llama.cpp", "Vulkan",
+            platform="linux")
         rec = dg.recommend(result)
-        self.assertIsNone(rec.recipe_ref)
+        self.assertEqual(
+            rec.recipe_ref, "linux-llama-cpp-vulkan-kernel-driver")
+        # B3 recipes are declarative: no install command is surfaced or run
+        # and the catalog currently defines no verify commands yet.
         self.assertEqual(rec.verify_commands, ())
+
+    def test_models_are_immutable(self):
+        result = dg.diagnose(
+            _status(False, True, True), "llama.cpp", "Vulkan",
+            platform="linux")
+        rec = dg.recommend(result)
+        with self.assertRaises(AttributeError):
+            result.missing_components = ()  # type: ignore[misc]
+        with self.assertRaises(AttributeError):
+            rec.recipe_refs = ()  # type: ignore[misc]
 
     def test_side_effect_safety(self):
         source = Path(dg.__file__).read_text(encoding="utf-8")
         # AST ignores license comments, including the Apache URL. Allow only
-        # model imports from detection modules, never their probe functions.
+        # model imports from detection modules plus the pure recipe lookup,
+        # never probe functions or anything performing I/O.
         tree = ast.parse(source)
         allowed_imports = {
             (0, "__future__"): {"annotations"},
@@ -339,13 +441,15 @@ class ModelTests(unittest.TestCase):
             (0, "enum"): {"Enum"},
             (1, "gpu_setup"): {"FunctionalCheck", "GpuSoftwareStatus"},
             (1, "hardware"): {"GPUInfo"},
+            (1, "gpu_recipes"): {"find_recipe"},
         }
         allowed_calls = {
             "dataclass", "ValueError", "SoftwareRequirement",
             "MissingComponent", "DiagnosisResult", "Recommendation",
             "_canonical", "requirements_for", "getattr", "tuple",
+            "find_recipe",
         }
-        allowed_methods = {"strip", "lower", "get", "append"}
+        allowed_methods = {"strip", "lower", "get", "append", "extend"}
         for node in ast.walk(tree):
             with self.subTest(node=type(node).__name__, line=getattr(node, "lineno", 0)):
                 self.assertNotIsInstance(node, ast.Import)

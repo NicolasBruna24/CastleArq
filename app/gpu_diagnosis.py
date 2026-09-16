@@ -19,8 +19,10 @@ This module only *interprets* already-built, in-memory objects: it never
 probes hardware, never runs commands, never touches the filesystem or the
 network, and never installs anything. ``vulkan_functional`` is interpreted
 as system-wide evidence — the system/runtime reports functional Vulkan
-support; no per-GPU attribution is attempted. ``recipe_ref`` stays
-``None`` until Block B3 defines installation recipes.
+support; no per-GPU attribution is attempted. When a component is
+explicitly missing, :func:`recommend` resolves the declarative recipes in
+:mod:`app.gpu_recipes` (by id) for the recorded
+``runtime``/``backend``/``platform``; nothing is installed or executed here.
 """
 
 from __future__ import annotations
@@ -77,22 +79,37 @@ class MissingComponent:
 
 @dataclass(frozen=True)
 class DiagnosisResult:
-    """Deterministic outcome of :func:`diagnose`."""
+    """Deterministic outcome of :func:`diagnose`.
+
+    ``runtime``/``backend`` hold the canonicalised keys and ``platform`` the
+    case/space-normalised platform. They preserve the context needed by
+    :func:`recommend` to resolve declarative recipes without re-deriving it.
+    """
 
     status: DiagnosisStatus
     missing_components: tuple[MissingComponent, ...] = ()
     warnings: tuple[str, ...] = ()
+    runtime: str = ""
+    backend: str = ""
+    platform: str = ""
 
 
 @dataclass(frozen=True)
 class Recommendation:
-    """Conceptual action for a diagnosis; no install content yet (Block B3)."""
+    """Conceptual action for a diagnosis: declarative recipe references.
+
+    ``recipe_ref`` is the primary recipe id (for convenience) while
+    ``recipe_refs`` lists every resolved recipe id in ``missing_components``
+    order, so multiple missing components never lose information. No install
+    content is provided and nothing is ever executed here.
+    """
 
     status: DiagnosisStatus
     missing_components: tuple[MissingComponent, ...] = ()
     recipe_ref: str | None = None
     verify_commands: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    recipe_refs: tuple[str, ...] = ()
 
 
 # Data-driven requirement matrix keyed by canonical (runtime, backend).
@@ -144,23 +161,31 @@ def diagnose(
     runtime: str,
     backend: str,
     gpu: GPUInfo | None = None,
+    platform: str = "",
 ) -> DiagnosisResult:
     """Interpret detected facts without any side effect.
 
     ``software`` carries the already-probed ``True``/``False``/``None``
     facts; ``None`` as a whole simply means every capability is unknown.
     ``gpu`` is accepted as context only (H1: Vulkan evidence stays
-    system-wide; no per-GPU attribution is attempted). ``False`` evidence
+    system-wide; no per-GPU attribution is attempted). ``platform`` is
+    recorded context used later by :func:`recommend` to resolve a recipe;
+    the default ``""`` means the platform is unknown, so no recipe is ever
+    assumed (no operating system is baked in here). ``False`` evidence
     yields ``MISSING_COMPONENT``; ``None`` (unknown) never does — it yields
     ``UNKNOWN`` unless a ``False`` is also present.
     """
     _ = gpu
-    requirements = requirements_for(runtime, backend)
+    runtime_key, backend_key = _canonical(runtime, backend)
+    platform_key = platform.strip().lower()
+    requirements = _REQUIREMENTS.get((runtime_key, backend_key))
     if requirements is None:
         return DiagnosisResult(
-            DiagnosisStatus.UNKNOWN,
-            (),
-            (f"no requirement model for {runtime} + {backend}",),
+            status=DiagnosisStatus.UNKNOWN,
+            warnings=(f"no requirement model for {runtime} + {backend}",),
+            runtime=runtime_key,
+            backend=backend_key,
+            platform=platform_key,
         )
     missing: list[MissingComponent] = []
     unknown: list[str] = []
@@ -179,18 +204,64 @@ def diagnose(
     warnings = tuple(f"{name} status unknown" for name in unknown)
     if missing:
         return DiagnosisResult(
-            DiagnosisStatus.MISSING_COMPONENT, tuple(missing), warnings)
+            status=DiagnosisStatus.MISSING_COMPONENT,
+            missing_components=tuple(missing),
+            warnings=warnings,
+            runtime=runtime_key,
+            backend=backend_key,
+            platform=platform_key,
+        )
     if unknown:
-        return DiagnosisResult(DiagnosisStatus.UNKNOWN, (), warnings)
-    return DiagnosisResult(DiagnosisStatus.READY, (), ())
+        return DiagnosisResult(
+            status=DiagnosisStatus.UNKNOWN,
+            warnings=warnings,
+            runtime=runtime_key,
+            backend=backend_key,
+            platform=platform_key,
+        )
+    return DiagnosisResult(
+        status=DiagnosisStatus.READY,
+        runtime=runtime_key,
+        backend=backend_key,
+        platform=platform_key,
+    )
 
 
 def recommend(diagnosis: DiagnosisResult) -> Recommendation:
-    """Map a diagnosis to its conceptual action (recipes arrive in B3)."""
+    """Map a diagnosis to declarative recipes (never installs anything).
+
+    Only ``MISSING_COMPONENT`` resolutions receive recipes. Every missing
+    component is looked up independently so multiple absences keep their own
+    recipe; ``READY`` and ``UNKNOWN`` never receive a recipe.
+    """
+    if diagnosis.status is not DiagnosisStatus.MISSING_COMPONENT:
+        return Recommendation(
+            status=diagnosis.status,
+            missing_components=diagnosis.missing_components,
+            recipe_ref=None,
+            verify_commands=(),
+            warnings=diagnosis.warnings,
+            recipe_refs=(),
+        )
+    from .gpu_recipes import find_recipe
+    refs: list[str] = []
+    verify: list[str] = []
+    for missing in diagnosis.missing_components:
+        recipe = find_recipe(
+            diagnosis.runtime,
+            diagnosis.backend,
+            missing.component,
+            diagnosis.platform,
+        )
+        if recipe is None:
+            continue
+        refs.append(recipe.id)
+        verify.extend(recipe.verify_commands)
     return Recommendation(
         status=diagnosis.status,
         missing_components=diagnosis.missing_components,
-        recipe_ref=None,
-        verify_commands=(),
+        recipe_ref=refs[0] if refs else None,
+        verify_commands=tuple(verify),
         warnings=diagnosis.warnings,
+        recipe_refs=tuple(refs),
     )
