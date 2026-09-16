@@ -39,6 +39,7 @@ from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_mode
 from .execution import (
     ArtifactExecutionPreflight,
     ArtifactPreflightError,
+    ExecutionErrorCode,
     ExecutionRequest,
     ExecutableArtifact,
     ExecutionTarget,
@@ -120,11 +121,32 @@ class ModelNotFoundError(RunServiceError):
 
 
 class RunPreparationFailedError(RunServiceError):
-    """Resolution, selection, compatibility or preflight rejected the run."""
+    """Resolution, selection, compatibility or preflight rejected the run.
+
+    Optionally carries the structured warnings the preparation phase
+    produced (Block 6.2-C: preserve internally, expose nothing new).
+    """
+
+    def __init__(
+        self, message: str, *, warnings: tuple[str, ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.warnings: tuple[str, ...] = tuple(warnings)
 
 
 class RunExecutionFailedError(RunServiceError):
-    """The runtime was launched (or attempted) and the run failed."""
+    """The runtime was launched (or attempted) and the run failed.
+
+    Optionally carries the structured :class:`ExecutionErrorCode` from the
+    failed ``ExecutionResult`` (Block 6.2-C: preserve internally, expose
+    nothing new).
+    """
+
+    def __init__(
+        self, message: str, *, error_code: ExecutionErrorCode | None = None
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
 
 
 @dataclass(frozen=True)
@@ -257,7 +279,9 @@ def run_once(
             resolved.model, resolved.artifact, capability, store
         )
     except PreparationError as error:
-        raise RunPreparationFailedError(error.message) from error
+        raise RunPreparationFailedError(
+            error.message, warnings=error.warnings
+        ) from error
 
     runner = deps.runner if deps.runner is not None else LlamaCppRunner(capability)
     request = ExecutionRequest(
@@ -290,7 +314,10 @@ def run_once(
             warnings=warnings,
         )
     detail = result.error.message if result.error is not None else "execution failed"
-    raise RunExecutionFailedError(detail)
+    raise RunExecutionFailedError(
+        detail,
+        error_code=result.error.code if result.error is not None else None,
+    )
 
 
 class ChatLaunchFailedError(RunServiceError):
@@ -355,7 +382,9 @@ def open_chat_session(
             resolved.model, resolved.artifact, capability, store
         )
     except PreparationError as error:
-        raise RunPreparationFailedError(error.message) from error
+        raise RunPreparationFailedError(
+            error.message, warnings=error.warnings
+        ) from error
 
     factory = deps.session_factory or start_chat_session
     try:
