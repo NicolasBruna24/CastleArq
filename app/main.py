@@ -39,6 +39,11 @@ from .gpu_diagnosis import (
     Recommendation,
 )
 from .gpu_setup import GpuSoftwareStatus, diagnose_gpu_software
+from .remediation import (
+    COMPONENT_LABELS,
+    RemediationPlan,
+    build_remediation_plan,
+)
 from .hardware import (
     GPUInfo,
     HardwareSnapshot,
@@ -142,15 +147,6 @@ def print_detection() -> None:
     print(f"  Recommended backend: {backend}")
 
 
-_GPU_COMPONENT_LABELS: dict[GpuComponent, str] = {
-    GpuComponent.KERNEL_DRIVER: "Kernel driver",
-    GpuComponent.DRM_DEVICE: "DRM render device",
-    GpuComponent.VULKAN_FUNCTIONAL: "Vulkan runtime",
-    GpuComponent.OPENCL: "OpenCL runtime",
-    GpuComponent.LEVEL_ZERO: "Level Zero runtime",
-}
-
-
 @dataclass(frozen=True)
 class GpuDiagnosisReport:
     """Read-only result of the CLI ``diagnose`` command."""
@@ -163,6 +159,7 @@ class GpuDiagnosisReport:
     platform: str
     diagnosis: DiagnosisResult
     recommendation: Recommendation
+    plan: RemediationPlan
 
 
 def _diagnosis_runtime_key(runtime_label: str) -> str:
@@ -204,6 +201,7 @@ def build_gpu_diagnosis_report(
         platform=platform,
     )
     recommendation = gpu_diagnosis.recommend(diagnosis)
+    plan = build_remediation_plan(diagnosis)
     return GpuDiagnosisReport(
         hardware=hardware,
         software=software,
@@ -213,6 +211,7 @@ def build_gpu_diagnosis_report(
         platform=platform,
         diagnosis=diagnosis,
         recommendation=recommendation,
+        plan=plan,
     )
 
 
@@ -256,7 +255,7 @@ def format_gpu_diagnosis_report(report: GpuDiagnosisReport) -> str:
         lines.append("  No GPU software components are required.")
     else:
         for requirement in requirements:
-            label = _GPU_COMPONENT_LABELS.get(
+            label = COMPONENT_LABELS.get(
                 requirement.component, requirement.component.value)
             state = _component_state(requirement.component, report.diagnosis)
             lines.append(f"  {label}: {state}")
@@ -280,6 +279,19 @@ def format_gpu_diagnosis_report(report: GpuDiagnosisReport) -> str:
         lines.append("  No remediation required.")
     else:
         lines.append("  No remediation available until the status is confirmed.")
+    lines.extend(("", "Remediation plan"))
+    lines.append(f"  Status: {report.plan.status.value.upper()}")
+    if report.plan.actions:
+        for action in report.plan.actions:
+            lines.append(f"  {action.order}. {action.description}")
+        lines.append("")
+        lines.append(
+            "Authorization required: "
+            + ("yes" if report.plan.requires_authorization else "no"))
+    else:
+        for note in report.plan.notes:
+            lines.append(f"  {note}")
+    lines.append("No actions have been executed.")
     return "\n".join(lines)
 
 
