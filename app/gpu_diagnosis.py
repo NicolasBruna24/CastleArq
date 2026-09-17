@@ -156,6 +156,26 @@ def requirements_for(runtime: str, backend: str) -> tuple[SoftwareRequirement, .
     return _REQUIREMENTS.get(_canonical(runtime, backend))
 
 
+def component_check(
+    software: GpuSoftwareStatus | None,
+    component: GpuComponent,
+) -> FunctionalCheck | None:
+    """Return the existing evidence for one component (no new probes).
+
+    Pure projection over an already-built :class:`GpuSoftwareStatus`: it
+    reuses the same capability map as :func:`diagnose` so verification and
+    diagnosis can never disagree about where the evidence lives. Returns
+    ``None`` when the component has no capability mapping or no facts were
+    collected.
+    """
+    if software is None:
+        return None
+    attribute = _CAPABILITY.get(component)
+    if attribute is None:
+        return None
+    return getattr(software, attribute)
+
+
 def diagnose(
     software: GpuSoftwareStatus | None,
     runtime: str,

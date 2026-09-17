@@ -39,10 +39,23 @@ from .gpu_diagnosis import (
     Recommendation,
 )
 from .gpu_setup import GpuSoftwareStatus, diagnose_gpu_software
+from .gpu_diagnosis import MissingComponent, FunctionalCheck
 from .remediation import (
     COMPONENT_LABELS,
     RemediationPlan,
     build_remediation_plan,
+)
+from .remediation_verification import (
+    format_remediation_verification,
+    verify_remediation,
+)
+from .session import (
+    DiagnosisSession,
+    MissingComponentRecord,
+    SessionError,
+    clear_session,
+    load_session,
+    save_session,
 )
 from .hardware import (
     GPUInfo,
@@ -295,12 +308,68 @@ def format_gpu_diagnosis_report(report: GpuDiagnosisReport) -> str:
     return "\n".join(lines)
 
 
+def _diagnosis_session(report: GpuDiagnosisReport) -> DiagnosisSession:
+    """Capture the context ``verify`` will need later (data only)."""
+    return DiagnosisSession(
+        schema_version=1,
+        original_status=report.diagnosis.status,
+        # Canonical keys (as canonicalised by diagnose), not the raw labels,
+        # so verify always compares against the same reference context.
+        runtime=report.diagnosis.runtime,
+        backend=report.diagnosis.backend,
+        platform=report.platform,
+        missing=tuple(
+            MissingComponentRecord(
+                component=missing.component.value,
+                required_by=missing.required_by,
+                detail=missing.evidence.detail,
+                source=missing.evidence.source,
+            )
+            for missing in report.diagnosis.missing_components
+        ),
+    )
+
+
+def _diagnosis_from_session(session: DiagnosisSession) -> DiagnosisResult:
+    """Rebuild the original diagnosis from persisted, validated data.
+
+    Only confirmed absences were persisted (``passed`` is always ``False``),
+    so ``MissingComponent``'s invariant still holds: unknown evidence is never
+    turned into a missing component. An unknown component name is rejected as
+    an invalid session rather than silently ignored.
+    """
+    components: list[MissingComponent] = []
+    for record in session.missing:
+        try:
+            component = GpuComponent(record.component)
+        except ValueError as error:
+            raise ValueError(
+                f"unknown component in session: {record.component!r}"
+            ) from error
+        components.append(
+            MissingComponent(
+                component,
+                FunctionalCheck(False, record.detail, record.source),
+                record.required_by,
+            )
+        )
+    return DiagnosisResult(
+        status=session.original_status,
+        missing_components=tuple(components),
+        runtime=session.runtime,
+        backend=session.backend,
+        platform=session.platform,
+    )
+
+
 def print_gpu_diagnosis() -> int:
     """Observe the environment and print the GPU software diagnosis.
 
     Reuses the existing detection pipeline (``hardware`` + ``gpu_setup``) and
     the pure B2/B3 modules. Read-only: it never installs, downloads or
-    modifies the system, and never executes a recipe.
+    modifies the system, and never executes a recipe. When a component is
+    confirmed missing, the context needed by ``verify`` is persisted as data
+    under ``~/.castlearq/sessions/`` (never executed, never a system file).
     """
     hardware = detect_hardware()
     runtime_label, backend_label = recommend(
@@ -322,6 +391,83 @@ def print_gpu_diagnosis() -> int:
         platform=detect_platform(hardware.operating_system),
     )
     print(format_gpu_diagnosis_report(report))
+    if report.diagnosis.status is DiagnosisStatus.MISSING_COMPONENT:
+        try:
+            save_session(_diagnosis_session(report))
+        except OSError as error:
+            print(f"Warning: could not persist verification session: {error}")
+        else:
+            print(
+                "Verification session saved. Apply the remediation manually,"
+                " then run: python3 -m app.main verify")
+    return 0
+
+
+def print_remediation_verification() -> int:
+    """Re-observe the environment and verify the remediation (read-only).
+
+    Loads the persisted session, rebuilds the original diagnosis and plan
+    with the pure B5 builder, obtains a fresh state through the existing
+    read-only probes, and compares them with the pure B7 verification.
+    Nothing is ever executed: neither plan commands nor recipe commands.
+    """
+    try:
+        session = load_session()
+    except (SessionError, OSError) as error:
+        print(f"Verification session is unusable: {error}")
+        print("Run 'python3 -m app.main diagnose' to create a new one.")
+        return 2
+    if session is None:
+        print("No previous diagnosis session found.")
+        print("Run 'python3 -m app.main diagnose' first.")
+        return 0
+    try:
+        original = _diagnosis_from_session(session)
+    except ValueError as error:
+        print(f"Verification session is unusable: {error}")
+        print("Run 'python3 -m app.main diagnose' to create a new one.")
+        return 2
+
+    plan = build_remediation_plan(original)
+    hardware = detect_hardware()
+    runtime_label, backend_label = recommend(
+        detect_runtimes(),
+        detect_backends(
+            detected_gpu_backends={
+                backend for gpu in hardware.gpus for backend in gpu.backends
+            }
+        ),
+    )
+    gpu = hardware.gpus[0] if hardware.gpus else None
+    software = diagnose_gpu_software(
+        driver=gpu.driver if gpu is not None else "Unknown")
+    # The comparison is anchored to the original context; if the environment
+    # now recommends a different pair, it is reported as a warning instead of
+    # silently changing the reference.
+    followup = gpu_diagnosis.diagnose(
+        software=software,
+        runtime=session.runtime,
+        backend=session.backend,
+        platform=session.platform,
+    )
+    extra_warnings: list[str] = []
+    current_runtime = _diagnosis_runtime_key(runtime_label)
+    if current_runtime != session.runtime:
+        extra_warnings.append(
+            f"the environment now recommends runtime {current_runtime!r}"
+            f" (original: {session.runtime!r})")
+    if backend_label.strip().lower() != session.backend:
+        extra_warnings.append(
+            f"the environment now recommends backend {backend_label!r}"
+            f" (original: {session.backend!r})")
+    current_platform = detect_platform(hardware.operating_system)
+    if current_platform != session.platform:
+        extra_warnings.append(
+            f"detected platform changed to {current_platform!r}"
+            f" (original: {session.platform!r})")
+    verification = verify_remediation(original, plan, followup, software)
+    print(format_remediation_verification(
+        verification, extra_warnings=tuple(extra_warnings)))
     return 0
 
 
@@ -901,7 +1047,7 @@ def main() -> int:
     )
     parser.add_argument(
         "command",
-        choices=("detect", "diagnose", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
+        choices=("detect", "diagnose", "verify", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
         help="command to execute",
     )
     parser.add_argument(
@@ -942,6 +1088,7 @@ def main() -> int:
     supported_flags = {
         "detect": (),
         "diagnose": (),
+        "verify": (),
         "models": (),
         "list": (),
         "source": (),
@@ -961,10 +1108,16 @@ def main() -> int:
         args.provider is not None or args.repository is not None
     ):
         parser.error("diagnose takes no arguments")
+    if args.command == "verify" and (
+        args.provider is not None or args.repository is not None
+    ):
+        parser.error("verify takes no arguments")
     if args.command == "detect":
         print_detection()
     elif args.command == "diagnose":
         return print_gpu_diagnosis()
+    elif args.command == "verify":
+        return print_remediation_verification()
     elif args.command == "models":
         print_models()
     elif args.command == "list":
