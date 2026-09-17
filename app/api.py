@@ -144,6 +144,7 @@ __all__ = [
     "ArtifactDTO",
     "MAX_CHAT_SESSIONS",
     "MAX_REQUEST_BODY_BYTES",
+    "DRAIN_CAP_BYTES",
     "ChatSessionRequestDTO",
     "ChatSessionResponseDTO",
     "ChatTurnRequestDTO",
@@ -163,6 +164,42 @@ __all__ = [
 # Requests are GET-only in this block; a generous limit guards against
 # oversized (or future) request bodies even though GET carries no body.
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
+
+# After an early 413 the announced body is drained (discarded, never kept)
+# so the client can finish sending and reliably read the response instead
+# of hitting a TCP RST mid-upload (BrokenPipeError). ``DRAIN_CAP_BYTES``
+# bounds how much we are ever willing to consume: a body slightly over the
+# limit is drained; a Content-Length beyond the cap is refused with the
+# 413 and an immediate connection close — draining it would reward abuse.
+# The cap is comfortably above the request limit (never a memory copy: the
+# bytes are discarded chunk by chunk).
+DRAIN_CAP_BYTES = 8 * 1024 * 1024
+_DRAIN_CHUNK_BYTES = 64 * 1024
+
+
+def _drain_request_body(rfile, length: int) -> None:
+    """Discard an announced request body after an early rejection.
+
+    Reads at most ``min(length, DRAIN_CAP_BYTES)`` bytes in small chunks and
+    drops them immediately (nothing is accumulated in memory), so a client
+    that is still uploading can finish sending and reliably read the 413
+    instead of receiving a TCP reset mid-send. A Content-Length beyond
+    ``DRAIN_CAP_BYTES`` is never drained at all: the connection is simply
+    closed, since consuming unbounded input would reward abuse. Read errors
+    are swallowed — the 413 was already sent; the connection closes anyway.
+    """
+    if length > DRAIN_CAP_BYTES:
+        return
+    remaining = length
+    try:
+        while remaining > 0:
+            chunk = rfile.read(min(remaining, _DRAIN_CHUNK_BYTES))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            del chunk  # discarded immediately; never accumulated
+    except OSError:
+        pass
 
 # Block 3.1: hard cap on concurrent in-memory chat sessions. Small on
 # purpose (each session holds a loaded model process); no dynamic config yet.
@@ -889,6 +926,11 @@ def _make_handler(
             if length > MAX_REQUEST_BODY_BYTES:
                 self._body_error_sent = True
                 self._send_json(413, {"error": "request body too large"})
+                # Let the client finish its upload and read the 413 instead
+                # of closing on its in-flight bytes (TCP RST → client-side
+                # BrokenPipeError). Bounded; oversized beyond the cap closes
+                # immediately without consuming abusive input.
+                _drain_request_body(self.rfile, length)
                 return None
             if length == 0:
                 return None

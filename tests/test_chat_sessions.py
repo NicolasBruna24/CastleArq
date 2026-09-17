@@ -32,6 +32,7 @@ from unittest import mock
 from app import api as api_module
 from app.api import MAX_CHAT_SESSIONS, MAX_REQUEST_BODY_BYTES, _ChatSessionRegistry, build_server, parse_chat_session_request, parse_chat_turn_request, parse_session_id
 from app.chat import ChatProcessError, ChatSessionClosedError, ChatSessionError, ChatTurn
+import socket
 
 
 class FakeSession:
@@ -1323,6 +1324,114 @@ class ServiceTests(unittest.TestCase):
                 model=SimpleNamespace(model_id="m"), artifact=SimpleNamespace())
             with self.assertRaises(ChatLaunchFailedError):
                 rs.open_chat_session("x", dependencies=mk)
+
+
+class OversizedBodyDrainTests(unittest.TestCase):
+    """Post-fix regression tests: the early 413 drains a bounded body so
+    clients deterministically receive it (no mid-upload TCP reset race)."""
+
+    def test_max_plus_one_gets_413_stably(self):
+        """MAX + 1 bytes is always answered with a real, readable 413."""
+        session = TurnSession()
+        big = b'{"prompt": "' + b"x" * (MAX_REQUEST_BODY_BYTES + 1) + b'"}'
+        with ServerHarness() as h:
+            sid = self._create(h, session)
+            for _ in range(3):
+                status, _, raw = h.post_json(
+                    f"/v1/chat/sessions/{sid}/turns", None, raw_body=big)
+                self.assertEqual(status, 413)
+                self.assertIn(b"request body too large", raw)
+        self.assertEqual(session.prompts, [])
+
+    def test_drain_discards_bytes_without_accumulating_memory(self):
+        """The drain reads in small chunks, drops them, and returns nothing."""
+        reads = []
+
+        class FakeRfile:
+            def read(self, size):
+                reads.append(size)
+                return b"x" * size
+
+        api_module._drain_request_body(
+            FakeRfile(), MAX_REQUEST_BODY_BYTES + 1)
+        self.assertTrue(reads)
+        self.assertTrue(all(size <= 64 * 1024 for size in reads))
+        self.assertEqual(sum(reads), MAX_REQUEST_BODY_BYTES + 1)
+        self.assertIsNone(
+            api_module._drain_request_body(FakeRfile(), 0))
+        # No additional reads happened for length 0.
+        self.assertEqual(reads[-1], 1)
+
+    def test_drain_never_reads_beyond_the_cap(self):
+        """Content-Length beyond DRAIN_CAP is not drained at all."""
+        reads = []
+
+        class FakeRfile:
+            def read(self, size):
+                reads.append(size)
+                return b"x" * size
+
+        api_module._drain_request_body(FakeRfile(), api_module.DRAIN_CAP_BYTES + 1)
+        self.assertEqual(reads, [])
+
+    def test_drain_reads_in_small_chunks_up_to_the_cap(self):
+        """Chunked reads, capped, discarding every chunk immediately."""
+        reads = []
+
+        class FakeRfile:
+            def read(self, size):
+                reads.append(size)
+                return b"x" * size
+
+        api_module._drain_request_body(FakeRfile(), api_module.DRAIN_CAP_BYTES)
+        self.assertTrue(reads)
+        self.assertTrue(all(size <= 64 * 1024 for size in reads))
+        self.assertEqual(sum(reads), api_module.DRAIN_CAP_BYTES)
+
+    def test_drain_tolerates_client_disconnect(self):
+        """An OSError while draining does not crash the handler path."""
+
+        class BrokenRfile:
+            def read(self, size):
+                raise ConnectionResetError("client went away")
+
+        api_module._drain_request_body(BrokenRfile(), 4096)
+
+    def test_content_length_beyond_cap_closes_without_unbounded_drain(self):
+        """A declared body far beyond DRAIN_CAP gets an immediate 413 even
+        though the client never sends the bytes (no unbounded wait)."""
+        session = TurnSession()
+        with ServerHarness() as h:
+            sid = self._create(h, session)
+            with socket.create_connection((HOST, h.port), timeout=10) as sock:
+                sock.settimeout(10)
+                request = (
+                    b"POST /v1/chat/sessions/" + sid.encode()
+                    + b"/turns HTTP/1.1\r\n"
+                    b"Host: " + HOST.encode() + b"\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Length: "
+                    + str(api_module.DRAIN_CAP_BYTES * 100).encode()
+                    + b"\r\n\r\n" + b"{}"
+                )
+                sock.sendall(request)
+                response = b""
+                while b"request body too large" not in response:
+                    data = sock.recv(4096)
+                    if not data:
+                        break
+                    response += data
+        self.assertIn(b" 413 ", response)
+        self.assertIn(b"request body too large", response)
+        self.assertEqual(session.prompts, [])
+
+    def _create(self, h, session):
+        with mock.patch("app.api.open_chat_session",
+                        return_value=_opened("my-model")):
+            status, _, raw = h.post_json(
+                "/v1/chat/sessions", {"model_id": "my-model"})
+        self.assertEqual(status, 201)
+        return json.loads(raw.decode())["session_id"]
 
 
 if __name__ == "__main__":
