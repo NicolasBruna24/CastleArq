@@ -252,3 +252,48 @@ class DatasetShapeTests(unittest.TestCase):
                     assertion.state)
                 self.assertIn(assertion, rows_for(
                     assertion.subject, assertion.object, assertion.scope))
+
+
+class CodeGenerationAdjudicationTests(unittest.TestCase):
+    """B9.6.0 §7 (reformed): capability states track verified evidence.
+
+    Both runtime/code_generation relations were re-adjudicated with primary
+    runtime evidence (B8.1 §3.7 includes code completion, infilling and FIM),
+    so no capability UNKNOWN is stored; the UNKNOWN demonstration rests on the
+    backend and architecture rows (B9.6.0 §4, §21).
+    """
+
+    def test_llamacpp_code_generation_is_supported(self):
+        self.assertEqual(state_of(ik.LLAMACPP, ik.CAPABILITY_CODE_GENERATION),
+                         STATE.SUPPORTED)
+        self.assertEqual(len(rows_for(ik.LLAMACPP,
+                                      ik.CAPABILITY_CODE_GENERATION)), 1)
+        provenance = rows_for(ik.LLAMACPP,
+                              ik.CAPABILITY_CODE_GENERATION)[0].provenance
+        self.assertIn("tools/server/README.md", provenance.source)
+
+    def test_ollama_code_generation_is_supported(self):
+        self.assertEqual(state_of(ik.OLLAMA, ik.CAPABILITY_CODE_GENERATION),
+                         STATE.SUPPORTED)
+        self.assertEqual(len(rows_for(ik.OLLAMA,
+                                      ik.CAPABILITY_CODE_GENERATION)), 1)
+        provenance = rows_for(ik.OLLAMA,
+                              ik.CAPABILITY_CODE_GENERATION)[0].provenance
+        self.assertIn("suffix", provenance.source)
+
+    def test_no_capability_unknown_is_stored(self):
+        for assertion in ALL_ASSERTIONS:
+            if assertion.object.kind == KIND.CAPABILITY:
+                self.assertIs(assertion.state, STATE.SUPPORTED,
+                              msg=assertion.object.canonical_id)
+
+    def test_unknown_demonstration_rests_on_backend_and_architecture(self):
+        kinds = {assertion.object.kind
+                 for assertion in ik.DELIBERATE_UNKNOWN_ROWS}
+        self.assertEqual(kinds, {KIND.BACKEND, KIND.ARCHITECTURE})
+        self.assertEqual(len(ik.DELIBERATE_UNKNOWN_ROWS), 4)
+        self.assertEqual(len(ALL_ASSERTIONS), 38)
+        for assertion in ALL_ASSERTIONS:
+            self.assertIsNotNone(assertion.provenance)
+        self.assertEqual(REGISTRY.conflicts(), ())
+        self.assertEqual(len(REGISTRY.entries), len(ALL_ASSERTIONS))

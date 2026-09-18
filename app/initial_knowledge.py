@@ -74,7 +74,7 @@ pairs a backend with an architecture or a capability for either runtime. Per
 §11 and §19 nothing is invented to fill that shape; the gap is recorded in
 COVERAGE_GAPS for a later iteration.
 
-Size: 37 rows when written (32 SUPPORTED, 5 UNKNOWN, 0 UNSUPPORTED), inside the
+Size: 38 rows when written (34 SUPPORTED, 4 UNKNOWN, 0 UNSUPPORTED), inside the
 ~20-40 range of §20. Every row is meant to be reviewable on its own: the
 comment above each constant quotes or faithfully paraphrases the exact source
 sentence and location it rests on.
@@ -357,13 +357,30 @@ SOURCE_ABSENT_OLLAMA_ARCHITECTURE: KnowledgeProvenance = KnowledgeProvenance(
     reference="https://docs.ollama.com/import",
     observed_at=OBSERVED_AT,
 )
-SOURCE_ABSENT_LLAMACPP_CODE_GENERATION: KnowledgeProvenance = KnowledgeProvenance(
+SOURCE_LLAMACPP_CODE_INFILLING: KnowledgeProvenance = KnowledgeProvenance(
     source=(
-        "llama.cpp documentation set consulted (README, docs, server): generation "
-        "of text is documented; no code-generation capability statement exists"
+        "llama.cpp repository: tools/server/README.md (API endpoints): '### POST "
+        "`/infill`: For code infilling.'; 'n_indent: ... Useful for code completion "
+        "tasks'; 't_max_predict_ms: ... Useful for FIM applications'; '--spm-infill' "
+        "and the '--fim-qwen-*' fill-in-the-middle presets"
     ),
-    source_type="official project documentation: absence-of-statement check",
-    reference="https://github.com/ggml-org/llama.cpp/blob/master/README.md",
+    source_type="official project documentation",
+    reference=(
+        "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md"
+    ),
+    observed_at=OBSERVED_AT,
+)
+SOURCE_OLLAMA_CODE_COMPLETION: KnowledgeProvenance = KnowledgeProvenance(
+    source=(
+        "Ollama documentation: API reference '/api/generate' documents the 'suffix' "
+        "request field for continuing a response with fill-in-the-middle (FIM) "
+        "content, and the OpenAI-compatible '/v1/completions' route accepts the "
+        "same suffix field; the template documentation presents fill-in-the-middle "
+        "with '{{ .Suffix }}' for code completion models. The suffix/FIM surface is "
+        "a documented runtime operation capable of completing code (B8.1 §3.7)"
+    ),
+    source_type="official documentation",
+    reference="https://docs.ollama.com/api/generate",
     observed_at=OBSERVED_AT,
 )
 # ---------------------------------------------------------------------------
@@ -701,16 +718,17 @@ LLAMACPP_SUPPORTS_TOOL_USE: KnowledgeAssertion = KnowledgeAssertion(
     provenance=SOURCE_LLAMACPP_FUNCTION_CALLING,
 )
 
-# Deliberate capability UNKNOWN (§19): no consulted llama.cpp source declares a
-# code-generation capability. Names such as "Qwen 2.5 Coder" in the
-# function-calling page are model names and are never used as evidence
-# (§18 rule 2).
-LLAMACPP_CODE_GENERATION_UNKNOWN: KnowledgeAssertion = KnowledgeAssertion(
+# Under B8.1 §3.7 (code generation includes code completion, code infilling and
+# FIM), the server's documented `/infill` endpoint ("For code infilling"),
+# `n_indent` ("Useful for code completion tasks") and the FIM flags are explicit
+# runtime operations capable of producing/completing code → SUPPORTED. Model
+# names such as "Qwen 2.5 Coder" are still never used as evidence (§18 rule 2).
+LLAMACPP_SUPPORTS_CODE_GENERATION: KnowledgeAssertion = KnowledgeAssertion(
     subject=LLAMACPP,
     predicate=KnowledgePredicate.SUPPORTS,
     object=CAPABILITY_CODE_GENERATION,
-    state=KnowledgeState.UNKNOWN,
-    provenance=SOURCE_ABSENT_LLAMACPP_CODE_GENERATION,
+    state=KnowledgeState.SUPPORTED,
+    provenance=SOURCE_LLAMACPP_CODE_INFILLING,
 )
 
 # ---------------------------------------------------------------------------
@@ -760,6 +778,20 @@ OLLAMA_SUPPORTS_TOOL_USE: KnowledgeAssertion = KnowledgeAssertion(
     provenance=SOURCE_OLLAMA_TOOL_CALLING,
 )
 
+# Under B8.1 §3.7, Ollama's documented FIM surface ('suffix' field of
+# /api/generate and of the OpenAI-compatible /v1/completions, plus the template
+# fill-in-the-middle example with '{{ .Suffix }}' for code completion models)
+# is an explicit runtime operation capable of completing code → SUPPORTED. No
+# model name, integration, tool_use or text-generation statement is used as
+# evidence (§18 rules 1-2).
+OLLAMA_SUPPORTS_CODE_GENERATION: KnowledgeAssertion = KnowledgeAssertion(
+    subject=OLLAMA,
+    predicate=KnowledgePredicate.SUPPORTS,
+    object=CAPABILITY_CODE_GENERATION,
+    state=KnowledgeState.SUPPORTED,
+    provenance=SOURCE_OLLAMA_CODE_COMPLETION,
+)
+
 # ---------------------------------------------------------------------------
 # Ollama -> platform (B9.6.0 §12)
 # ---------------------------------------------------------------------------
@@ -803,7 +835,7 @@ OLLAMA_SUPPORTS_PLATFORM_LINUX: KnowledgeAssertion = KnowledgeAssertion(
 # ---------------------------------------------------------------------------
 # The dataset (B9.6.0 §20-§22)
 # ---------------------------------------------------------------------------
-# 37 rows: 32 SUPPORTED, 5 UNKNOWN, 0 UNSUPPORTED. There is deliberately no
+# 38 rows: 34 SUPPORTED, 4 UNKNOWN, 0 UNSUPPORTED. There is deliberately no
 # UNSUPPORTED row: no consulted source states that a runtime does not support a
 # backend, format, architecture, capability or platform, and inventing one is
 # prohibited (§8, §19). Order in this tuple carries no meaning: the registry
@@ -842,11 +874,12 @@ INITIAL_KNOWLEDGE: tuple[KnowledgeAssertion, ...] = (
     LLAMACPP_SUPPORTS_VISION,
     LLAMACPP_SUPPORTS_EMBEDDINGS,
     LLAMACPP_SUPPORTS_TOOL_USE,
-    LLAMACPP_CODE_GENERATION_UNKNOWN,
+    LLAMACPP_SUPPORTS_CODE_GENERATION,
     OLLAMA_SUPPORTS_TEXT_GENERATION,
     OLLAMA_SUPPORTS_VISION,
     OLLAMA_SUPPORTS_EMBEDDINGS,
     OLLAMA_SUPPORTS_TOOL_USE,
+    OLLAMA_SUPPORTS_CODE_GENERATION,
     # Platforms
     OLLAMA_SUPPORTS_PLATFORM_MACOS,
     OLLAMA_SUPPORTS_PLATFORM_WINDOWS,
@@ -863,7 +896,6 @@ DELIBERATE_UNKNOWN_ROWS: tuple[KnowledgeAssertion, ...] = (
     OLLAMA_CUDA_UNKNOWN,
     OLLAMA_SYCL_UNKNOWN,
     OLLAMA_ARCHITECTURE_LLAMA_UNKNOWN,
-    LLAMACPP_CODE_GENERATION_UNKNOWN,
 )
 
 # ---------------------------------------------------------------------------
@@ -895,10 +927,14 @@ DELIBERATE_ADJUSTMENTS: tuple[str, ...] = (
         "so no subject, assertion or dedicated registry entry was created for it."
     ),
     (
-        "No capability UNKNOWN row was added for Ollama + code_generation: the open world "
-        "already answers UNKNOWN for it (§8), and the single mandated capability UNKNOWN "
-        "(llama.cpp + code_generation) documents the gap. Duplicating one absence per "
-        "runtime would add no information to the dataset."
+        "Both runtime/code_generation relations (B8.1 §3.7) were re-adjudicated with "
+        "primary evidence: llama.cpp + code_generation via the server's documented "
+        "/infill endpoint, n_indent (code completion) and FIM flags, and Ollama + "
+        "code_generation via the documented 'suffix' FIM field of /api/generate and "
+        "/v1/completions plus the template fill-in-the-middle example for code "
+        "completion models. The §19 capability UNKNOWN was accordingly withdrawn; "
+        "the UNKNOWN demonstration continues to rest on the backend and "
+        "architecture rows (B9.6.0 §4, §7 reformed)."
     ),
 )
 
