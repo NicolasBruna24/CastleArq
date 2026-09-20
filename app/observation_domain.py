@@ -24,6 +24,17 @@ B9.11 contracts represent what a source observed, NOT what the system concludes:
 - ERROR != UNSUPPORTED
 - UNKNOWN != FALSE
 
+Ratified decisions enforced by this module:
+- AD-01: a fact is ``OBSERVED`` only when positive verifiable evidence exists;
+  absence of evidence is never turned into a negative fact.
+- AD-04: coverage (whether a probe family was attempted at all) is a dimension
+  separate from :class:`ObservationState`; there is no ``NOT_OBSERVED`` state.
+- AD-05: :class:`ObservedValue` enforces its state/value/detail invariants in
+  the constructor; ``value=None`` and an omitted value are the same domain fact.
+
+Coverage takes precedence over state: when a family is ``NOT_OBSERVED`` every
+fact of that family is unknown, whatever its ``ObservedValue`` state says.
+
 No evaluation, no policy, no scoring, no recommendations, and no heuristics.
 All dataclasses are frozen, all collections are tuples. Purity: zero I/O,
 zero subprocess execution, and zero imports of evaluation/execution modules.
@@ -31,7 +42,7 @@ zero subprocess execution, and zero imports of evaluation/execution modules.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -42,11 +53,94 @@ class ObservationState(str, Enum):
     ``OBSERVED``: The value was successfully acquired from the source.
     ``UNAVAILABLE``: The required source/interface does not exist in the system.
     ``ERROR``: The source was attempted, but the acquisition failed (e.g. timeout, exit code).
+
+    This enum has exactly three members: whether a family was probed at all is
+    NOT represented here. It belongs to :class:`ObservationCoverage` (AD-04),
+    so a collection that is empty because nothing was probed can never be read
+    as "observed absence".
     """
 
     OBSERVED = "observed"
     UNAVAILABLE = "unavailable"
     ERROR = "error"
+
+
+class CoverageState(str, Enum):
+    """Whether a probe family was actually attempted (Ratified Decision AD-04).
+
+    ``OBSERVED``: the probe attempted this family; the ``ObservedValue`` state of
+    its facts then says whether evidence was returned.
+    ``NOT_OBSERVED``: no probe attempted this family, so its facts carry no
+    information at all.
+    """
+
+    OBSERVED = "observed"
+    NOT_OBSERVED = "not_observed"
+
+
+class ObservationFamily(str, Enum):
+    """Probe families whose coverage is tracked independently of state."""
+
+    PLATFORM = "platform"
+    HARDWARE_MEMORY = "hardware_memory"
+    HARDWARE_DEVICES = "hardware_devices"
+    DEVICE_MEMORY = "device_memory"
+    DEVICE_DRIVER = "device_driver"
+    RUNTIME_DISCOVERY = "runtime_discovery"
+    RUNTIME_VERSION = "runtime_version"
+    RUNTIME_BACKENDS = "runtime_backends"
+
+
+@dataclass(frozen=True)
+class CoverageEntry:
+    """Coverage of one probe family: the family and whether it was attempted."""
+
+    family: ObservationFamily
+    state: CoverageState
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.family, ObservationFamily):
+            raise ValueError("family must be an ObservationFamily enum")
+        if not isinstance(self.state, CoverageState):
+            raise ValueError("state must be a CoverageState enum")
+
+
+@dataclass(frozen=True)
+class ObservationCoverage:
+    """Explicit coverage of the probe families of one observation (AD-04).
+
+    A family absent from ``entries`` is ``NOT_OBSERVED``: a missing claim is
+    never a claim of coverage, and an empty collection is never evidence of
+    absence.
+    """
+
+    entries: tuple[CoverageEntry, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entries, tuple):
+            raise ValueError("entries must be a tuple")
+        seen: set[ObservationFamily] = set()
+        for entry in self.entries:
+            if not isinstance(entry, CoverageEntry):
+                raise ValueError("entries must contain CoverageEntry instances only")
+            if entry.family in seen:
+                raise ValueError(
+                    f"duplicate coverage for family {entry.family.value!r}"
+                )
+            seen.add(entry.family)
+
+    def state_for(self, family: ObservationFamily) -> CoverageState:
+        """Coverage of ``family``; a family not listed is ``NOT_OBSERVED``."""
+        if not isinstance(family, ObservationFamily):
+            raise ValueError("family must be an ObservationFamily enum")
+        for entry in self.entries:
+            if entry.family is family:
+                return entry.state
+        return CoverageState.NOT_OBSERVED
+
+    def is_observed(self, family: ObservationFamily) -> bool:
+        """``True`` only when the family was explicitly reported as attempted."""
+        return self.state_for(family) is CoverageState.OBSERVED
 
 
 @dataclass(frozen=True)
@@ -73,6 +167,22 @@ class ObservedValue:
             not isinstance(self.detail, str) or not self.detail.strip()
         ):
             raise ValueError("detail must be a non-empty string or None")
+        # Ratified Decision AD-05: the epistemic state is part of the contract,
+        # not a label. An omitted ``value`` and ``value=None`` are the same
+        # domain fact (serialization decides how to render it).
+        if self.state is ObservationState.OBSERVED:
+            if self.value is None:
+                raise ValueError("OBSERVED requires a non-None value")
+        else:
+            if self.value is not None:
+                raise ValueError(
+                    f"{self.state.value} must not carry a value "
+                    f"(got {self.value!r})"
+                )
+            if self.detail is None:
+                raise ValueError(
+                    f"{self.state.value} requires a non-empty detail"
+                )
 
 
 @dataclass(frozen=True)
@@ -109,6 +219,7 @@ class DeviceObservation:
     total_memory_bytes: ObservedValue
     driver_name: ObservedValue
     driver_version: ObservedValue
+    coverage: ObservationCoverage = field(default_factory=ObservationCoverage)
 
     def __post_init__(self) -> None:
         if not isinstance(self.device_type, str) or not self.device_type.strip():
@@ -124,6 +235,8 @@ class DeviceObservation:
             val = getattr(self, name)
             if not isinstance(val, ObservedValue):
                 raise ValueError(f"{name} must be an ObservedValue")
+        if not isinstance(self.coverage, ObservationCoverage):
+            raise ValueError("coverage must be an ObservationCoverage")
 
 
 @dataclass(frozen=True)
@@ -166,12 +279,28 @@ class RuntimeObservation:
 
     ``canonical_id`` is the fixed identifier being probed (e.g. "llama.cpp", "ollama").
     No fuzzy alias resolution or compatibility scoring is performed.
+
+    Facts and coverage are separate (AD-04):
+
+    - ``executable_path`` carries the discovery outcome (``OBSERVED``,
+      ``UNAVAILABLE`` when no candidate exists, ``ERROR`` when discovery failed).
+    - ``raw_version`` carries the ``--version`` outcome, and is only probed when
+      the executable was found (otherwise ``RUNTIME_VERSION`` is NOT_OBSERVED).
+    - ``detected_backends`` holds only facts with positive verifiable evidence
+      (AD-01); it is empty when nothing was probed *or* when the probe yielded no
+      evidence, which ``coverage``/``backends_outcome`` disambiguate.
+    - ``backends_outcome`` records a probed family that produced no positive
+      evidence: ``UNAVAILABLE`` (probe ran, reported none) or ``ERROR`` (probe
+      failed). It is ``None`` when the probe produced evidence, or when the
+      family was never probed (see ``coverage``).
     """
 
     canonical_id: str
     executable_path: ObservedValue
     raw_version: ObservedValue
     detected_backends: tuple[ObservedValue, ...] = ()
+    backends_outcome: ObservedValue | None = None
+    coverage: ObservationCoverage = field(default_factory=ObservationCoverage)
 
     def __post_init__(self) -> None:
         if not isinstance(self.canonical_id, str) or not self.canonical_id.strip():
@@ -187,6 +316,24 @@ class RuntimeObservation:
                 raise ValueError(
                     "detected_backends must contain ObservedValue instances only"
                 )
+        if self.backends_outcome is not None and not isinstance(
+            self.backends_outcome, ObservedValue
+        ):
+            raise ValueError("backends_outcome must be an ObservedValue or None")
+        if not isinstance(self.coverage, ObservationCoverage):
+            raise ValueError("coverage must be an ObservationCoverage")
+        # AD-04: a probed family must state what happened. If the backend family
+        # was attempted, either positive evidence exists or an outcome records
+        # why it does not; an empty tuple alone is never a result.
+        if (
+            self.coverage.is_observed(ObservationFamily.RUNTIME_BACKENDS)
+            and not self.detected_backends
+            and self.backends_outcome is None
+        ):
+            raise ValueError(
+                "a probed RUNTIME_BACKENDS family requires positive evidence "
+                "or a backends_outcome fact"
+            )
 
 
 @dataclass(frozen=True)
@@ -195,12 +342,18 @@ class EnvironmentContext:
 
     ``timestamp`` is a declarative ISO-8601 string recording when the snapshot was taken.
     Contains no evaluation results, decisions, or runtime recommendations.
+
+    ``coverage`` records which environment-level probe families were attempted
+    (AD-04). Per-runtime families are recorded on each ``RuntimeObservation``
+    and per-device families on each ``DeviceObservation``; coverage always takes
+    precedence over the state of the facts it covers.
     """
 
     timestamp: str
     platform: PlatformObservation
     hardware: HardwareObservation
     runtimes: tuple[RuntimeObservation, ...] = ()
+    coverage: ObservationCoverage = field(default_factory=ObservationCoverage)
 
     def __post_init__(self) -> None:
         if not isinstance(self.timestamp, str) or not self.timestamp.strip():
@@ -214,3 +367,5 @@ class EnvironmentContext:
         for r in self.runtimes:
             if not isinstance(r, RuntimeObservation):
                 raise ValueError("runtimes must contain RuntimeObservation instances only")
+        if not isinstance(self.coverage, ObservationCoverage):
+            raise ValueError("coverage must be an ObservationCoverage")

@@ -22,6 +22,21 @@ Provides pure parsing functions and injectable observation probes:
   and never imply ``UNSUPPORTED`` or ``FALSE``.
 - Zero inference: no backend assumption, no GPU-Vulkan association, no synthetic
   vendor derivation.
+
+Ratified contracts enforced here:
+- AD-01 (positive evidence only): a fact is ``OBSERVED`` only under one of the
+  closed syntactic forms documented on :func:`detect_backend_evidence`. The mere
+  presence of a backend word -- in prose, in a negation, or anywhere else on a
+  marked line -- is never evidence.
+- AD-02 (provenance is the real operation): every ``source`` names the operation
+  that actually produced the fact; no hypothetical command is ever recorded.
+- AD-04 (coverage): every observation reports which probe families were
+  attempted, so an empty collection is never read as observed absence.
+- Acquisition vs defect: only failures of the *external operation*
+  (:data:`ACQUISITION_ERRORS`) become ``ERROR`` observations. Defects of the
+  observer itself (``TypeError``, ``AttributeError``, ``KeyError``,
+  ``AssertionError``, ...) propagate instead of being disguised as environment
+  errors.
 """
 
 from __future__ import annotations
@@ -32,9 +47,13 @@ import re
 from typing import Callable, Sequence
 
 from .observation_domain import (
+    CoverageEntry,
+    CoverageState,
     DeviceObservation,
     EnvironmentContext,
     HardwareObservation,
+    ObservationCoverage,
+    ObservationFamily,
     ObservationState,
     ObservedValue,
     PlatformObservation,
@@ -58,51 +77,117 @@ FileReader = Callable[[str], str | None]
 WhichFinder = Callable[[str], str | None]
 TimestampProvider = Callable[[], str]
 
+#: Failures of the *external operation*, and only those, become an ERROR
+#: ``CommandResult`` (and therefore an ``ObservedValue`` in state ``ERROR``).
+#: Anything else raised by the injected runner -- ``TypeError``,
+#: ``AttributeError``, ``KeyError``, ``AssertionError``,
+#: ``NotImplementedError``, ... -- is a defect of the observer or of the runner
+#: itself and propagates: a programming bug must never be recorded as an
+#: environment observation error. Runners that surface ``subprocess`` failures
+#: must translate them to ``OSError``/``TimeoutError`` or report them through
+#: ``CommandResult.error``.
+ACQUISITION_ERRORS: tuple[type[Exception], ...] = (TimeoutError, OSError)
 
-# Explicit llama.cpp backend evidence (no inference).
-#
-# A backend string (``vulkan``/``cuda``/``sycl``) counts as explicit evidence
-# ONLY when it appears in one of these syntactic positions inside the
-# ``--help`` output (case-insensitive):
-#   1. A CLI flag token: ``--vulkan``, ``--cuda``, ``--sycl`` (also single-dash
-#      ``-vulkan``), matched at a token boundary.
-#   2. A backend enumeration: the word ``backend``/``backends`` followed by
-#      ``:`` or ``=`` on the same line, with the backend name as a whole word
-#      after it (e.g. ``backends: cuda, cpu``).
-#   3. A build declaration: ``built with <backend>`` / ``build with <backend>``
-#      / ``compiled with <backend>`` with the backend name as a whole word.
-# Mere incidental mentions (e.g. "vulkan-like rendering", "cuda cores
-# available on your GPU", prose without a flag/enumeration/build marker)
-# are NOT evidence and produce no ``ObservedValue``.
-_BACKEND_FLAG_RE = re.compile(r"(?im)(?:^|\s)--?(vulkan|cuda|sycl)\b")
-_BACKEND_ENUM_RE = re.compile(r"(?im)\bbackends?\s*[:=][^\n]*\b(vulkan|cuda|sycl)\b")
+#: Coverage of the per-device families of every ``DeviceObservation``: B9.11
+#: parses what ``lspci -nn`` reports and never inspects sysfs, so per-device
+#: memory and driver facts are NOT_OBSERVED, never "observed but unavailable"
+#: (AD-04). Coverage takes precedence over the state of those facts.
+_DEVICE_COVERAGE = ObservationCoverage(entries=(
+    CoverageEntry(ObservationFamily.DEVICE_MEMORY, CoverageState.NOT_OBSERVED),
+    CoverageEntry(ObservationFamily.DEVICE_DRIVER, CoverageState.NOT_OBSERVED),
+))
+
+#: Coverage of the environment families that ``capture_context`` always
+#: attempts, whatever their outcome (AD-04).
+_CONTEXT_COVERAGE = ObservationCoverage(entries=(
+    CoverageEntry(ObservationFamily.PLATFORM, CoverageState.OBSERVED),
+    CoverageEntry(ObservationFamily.HARDWARE_MEMORY, CoverageState.OBSERVED),
+    CoverageEntry(ObservationFamily.HARDWARE_DEVICES, CoverageState.OBSERVED),
+))
+
+
+# Explicit llama.cpp backend evidence (Ratified Decision AD-01: positive
+# evidence only). A backend string (``vulkan``/``cuda``/``sycl``) counts as
+# evidence ONLY under one of these closed, verifiable syntactic forms inside
+# the ``--help`` output (case-insensitive):
+#   1. Flag token: ``--vulkan`` / ``-vulkan`` standing as a whole token.
+#   2. Item list: the word ``backend``/``backends`` followed by ``:`` or ``=``
+#      and then a list made EXCLUSIVELY of known backend-ish tokens
+#      (e.g. ``backends: cuda, cpu``). Any other word on that line makes the
+#      line prose, which is what rejects ``backends: cpu only, cuda not
+#      compiled in`` and ``backend: CPU (CUDA disabled)``.
+#   3. Build clause: ``built|build|compiled with <backend>`` with the backend
+#      name IMMEDIATELY after ``with``, which is what rejects
+#      ``built with care; vulkan unsupported``.
+# Mere incidental mentions ("vulkan-like rendering", "cuda cores available on
+# your GPU"), negations, and words placed elsewhere on a marked line are NOT
+# evidence and produce no ``ObservedValue``. No NLP, no proximity search, no
+# scoring, no heuristic interpretation.
+_BACKEND_NAMES = ("vulkan", "cuda", "sycl")
+_BACKEND_FLAG_RE = re.compile(r"(?im)(?:^|[\s,])--?(vulkan|cuda|sycl)(?=[\s,=]|$)")
+_BACKEND_ENUM_MARKER_RE = re.compile(r"(?im)\bbackends?\s*[:=](?P<items>[^\n]*)$")
 _BACKEND_BUILD_RE = re.compile(
-    r"(?im)\b(?:built|build|compiled)\s+with\b[^\n]*\b(vulkan|cuda|sycl)\b"
+    r"(?im)\b(?:built|build|compiled)\s+with\s+(vulkan|cuda|sycl)\b"
 )
+#: Tokens accepted as items of a ``backend(s):`` enumeration. Anything outside
+#: this closed vocabulary turns the line into prose, and prose is not evidence.
+_BACKEND_ITEM_TOKENS = frozenset({
+    "cpu", "gpu", "vulkan", "cuda", "sycl", "opencl", "rocm", "hip",
+    "metal", "kompute", "blas", "none", "all", "auto", "default",
+})
+_BACKEND_ITEM_SPLIT_RE = re.compile(r"[\s,|/]+")
+
+
+def _enumeration_backends(help_text: str) -> tuple[str, ...]:
+    """Backends declared by a pure ``backend(s):`` item list (AD-01).
+
+    Pure function. The remainder of the marker line must be a list built
+    exclusively from :data:`_BACKEND_ITEM_TOKENS`; if any other word appears the
+    line is prose and yields no evidence at all.
+    """
+    found: list[str] = []
+    for match in _BACKEND_ENUM_MARKER_RE.finditer(help_text):
+        raw_items = match.group("items").strip()
+        if not raw_items:
+            continue
+        tokens = [
+            token
+            for token in _BACKEND_ITEM_SPLIT_RE.split(raw_items.lower())
+            if token
+        ]
+        if not tokens or any(
+            token not in _BACKEND_ITEM_TOKENS for token in tokens
+        ):
+            continue
+        for token in tokens:
+            if token in _BACKEND_NAMES and token not in found:
+                found.append(token)
+    return tuple(found)
 
 
 def detect_backend_evidence(help_text: str) -> tuple[str, ...]:
-    """Return backends with explicit evidence in ``--help`` text, in order.
+    """Return backends with positive evidence in ``--help`` text (AD-01).
 
-    Pure function (zero I/O). Checks each of ``vulkan``/``cuda``/``sycl``
-    against the three explicit-evidence patterns above. Whole-word matching
-    only; incidental prose never matches.
+    Pure function (zero I/O). Only the three closed syntactic forms documented
+    above count: a bare mention, a negation, incidental prose, or a backend word
+    placed elsewhere on a marked line are NOT evidence. The result is ordered
+    canonically (``vulkan``, ``cuda``, ``sycl``) so identical input always
+    yields an identical tuple.
     """
     found: list[str] = []
     for match in _BACKEND_FLAG_RE.finditer(help_text):
         backend = match.group(1).lower()
         if backend not in found:
             found.append(backend)
-    for match in _BACKEND_ENUM_RE.finditer(help_text):
-        backend = match.group(1).lower()
+    for backend in _enumeration_backends(help_text):
         if backend not in found:
             found.append(backend)
     for match in _BACKEND_BUILD_RE.finditer(help_text):
         backend = match.group(1).lower()
         if backend not in found:
             found.append(backend)
-    order = {"vulkan": 0, "cuda": 1, "sycl": 2}
-    return tuple(sorted(found, key=lambda b: order[b]))
+    order = {name: index for index, name in enumerate(_BACKEND_NAMES)}
+    return tuple(sorted(found, key=lambda backend: order[backend]))
 
 
 # ----------------------------------------------------------------------
@@ -339,26 +424,20 @@ class EnvironmentObserver:
         )
 
     def _safe_run(self, command: Sequence[str], timeout: float) -> CommandResult:
-        """Execute ``command_runner`` without ever raising.
+        """Execute ``command_runner``, converting acquisition failures only.
 
         A runner signalling failure via ``returncode != 0`` or ``error`` is
-        passed through. A runner *raising* ``OSError``/``TimeoutError`` (or
-        any ``Exception`` from the injected double) is converted into an
-        ERROR ``CommandResult`` so no failure is silently discarded.
+        passed through. A runner *raising* a failure of the external operation
+        (:data:`ACQUISITION_ERRORS`) becomes an ERROR ``CommandResult``, so no
+        acquisition failure is silently discarded. Any other exception
+        propagates: a programming defect is not an environment observation.
         """
         try:
             return self._run_cmd(tuple(command), timeout)
-        except TimeoutError as exc:
+        except ACQUISITION_ERRORS as exc:
+            kind = "timeout" if isinstance(exc, TimeoutError) else "os error"
             return CommandResult(
-                returncode=-1, stdout="", stderr="", error=f"timeout: {exc}"
-            )
-        except OSError as exc:
-            return CommandResult(
-                returncode=-1, stdout="", stderr="", error=f"os error: {exc}"
-            )
-        except Exception as exc:  # defensive: injected doubles must not crash probes
-            return CommandResult(
-                returncode=-1, stdout="", stderr="", error=f"probe failed: {exc}"
+                returncode=-1, stdout="", stderr="", error=f"{kind}: {exc}"
             )
 
     def observe_hardware(self) -> HardwareObservation:
@@ -493,6 +572,7 @@ class EnvironmentObserver:
                                 source="command:lspci -nn",
                                 detail="Driver version not probed by basic lspci -nn",
                             ),
+                            coverage=_DEVICE_COVERAGE,
                         )
                     )
 
@@ -509,27 +589,48 @@ class EnvironmentObserver:
         # 1. llama.cpp
         llama_candidates = ("llama-cli", "llama", "llama.app")
         llama_path: str | None = None
+        llama_candidate: str | None = None
         for cand in llama_candidates:
             found = self._which(cand)
             if found:
                 llama_path = found
+                llama_candidate = cand
                 break
 
         if not llama_path:
+            # AD-02: provenance names the operation that actually ran -- the
+            # ``which`` search over the real candidate list -- and never a
+            # ``--version`` invocation that was not executed. The version fact
+            # is produced by the failed discovery, so it carries that source.
+            search_source = f"which:{','.join(llama_candidates)}"
             observations.append(
                 RuntimeObservation(
                     canonical_id="llama.cpp",
                     executable_path=ObservedValue(
                         state=ObservationState.UNAVAILABLE,
-                        source="which:llama-cli",
+                        source=search_source,
                         detail="No llama.cpp binary found in PATH",
                     ),
                     raw_version=ObservedValue(
                         state=ObservationState.UNAVAILABLE,
-                        source="command:llama-cli --version",
+                        source=search_source,
                         detail="Cannot probe version because binary is unavailable",
                     ),
                     detected_backends=(),
+                    coverage=ObservationCoverage(entries=(
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_DISCOVERY,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_VERSION,
+                            CoverageState.NOT_OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_BACKENDS,
+                            CoverageState.NOT_OBSERVED,
+                        ),
+                    )),
                 )
             )
         else:
@@ -558,13 +659,14 @@ class EnvironmentObserver:
                     detail=res_ver.error or f"Exited with returncode {res_ver.returncode}",
                 )
 
-            # Probe backends via help: explicit syntactic evidence only.
+            # Probe backends via help: positive syntactic evidence only.
             # Criterion (documented in detect_backend_evidence): a backend
-            # counts ONLY as CLI flag (--vulkan), backend enumeration
-            # (backends: cuda), or build declaration (built with sycl).
-            # Incidental prose never counts. No inference.
+            # counts ONLY as a flag token (--vulkan), a pure backend item list
+            # (backends: cuda, cpu), or a build clause (built with sycl).
+            # Prose, negations and incidental mentions never count. No inference.
             res_help = self._safe_run((llama_path, "--help"), 2.0)
             backends: list[ObservedValue] = []
+            backends_outcome: ObservedValue | None = None
             if res_help.returncode == 0 and not res_help.error:
                 help_text = f"{res_help.stdout}\n{res_help.stderr}"
                 for backend in detect_backend_evidence(help_text):
@@ -575,6 +677,24 @@ class EnvironmentObserver:
                             source=f"command:{llama_path} --help",
                         )
                     )
+                if not backends:
+                    # Probed, and the source reported no backend evidence:
+                    # an explicit UNAVAILABLE outcome, never a silent empty tuple
+                    # that a reader could mistake for "nothing exists".
+                    backends_outcome = ObservedValue(
+                        state=ObservationState.UNAVAILABLE,
+                        source=f"command:{llama_path} --help",
+                        detail="--help reported no backend evidence",
+                    )
+            else:
+                backends_outcome = ObservedValue(
+                    state=ObservationState.ERROR,
+                    source=f"command:{llama_path} --help",
+                    detail=(
+                        res_help.error
+                        or f"Exited with returncode {res_help.returncode}"
+                    ),
+                )
 
             observations.append(
                 RuntimeObservation(
@@ -582,10 +702,26 @@ class EnvironmentObserver:
                     executable_path=ObservedValue(
                         state=ObservationState.OBSERVED,
                         value=llama_path,
-                        source="which:llama-cli",
+                        # AD-02: the candidate that ``which`` actually resolved.
+                        source=f"which:{llama_candidate}",
                     ),
                     raw_version=ver_val,
                     detected_backends=tuple(backends),
+                    backends_outcome=backends_outcome,
+                    coverage=ObservationCoverage(entries=(
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_DISCOVERY,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_VERSION,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_BACKENDS,
+                            CoverageState.OBSERVED,
+                        ),
+                    )),
                 )
             )
 
@@ -600,12 +736,28 @@ class EnvironmentObserver:
                         source="which:ollama",
                         detail="ollama binary not found in PATH",
                     ),
+                    # AD-02: no ``ollama --version`` was executed, so the version
+                    # fact carries the discovery operation that produced it.
                     raw_version=ObservedValue(
                         state=ObservationState.UNAVAILABLE,
-                        source="command:ollama --version",
+                        source="which:ollama",
                         detail="Cannot probe version because binary is unavailable",
                     ),
                     detected_backends=(),
+                    coverage=ObservationCoverage(entries=(
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_DISCOVERY,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_VERSION,
+                            CoverageState.NOT_OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_BACKENDS,
+                            CoverageState.NOT_OBSERVED,
+                        ),
+                    )),
                 )
             )
         else:
@@ -642,14 +794,35 @@ class EnvironmentObserver:
                         source="which:ollama",
                     ),
                     raw_version=ver_val,
+                    # Ollama backends are never probed in B9.11: the empty tuple
+                    # means NOT_OBSERVED, not "no backends exist" (AD-04).
                     detected_backends=(),
+                    coverage=ObservationCoverage(entries=(
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_DISCOVERY,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_VERSION,
+                            CoverageState.OBSERVED,
+                        ),
+                        CoverageEntry(
+                            ObservationFamily.RUNTIME_BACKENDS,
+                            CoverageState.NOT_OBSERVED,
+                        ),
+                    )),
                 )
             )
 
         return tuple(observations)
 
     def capture_context(self) -> EnvironmentContext:
-        """Snapshot complete environment observations."""
+        """Snapshot complete environment observations.
+
+        All three environment families are attempted on every snapshot, so their
+        coverage is reported explicitly (AD-04); per-runtime and per-device
+        coverage travels with each of those observations.
+        """
         ts = self._timestamp()
         platform_obs = self.observe_platform()
         hardware_obs = self.observe_hardware()
@@ -659,4 +832,5 @@ class EnvironmentObserver:
             platform=platform_obs,
             hardware=hardware_obs,
             runtimes=runtimes_obs,
+            coverage=_CONTEXT_COVERAGE,
         )
