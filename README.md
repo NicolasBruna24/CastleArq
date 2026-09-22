@@ -7,6 +7,22 @@ mediante detección automática de hardware, runtimes y backends. El proyecto
 prioriza simplicidad, fiabilidad y mantenibilidad, sin instalar drivers,
 runtimes ni dependencias del sistema.
 
+> CastleArq is the current name of the project formerly developed as
+> **LocalAI Hub**.
+
+**Built by [Nicolás Bruna](https://www.nicobrunaf.dev)** — Software Developer
+focused on AI, Full Stack, Linux and Systems.
+
+- Portfolio: [nicobrunaf.dev](https://www.nicobrunaf.dev) · [Case study de CastleArq](https://www.nicobrunaf.dev/projects/castlearq/)
+- GitHub: [NicolasBruna24](https://github.com/NicolasBruna24) · LinkedIn: [Nicolás Bruna Fuentealba](https://www.linkedin.com/in/nicol%C3%A1s-bruna-fuentealba-6086b8410/)
+
+## Documentación
+
+La documentación de diseño y especificaciones técnicas (detección,
+motor de compatibilidad, descarga de artifacts, ejecución) se encuentra en
+[`docs/`](docs/).
+
+
 ## Estado actual
 
 El proyecto cubre hoy el flujo completo de uso local:
