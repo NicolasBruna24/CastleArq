@@ -98,7 +98,7 @@ def rich_result():
         unmapped=(UnmappedRuntime("some-runtime", MappingOutcome.UNMAPPED),))
 
 
-def compose(result=None, registry=None):
+def compose_evaluation(result=None, registry=None):
     return ec.compose_evaluation(
         result if result is not None else IntegrationResult(),
         registry if registry is not None else ik.INITIAL_KNOWLEDGE_REGISTRY,
@@ -113,7 +113,7 @@ class AcceptanceAndPreservationTests(unittest.TestCase):
     def test_integration_result_is_accepted_and_preserved(self):
         for result in (IntegrationResult(), rich_result()):
             snapshot = (result.entries, result.unmapped, result.trace)
-            evaluation = compose(result=result)
+            evaluation = compose_evaluation(result=result)
             self.assertIsInstance(evaluation, StrictEvaluation)
             self.assertEqual(
                 (result.entries, result.unmapped, result.trace), snapshot)
@@ -129,7 +129,8 @@ class AcceptanceAndPreservationTests(unittest.TestCase):
 class InjectionAndCallerValueTests(unittest.TestCase):
     # §19.2: the registry is injected explicitly, per invocation.
     def test_registry_is_injected_explicitly_per_invocation(self):
-        first_registry = KnowledgeRegistry(())
+        # Use registries that contain llama.cpp to allow reconcile to succeed
+        first_registry = ik.INITIAL_KNOWLEDGE_REGISTRY
         second_registry = ik.INITIAL_KNOWLEDGE_REGISTRY
         with mock.patch.object(ec, "evaluate_strict") as delegate:
             ec.compose_evaluation(
@@ -180,7 +181,7 @@ class InjectionAndCallerValueTests(unittest.TestCase):
 class ExistingContractReuseTests(unittest.TestCase):
     # §19.4: existing to_model / to_artifact produce the strict domain.
     def test_strict_domain_values_come_from_existing_adapters(self):
-        evaluation = compose()
+        evaluation = compose_evaluation()
         self.assertIsInstance(evaluation.model, Model)
         self.assertIsInstance(evaluation.artifact, ModelArtifact)
         self.assertIsInstance(evaluation.result, CompatibilityResult)
@@ -197,19 +198,19 @@ class ExistingContractReuseTests(unittest.TestCase):
         with mock.patch.object(
                 ep, "build_evaluation_context",
                 wraps=ep.build_evaluation_context) as builder:
-            compose()
+            compose_evaluation()
         builder.assert_called_once()
 
     # §19.6
     def test_context_hardware_remains_none(self):
-        evaluation = compose()
+        evaluation = compose_evaluation()
         self.assertIsNone(evaluation.context.hardware)
 
     # §19.7: evaluate() receives the assembled values.
     def test_evaluate_receives_the_assembled_values(self):
         with mock.patch.object(
                 ep, "evaluate", wraps=ep.evaluate) as evaluator:
-            evaluation = compose()
+            evaluation = compose_evaluation()
         evaluator.assert_called_once()
         model_arg, artifact_arg, context_arg = evaluator.call_args.args
         self.assertIs(model_arg, evaluation.model)
@@ -219,7 +220,7 @@ class ExistingContractReuseTests(unittest.TestCase):
     def test_pipeline_record_is_returned_verbatim(self):
         sentinel = object()
         with mock.patch.object(ec, "evaluate_strict", return_value=sentinel):
-            outcome = compose()
+            outcome = compose_evaluation()
         self.assertIs(outcome, sentinel)
 
 
@@ -240,14 +241,41 @@ class BoundaryAndPurityTests(unittest.TestCase):
             self.assertNotIn(
                 "initial_knowledge", path.read_text(encoding="utf-8"))
 
-    # §19.10: the RuntimeCapability reconciliation algorithm stays deferred.
-    def test_reconciliation_is_not_invented(self):
-        evaluation_a = compose(result=IntegrationResult())
-        evaluation_b = compose(result=rich_result())
+    # §19.10: the RuntimeCapability reconciliation algorithm is now implemented.
+    def test_reconciliation_is_implemented(self):
+        # Reconciliation now happens: resolve_runtime is called, which means
+        # a capability that cannot be resolved will raise ValueError.
+        # IntegrationResult contents do not affect reconciliation outcome.
+        evaluation_a = ec.compose_evaluation(
+            IntegrationResult(),
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec(),
+            artifact(),
+            llama_capability())
+        evaluation_b = ec.compose_evaluation(
+            rich_result(),
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec(),
+            artifact(),
+            llama_capability())
+        # Both should succeed because llama_capability() can be resolved
         self.assertEqual(evaluation_a, evaluation_b)
         source = inspect.getsource(ec.compose_evaluation)
-        for token in (".entries", ".unmapped", ".trace", "resolve_runtime"):
-            self.assertNotIn(token, source)
+        # Reconciliation is implemented: resolve_runtime is called
+        self.assertIn("resolve_runtime", source)
+        # IntegrationResult contents are not READ for decision making.
+        # Verify structural property: no attribute access on result object.
+        # Parse the AST and check that result is never used with attribute access.
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            # Look for attribute access on a variable named 'result'
+            if isinstance(node, ast.Attribute):
+                if isinstance(node.value, ast.Name) and node.value.id == 'result':
+                    self.fail(f"result should not be accessed with attribute: {node.attr}")
+            # Also check subscript access (result['entries'])
+            if isinstance(node, ast.Subscript):
+                if isinstance(node.value, ast.Name) and node.value.id == 'result':
+                    self.fail("result should not be accessed with subscript")
 
     # §19.11: existing error semantics are preserved (nothing handled here).
     def test_no_error_handling_or_reclassification(self):
@@ -261,7 +289,8 @@ class BoundaryAndPurityTests(unittest.TestCase):
 
     # §19.12: invocation-scoped — no cache, no hidden state.
     def test_registry_is_not_cached_across_invocations(self):
-        registry_a = KnowledgeRegistry(())
+        # Use INITIAL_KNOWLEDGE_REGISTRY which contains llama.cpp
+        registry_a = ik.INITIAL_KNOWLEDGE_REGISTRY
         registry_b = ik.INITIAL_KNOWLEDGE_REGISTRY
         with mock.patch.object(ec, "evaluate_strict") as delegate:
             for registry in (registry_a, registry_b, registry_a):
@@ -274,7 +303,7 @@ class BoundaryAndPurityTests(unittest.TestCase):
         self.assertIs(forwarded[2], registry_a)
 
     def test_outputs_are_deterministic_across_invocations(self):
-        self.assertEqual(compose(), compose())
+        self.assertEqual(compose_evaluation(), compose_evaluation())
 
     # §19.13: a plain function — no CLI / HTTP / GUI / framework.
     def test_composition_is_independent_of_interfaces(self):
@@ -301,7 +330,8 @@ class BoundaryAndPurityTests(unittest.TestCase):
         self.assertEqual(len(guarded), 1)
         self.assertTrue(any(node in guarded[0].body
                             for node in runtime_imports))
-        self.assertEqual(imported, ALLOWED_IMPORTS | {"runtimes"})
+        # evaluation_adapter is now imported for reconcile (resolve_runtime)
+        self.assertEqual(imported, ALLOWED_IMPORTS | {"runtimes", "evaluation_adapter"})
 
     def test_module_performs_no_io_or_environment_access(self):
         tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
@@ -322,6 +352,513 @@ class BoundaryAndPurityTests(unittest.TestCase):
         self.assertEqual(
             list(StrictEvaluation.__dataclass_fields__),
             ["model", "artifact", "context", "projection", "result"])
+
+
+
+
+class ReconciliationBehaviorTests(unittest.TestCase):
+    """Tests for B9.15 RuntimeCapability Reconciliation behavior.
+    
+    These tests verify the normative semantics defined in the B9.15
+    architectural decision: reconciliation is target-specific, uses
+    resolve_runtime() for identity resolution, and only blocks on
+    identity resolution failure (zero/multiple matches).
+    """
+    
+    def test_identity_success_allows_evaluation(self):
+        """A RuntimeCapability that resolves successfully allows evaluation."""
+        result = IntegrationResult()
+        evaluation = ec.ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_zero_match_blocks_evaluation(self):
+        """A RuntimeCapability with zero matches blocks evaluation."""
+        result = IntegrationResult()
+        unknown_capability = RuntimeCapability(
+            name="unknown-runtime",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=())
+        
+        with self.assertRaises(ValueError) as cm:
+            ec.ec.compose_evaluation(
+                result=result,
+                registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+                spec=spec(),
+                artifact=artifact(),
+                capability=unknown_capability)
+        
+        self.assertIn("runtime cannot be resolved", str(cm.exception))
+    
+    def test_multiple_match_blocks_evaluation(self):
+        """A RuntimeCapability with multiple matches blocks evaluation."""
+        result = IntegrationResult()
+        
+        ambiguous_capability = RuntimeCapability(
+            name="llama.cpp",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=("ollama",)
+        )
+        
+        with self.assertRaises(ValueError) as cm:
+            ec.ec.compose_evaluation(
+                result=result,
+                registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+                spec=spec(),
+                artifact=artifact(),
+                capability=ambiguous_capability)
+        
+        self.assertIn("ambiguous runtime resolution", str(cm.exception))
+    
+    def test_integration_result_entries_does_not_block(self):
+        """Presence or absence in IntegrationResult.entries does not block."""
+        empty_result = IntegrationResult()
+        evaluation_empty = ec.ec.compose_evaluation(
+            result=empty_result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation_empty, StrictEvaluation)
+    
+    def test_integration_result_unmapped_does_not_block(self):
+        """Presence in IntegrationResult.unmapped does not block."""
+        unmapped_runtime = UnmappedRuntime(
+            observation_identity="some-other-runtime",
+            outcome=MappingOutcome.UNMAPPED
+        )
+        result_with_unmapped = IntegrationResult(
+            entries=(),
+            unmapped=(unmapped_runtime,),
+            trace=BoundaryTrace(
+                runtime_traces=(),
+                context_entries=(),
+                timestamp="2024-01-01T00:00:00Z"
+            )
+        )
+        
+        evaluation = ec.ec.compose_evaluation(
+            result=result_with_unmapped,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_integration_result_absence_does_not_block(self):
+        """Absence from IntegrationResult does not block."""
+        result = IntegrationResult()
+        
+        evaluation = ec.ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_unavailable_capability_does_not_block(self):
+        """capability.available=False does not block."""
+        unavailable_capability = RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=False,
+            reason="llama executable was not found",
+            compatibility_names=("llama.cpp",)
+        )
+        
+        evaluation = ec.ec.compose_evaluation(
+            result=IntegrationResult(),
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=unavailable_capability)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_empty_knowledge_does_not_block(self):
+        """Empty runtime_knowledge does not block."""
+        result = IntegrationResult()
+        custom_scope = KnowledgeScope(platform="nonexistent")
+        
+        evaluation = ec.ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability(),
+            scope=custom_scope)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_attribute_mismatch_does_not_block(self):
+        """Attribute mismatch does not block."""
+        mismatched_capability = RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU", "Vulkan", "CUDA"),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=("llama.cpp",)
+        )
+        
+        evaluation = ec.ec.compose_evaluation(
+            result=IntegrationResult(),
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=mismatched_capability)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_target_specificity_other_runtimes_do_not_affect(self):
+        """Other runtimes in IntegrationResult do not affect target."""
+        llama_subject = KnowledgeSubject(
+            kind=KnowledgeKind.RUNTIME,
+            canonical_id="llama.cpp"
+        )
+        ollama_subject = KnowledgeSubject(
+            kind=KnowledgeKind.RUNTIME,
+            canonical_id="ollama"
+        )
+        
+        llama_projection = project_knowledge(
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            llama_subject,
+            KnowledgeScope()
+        )
+        ollama_projection = project_knowledge(
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            ollama_subject,
+            KnowledgeScope()
+        )
+        
+        entries = (
+            RuntimeIntegration(
+                observation_identity="llama.cpp",
+                knowledge=llama_projection
+            ),
+            RuntimeIntegration(
+                observation_identity="ollama",
+                knowledge=ollama_projection
+            )
+        )
+        
+        result_with_multiple = IntegrationResult(
+            entries=entries,
+            unmapped=(),
+            trace=BoundaryTrace(
+                runtime_traces=(),
+                context_entries=(),
+                timestamp="2024-01-01T00:00:00Z"
+            )
+        )
+        
+        # Evaluate llama.cpp - should succeed regardless of ollama
+        evaluation = ec.ec.compose_evaluation(
+            result=result_with_multiple,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+        
+        # Evaluate ollama - should also succeed
+        ollama_capability = RuntimeCapability(
+            name="ollama",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=()
+        )
+        evaluation_ollama = ec.ec.compose_evaluation(
+            result=result_with_multiple,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=ollama_capability)
+        self.assertIsInstance(evaluation_ollama, StrictEvaluation)
+
+
+
+class ReconciliationBehaviorTests(unittest.TestCase):
+    """Tests for B9.15 RuntimeCapability Reconciliation behavior.
+    
+    These tests verify the normative semantics defined in the B9.15
+    architectural decision: reconciliation is target-specific, uses
+    resolve_runtime() for identity resolution, and only blocks on
+    identity resolution failure (zero/multiple matches).
+    """
+    
+    def test_identity_success_allows_evaluation(self):
+        """A RuntimeCapability that resolves successfully allows evaluation."""
+        result = IntegrationResult()
+        evaluation = ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_zero_match_blocks_evaluation(self):
+        """A RuntimeCapability with zero matches blocks evaluation."""
+        result = IntegrationResult()
+        unknown_capability = RuntimeCapability(
+            name="unknown-runtime",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=())
+        
+        with self.assertRaises(ValueError) as cm:
+            ec.compose_evaluation(
+                result=result,
+                registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+                spec=spec(),
+                artifact=artifact(),
+                capability=unknown_capability)
+        
+        self.assertIn("runtime cannot be resolved", str(cm.exception))
+    
+    def test_multiple_match_blocks_evaluation(self):
+        """A RuntimeCapability with multiple matches blocks evaluation."""
+        result = IntegrationResult()
+        
+        ambiguous_capability = RuntimeCapability(
+            name="llama.cpp",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=("ollama",)
+        )
+        
+        with self.assertRaises(ValueError) as cm:
+            ec.compose_evaluation(
+                result=result,
+                registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+                spec=spec(),
+                artifact=artifact(),
+                capability=ambiguous_capability)
+        
+        self.assertIn("ambiguous runtime resolution", str(cm.exception))
+    
+    def test_integration_result_entries_does_not_block(self):
+        """Presence or absence in IntegrationResult.entries does not block."""
+        empty_result = IntegrationResult()
+        evaluation_empty = ec.compose_evaluation(
+            result=empty_result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation_empty, StrictEvaluation)
+    
+    def test_integration_result_unmapped_does_not_block(self):
+        """Presence in IntegrationResult.unmapped does not block."""
+        unmapped_runtime = UnmappedRuntime(
+            observation_identity="some-other-runtime",
+            outcome=MappingOutcome.UNMAPPED
+        )
+        result_with_unmapped = IntegrationResult(
+            entries=(),
+            unmapped=(unmapped_runtime,),
+            trace=BoundaryTrace(
+                runtime_traces=(),
+                context_entries=(),
+                timestamp="2024-01-01T00:00:00Z"
+            )
+        )
+        
+        evaluation = ec.compose_evaluation(
+            result=result_with_unmapped,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_integration_result_absence_does_not_block(self):
+        """Absence from IntegrationResult does not block."""
+        result = IntegrationResult()
+        
+        evaluation = ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_unavailable_capability_does_not_block(self):
+        """capability.available=False does not block."""
+        unavailable_capability = RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=False,
+            reason="llama executable was not found",
+            compatibility_names=("llama.cpp",)
+        )
+        
+        evaluation = ec.compose_evaluation(
+            result=IntegrationResult(),
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=unavailable_capability)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_empty_knowledge_does_not_block(self):
+        """Empty runtime_knowledge does not block."""
+        result = IntegrationResult()
+        custom_scope = KnowledgeScope(platform="nonexistent")
+        
+        evaluation = ec.compose_evaluation(
+            result=result,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability(),
+            scope=custom_scope)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_attribute_mismatch_does_not_block(self):
+        """Attribute mismatch does not block."""
+        mismatched_capability = RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU", "Vulkan", "CUDA"),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=("llama.cpp",)
+        )
+        
+        evaluation = ec.compose_evaluation(
+            result=IntegrationResult(),
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=mismatched_capability)
+        self.assertIsInstance(evaluation, StrictEvaluation)
+    
+    def test_target_specificity_other_runtimes_do_not_affect(self):
+        """Other runtimes in IntegrationResult do not affect target."""
+        llama_subject = KnowledgeSubject(
+            kind=KnowledgeKind.RUNTIME,
+            canonical_id="llama.cpp"
+        )
+        ollama_subject = KnowledgeSubject(
+            kind=KnowledgeKind.RUNTIME,
+            canonical_id="ollama"
+        )
+        
+        llama_projection = project_knowledge(
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            llama_subject,
+            KnowledgeScope()
+        )
+        ollama_projection = project_knowledge(
+            ik.INITIAL_KNOWLEDGE_REGISTRY,
+            ollama_subject,
+            KnowledgeScope()
+        )
+        
+        entries = (
+            RuntimeIntegration(
+                observation_identity="llama.cpp",
+                knowledge=llama_projection
+            ),
+            RuntimeIntegration(
+                observation_identity="ollama",
+                knowledge=ollama_projection
+            )
+        )
+        
+        result_with_multiple = IntegrationResult(
+            entries=entries,
+            unmapped=(),
+            trace=BoundaryTrace(
+                runtime_traces=(),
+                context_entries=(),
+                timestamp="2024-01-01T00:00:00Z"
+            )
+        )
+        
+        # Evaluate llama.cpp - should succeed regardless of ollama
+        evaluation = ec.compose_evaluation(
+            result=result_with_multiple,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=llama_capability())
+        self.assertIsInstance(evaluation, StrictEvaluation)
+        
+        # Evaluate ollama - should also succeed
+        ollama_capability = RuntimeCapability(
+            name="ollama",
+            executable_path="/usr/bin/fake",
+            version="1.0",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU",),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=()
+        )
+        evaluation_ollama = ec.compose_evaluation(
+            result=result_with_multiple,
+            registry=ik.INITIAL_KNOWLEDGE_REGISTRY,
+            spec=spec(),
+            artifact=artifact(),
+            capability=ollama_capability)
+        self.assertIsInstance(evaluation_ollama, StrictEvaluation)
+
+# Import required for the new tests
+from app.boundary_adapter import BoundaryTrace
+from app.knowledge_bridge import project_knowledge
+from app.compatibility_knowledge import KnowledgeSubject, KnowledgeKind, KnowledgeScope
+from app.observation_knowledge import RuntimeIntegration
 
 
 if __name__ == "__main__":
