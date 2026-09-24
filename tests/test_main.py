@@ -648,7 +648,8 @@ class CliHelpTests(unittest.TestCase):
     def test_help_shows_usage_flow(self):
         text = self._help_text()
         for command in ("models", "download", "list", "run", "chat"):
-            self.assertIn(f"python3 -m app.main {command}", text)
+            self.assertIn(f"castlearq {command}", text)
+        self.assertIn("python3 -m app.main --help", text)
 
     def test_help_explains_model_id(self):
         text = self._help_text()
@@ -660,13 +661,12 @@ class CliHelpTests(unittest.TestCase):
 
     def test_help_contains_examples(self):
         text = self._help_text()
-        self.assertIn("python3 -m app.main models", text)
+        self.assertIn("castlearq models", text)
+        self.assertIn("castlearq download qwen2.5-coder-7b-instruct", text)
         self.assertIn(
-            "python3 -m app.main download qwen2.5-coder-7b-instruct", text
+            'castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"', text
         )
-        self.assertIn(
-            'python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Hello"', text
-        )
+        self.assertIn("python3 -m app.main --help", text)
 
     def test_all_commands_are_recognized(self):
         from app.main import main

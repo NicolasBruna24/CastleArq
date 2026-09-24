@@ -41,45 +41,64 @@ El proyecto cubre hoy el flujo completo de uso local:
 Los comandos ausentes, salidas inválidas y datos no disponibles se muestran como
 `Unknown`, `Not detected` o `not available`; no provocan tracebacks al usuario.
 
-## Quickstart
+## Instalación y quickstart
 
-Entrypoint real: `python3 -m app.main`. Consulta todas las opciones con
-`python3 -m app.main --help`. No existe un comando `castlearq` instalable
-(usa `prog=castlearq` solo como nombre visible en la ayuda).
+### Instalación local desde wheel
+
+El baseline actual de instalación/validación utiliza un wheel local. No implica publicación en PyPI:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install dist/castlearq-0.1.0-py3-none-any.whl
+castlearq --version
+```
+
+Después de instalar el paquete, el entry point recomendado es:
+
+```bash
+castlearq --help
+castlearq --version
+castlearq list
+```
+
+`llama.cpp` permanece como runtime externo y los modelos no se incluyen en el paquete.
+
+Desde el checkout también continúa disponible el mecanismo de desarrollo:
+
+```bash
+python3 -m app.main --help
+python3 -m app.main --version
+```
 
 ### Paso 1 — descubrir modelos
 
 ```bash
-python3 -m app.main models
+castlearq models
 ```
 
-Muestra, para cada modelo recomendado según tu hardware: el nombre amigable,
-el `Model ID` canónico y si está disponible para descarga. Offline.
+Muestra, para cada modelo recomendado según tu hardware: el nombre amigable, el `Model ID` canónico y si está disponible para descarga. Offline.
 
 ### Paso 2 — descargar (usando el Model ID)
 
 ```bash
-python3 -m app.main download qwen2.5-coder-7b-instruct
+castlearq download qwen2.5-coder-7b-instruct
 ```
 
-El comando resuelve el modelo lógico hacia su artifact descargable, lista las
-cuantizaciones disponibles y descarga el artifact seleccionado. Puedes
-seleccionar explícitamente con `--quantization` o `--filename`. La descarga
-requiere conexión a Hugging Face.
+El comando resuelve el modelo lógico hacia su artifact descargable, lista las cuantizaciones disponibles y descarga el artifact seleccionado. Puedes seleccionar explícitamente con `--quantization` o `--filename`. La descarga requiere conexión a Hugging Face.
 
 ### Paso 3 — comprobar modelos locales
 
 ```bash
-python3 -m app.main list
+castlearq list
 ```
 
-Muestra los artifacts locales: model_id, filename, cuantización, tamaño y
-estado (por ejemplo `VERIFIED`).
+Muestra los artifacts locales: model_id, filename, cuantización, tamaño y estado (por ejemplo `VERIFIED`).
 
 ### Paso 4 — ejecución one-shot
 
 ```bash
-python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Write a Python hello world program."
+castlearq run qwen2.5-coder-7b-instruct --prompt "Write a Python hello world program."
 ```
 
 `--prompt` pertenece a `run`: entrega un prompt y obtiene una respuesta.
@@ -87,11 +106,10 @@ python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Write a Python hello
 ### Paso 5 — chat interactivo
 
 ```bash
-python3 -m app.main chat qwen2.5-coder-7b-instruct
+castlearq chat qwen2.5-coder-7b-instruct
 ```
 
-Inicia una sesión multi-turno sobre el artifact local. Escribe `/exit` o pulsa
-Ctrl+D para terminar; Ctrl+C cancela la generación en curso.
+Inicia una sesión multi-turno sobre el artifact local. Escribe `/exit` o pulsa Ctrl+D para terminar; Ctrl+C cancela la generación en curso.
 
 ## Model ID vs nombre amigable
 
@@ -189,7 +207,19 @@ telemetría ni gestión automática de drivers en esta fase.
 detectados. La memoria se estima a partir de parámetros, bits por parámetro y
 overhead; el resultado se marca siempre como estimado. La VRAM se prioriza y la
 RAM puede actuar como respaldo penalizado, pero no se considera equivalente.
-Los márgenes se centralizan en `config/config.toml`.
+Los márgenes de compatibilidad se cargan desde la configuración de usuario. Si `XDG_CONFIG_HOME` está definido, la ruta es:
+
+```text
+$XDG_CONFIG_HOME/castlearq/config.toml
+```
+
+Cuando `XDG_CONFIG_HOME` no está definido, se usa:
+
+```text
+$HOME/.config/castlearq/config.toml
+```
+
+Si el archivo no existe, se usan los valores predeterminados.
 
 Esta fase no descarga modelos, no consulta Hugging Face, no inicia servidores,
 no ejecuta inferencia y no instala software.
@@ -201,18 +231,23 @@ CPU explícito; en ese caso el resultado se marca como `marginal`.
 
 ## Fase 3.0-A: almacenamiento local
 
-La subfase inicial de Fase 3 separa un modelo lógico de un `ArtifactSpec`
-descargable y añade manifests JSON al almacenamiento local. Por defecto se usa
-`~/.local/share/castlearq/models`, configurable en `[models]` de
-`config/config.toml`. Las instalaciones existentes que ya usaban
-`~/.local/share/localai-hub/models` siguen funcionando: si el directorio
-nuevo no existe pero el antiguo sí, se utiliza el antiguo como fallback
-(sin copiar, mover ni borrar datos).
-`config/config.toml` documenta el nuevo directorio por defecto.
+La subfase inicial de Fase 3 separa un modelo lógico de un `ArtifactSpec` descargable y añade manifests JSON al almacenamiento local. Si `XDG_DATA_HOME` está definido, la ruta oficial es:
+
+```text
+$XDG_DATA_HOME/castlearq/models
+```
+
+Cuando `XDG_DATA_HOME` no está definido, se usa el fallback user-level:
+
+```text
+$HOME/.local/share/castlearq/models
+```
+
+Las instalaciones existentes que usan `~/.local/share/localai-hub/models` siguen siendo compatibles como fallback cuando la ruta nueva no existe. Si ambas existen, se utiliza la ruta `castlearq`. La resolución no crea directorios; la creación ocurre al escribir artifacts o manifests.
 El comando `list` solo inspecciona artifacts locales:
 
 ```bash
-python3 -m app.main list
+castlearq list
 ```
 
 Los estados distinguen `not_downloaded`, `downloading`, `downloaded`,

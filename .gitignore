@@ -17,6 +17,10 @@ htmlcov/
 .vscode/
 .idea/
 
+# Packaging artifacts
+dist/
+*.egg-info/
+
 # OS
 .DS_Store
 Thumbs.db
