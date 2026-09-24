@@ -48,8 +48,31 @@ unchanged (§11.2). This module performs NO error reclassification and
 introduces NO retry, fallback, recovery, degradation, backend selection
 or model execution.
 
+B9.22 extension (composition only — wiring only): the same module is the
+composition point of the Execute Model use case
+(``docs/B9.19-execute-application-use-case-specification.md``). It names the
+concrete collaborators of that Application boundary (``ModelStore``,
+``get_catalog``, ``detect_llama_capability``, ``ArtifactExecutionPreflight``,
+``RuntimeBackendSelector``, ``LlamaCppRunner``) and returns an
+``ExecuteModelDependencies`` value that a caller hands to ``execute_model``:
+
+    Application / Composition Root (this module)
+        ↓
+    ExecuteModelDependencies
+        ↓
+    execute_model()
+
+Constructing a collaborator is NOT performing its job: this module still
+captures no context, integrates nothing, reconciles nothing, builds no
+execution target and runs no subprocess for the Execute path either. The
+ordering, the compatibility gate, the selection authority and the execution
+stay inside the use case; ``app/execute_model.py`` keeps importing no
+concrete infrastructure and never knows a runner implementation
+(B9.22 §3/§10). The direction is one-way: this module imports the
+Application boundary, never the reverse.
+
 Importing this module has no side effects: no capture, no integration,
-no activation runs at import time.
+no detection, no activation and no composition runs at import time.
 """
 
 from __future__ import annotations
@@ -59,11 +82,18 @@ import shutil
 import subprocess
 from typing import Sequence
 
+from .execute_model import ExecuteModelDependencies
+from .execution import ArtifactExecutionPreflight
 from .initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
+from .model_catalog import get_catalog
+from .model_store import ModelStore
 from .observation_knowledge import IntegrationResult, integrate
 from .observation_probe import CommandResult, EnvironmentObserver
+from .runner import LlamaCppRunner
+from .runtimes import RuntimeCapability, detect_llama_capability
+from .selection import RuntimeBackendSelector
 
-__all__ = ["compose_and_integrate"]
+__all__ = ["compose_and_integrate", "compose_execute_model_dependencies"]
 
 
 # ----------------------------------------------------------------------
@@ -178,3 +208,67 @@ def compose_and_integrate() -> IntegrationResult:
     context = observer.capture_context()
     registry = INITIAL_KNOWLEDGE_REGISTRY
     return integrate(context, registry)
+
+
+# ----------------------------------------------------------------------
+# Execute Model composition (B9.22: real collaborators, wiring only)
+# ----------------------------------------------------------------------
+
+def production_capability_provider() -> RuntimeCapability:
+    """Detect the llama.cpp runtime capability (B9.19 §12 freshness, Q-2).
+
+    Evaluated fresh on every call: no module cache, no process-level cache,
+    no second ``RuntimeCapability`` object and no background refresh. The
+    probe is the machine state as it is right now, exactly like
+    ``run_service.detect_once()``.
+    """
+    return detect_llama_capability()
+
+
+def compose_execute_model_dependencies() -> ExecuteModelDependencies:
+    """Compose ``ExecuteModelDependencies`` from real infrastructure (B9.22).
+
+    One call = ONE use-case invocation: the dependencies are built, the
+    capability is detected once, and the composed value is handed to
+    ``execute_model`` and then discarded. The returned object MUST NOT be
+    cached between invocations, because the capability it carries is a
+    snapshot of the machine at composition time.
+
+    Capability identity (B9.22 §5): the single ``RuntimeCapability`` detected
+    here is what ``capability_provider`` returns AND what ``LlamaCppRunner``
+    is constructed with, so the capability the selector reasons about (target
+    backend, runtime name, supported formats) is exactly the capability the
+    runner executes with — never two divergent detections of one machine. The
+    detected instance is created at composition time (it IS the freshness
+    boundary), which satisfies both the selector/runner shared-instance
+    requirement and B9.19 §12: the provider returns that same instance on
+    every call within this composition, and the next composition detects
+    again. Mirrors ``run_service.run_once`` (detect once per invocation,
+    one runner per invocation, no cache anywhere).
+
+    Bindings are composition only: the concrete store, catalog, preflight,
+    selector and runner are named HERE and nowhere in the Application use
+    case (§3/§10). ``compatibility_provider`` is deliberately left unset: its
+    Application default (the B9.19 §8 transitional legacy gate) is the
+    ratified binding, and re-composing that assessment glue here would
+    duplicate the legacy assessment path (B9.22 §9 — no new abstraction,
+    no duplicated gate).
+
+    No exception handling, retry, fallback, degradation or reinterpretation
+    is applied: a detection or store failure is a Class-B defect and
+    propagates unchanged (§11.2).
+    """
+    capability = production_capability_provider()
+
+    def capability_provider() -> RuntimeCapability:
+        """The capability of THIS composition (identity, not a cache)."""
+        return capability
+
+    return ExecuteModelDependencies(
+        model_store=ModelStore(),
+        models=get_catalog(),
+        capability_provider=capability_provider,
+        preflight_factory=ArtifactExecutionPreflight,
+        selector=RuntimeBackendSelector(),
+        runner=LlamaCppRunner(capability),
+    )

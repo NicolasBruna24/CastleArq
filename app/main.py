@@ -70,6 +70,7 @@ from .model_identity import (
     source_repositories_for_logical_model,
 )
 from .model_store import ModelStore, StoredArtifact, UnsafePathError
+from .version import get_version
 from .downloads import (
     DownloadPlan,
     DownloadPlanStatus,
@@ -94,6 +95,12 @@ from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
 from .chat import ChatSessionError, start_chat_session
 from .artifact_selection import ArtifactSelectionError, select_artifact
+from .application_wiring import compose_execute_model_dependencies
+from .execute_model import (
+    ExecuteAdmissionDeniedError,
+    ExecutePreparationError,
+    execute_model,
+)
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -990,14 +997,77 @@ def chat_model(
     return 0
 
 
+def execute_command(
+    model_id: str | None,
+    prompt: str | None,
+    *,
+    quantization: str | None = None,
+    filename: str | None = None,
+    out=None,
+    err=None,
+) -> int:
+    """Run one prompt through the Execute Model use case (B9.24).
+
+    Thin Product Caller: usage validation, one composition per invocation,
+    one ``execute_model`` call with ``admission=None``, and projection of
+    the Application result to streams and exit code (0 success, 1 failure,
+    2 usage). Infrastructure stays behind the Composition Root.
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not model_id or prompt is None or not prompt.strip():
+        print(
+            "Usage: python3 -m app.main execute <model-id> <prompt>",
+            file=err,
+        )
+        return 2
+
+    dependencies = compose_execute_model_dependencies()
+    try:
+        result = execute_model(
+            model_id=model_id,
+            prompt=prompt,
+            quantization=quantization,
+            filename=filename,
+            admission=None,
+            dependencies=dependencies,
+        )
+    except (ExecutePreparationError, ExecuteAdmissionDeniedError) as error:
+        print(f"Execute error: {error.message}", file=err)
+        for warning in error.warnings:
+            print(f"Warning: {warning}", file=err)
+        return 1
+
+    if result.success:
+        print(
+            result.stdout,
+            end="" if result.stdout.endswith("\n") else "\n",
+            file=out,
+        )
+        for warning in result.warnings:
+            print(f"Warning: {warning}", file=err)
+        return 0
+    if result.stderr:
+        print(
+            result.stderr,
+            file=err,
+            end="" if result.stderr.endswith("\n") else "\n",
+        )
+    if result.error is not None:
+        print(f"Execute error: {result.error.message}", file=err)
+    for warning in result.warnings:
+        print(f"Warning: {warning}", file=err)
+    return 1
+
+
 USAGE_FLOW = """\
 usage flow:
-  1. discover models:      python3 -m app.main models
-  2. download a model:     python3 -m app.main download <model-id>
-  3. list local artifacts: python3 -m app.main list
-  4. run a single prompt:  python3 -m app.main run <model-id> --prompt "..."
-  5. start a chat session: python3 -m app.main chat <model-id>
-  6. diagnose GPU software: python3 -m app.main diagnose
+  1. discover models:      castlearq models
+  2. download a model:     castlearq download <model-id>
+  3. list local artifacts: castlearq list
+  4. run a single prompt:  castlearq run <model-id> --prompt "..."
+  5. start a chat session: castlearq chat <model-id>
+  6. diagnose GPU software: castlearq diagnose
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
@@ -1005,10 +1075,11 @@ model-id notes:
   the model id, never the friendly name, to download, run and chat.
 
 examples:
-  python3 -m app.main models
-  python3 -m app.main download qwen2.5-coder-7b-instruct
-  python3 -m app.main run qwen2.5-coder-7b-instruct --prompt "Hello"
-  python3 -m app.main diagnose
+  castlearq models
+  castlearq download qwen2.5-coder-7b-instruct
+  castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"
+  castlearq diagnose
+  python3 -m app.main --help  # development from checkout
 
 
 """
@@ -1046,15 +1117,17 @@ def main() -> int:
         formatter_class=_HelpFormatter,
     )
     parser.add_argument(
-        "command",
-        choices=("detect", "diagnose", "verify", "models", "list", "source", "plan", "download", "run", "chat", "serve"),
-        help="command to execute",
+        "--version",
+        action="version",
+        version=f"castlearq {get_version()}",
+        help="show the installed CastleArq version and exit",
     )
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "source", "plan", "download", "run", "execute", "chat", "serve"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
         help=(
-            "command-specific value: model-id for download/run/chat; "
+            "command-specific value: model-id for download/run/chat/execute; "
             "source provider for source; repository for plan"
         ),
     )
@@ -1063,7 +1136,7 @@ def main() -> int:
         nargs="?",
         help=(
             "command-specific value: repository for source; "
-            "artifact filename for plan"
+            "artifact filename for plan; prompt for execute"
         ),
     )
     parser.add_argument("--prompt", help="prompt text for run")
@@ -1085,6 +1158,8 @@ def main() -> int:
         help="exact artifact filename to select for download, run or chat",
     )
     args = parser.parse_args()
+    if args.command is None:
+        parser.error("a command is required")
     supported_flags = {
         "detect": (),
         "diagnose": (),
@@ -1095,6 +1170,7 @@ def main() -> int:
         "plan": (),
         "download": ("quantization", "filename"),
         "run": ("prompt", "quantization", "filename"),
+        "execute": ("quantization", "filename"),
         "chat": ("quantization", "filename"),
         "serve": (),
     }
@@ -1140,6 +1216,13 @@ def main() -> int:
         return run_model(
             args.provider,
             args.prompt,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
+    elif args.command == "execute":
+        return execute_command(
+            args.provider,
+            args.repository,
             quantization=args.quantization,
             filename=args.filename,
         )
