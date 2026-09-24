@@ -14,5 +14,12 @@ authors = [{ name = "Nicolás Bruna", email = "brunafuentealba@gmail.com" }]
 Homepage = "https://www.nicobrunaf.dev/projects/castlearq/"
 Repository = "https://github.com/NicolasBruna24/CastleArq"
 
+[project.scripts]
+castlearq = "app.main:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["config*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]

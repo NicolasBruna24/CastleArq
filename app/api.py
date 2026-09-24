@@ -108,7 +108,6 @@ import ipaddress
 import json
 import logging
 import threading
-import tomllib
 import uuid
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -119,6 +118,7 @@ from .chat import ChatSessionClosedError, ChatSessionError
 from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
+from .version import get_version
 from .models import ModelSpec
 from .run_service import (
     ChatDependencies,
@@ -217,23 +217,7 @@ class APIConfigurationError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _pyproject_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "pyproject.toml"
-
-
-def get_version() -> str:
-    """Return the project version from the existing source of truth.
-
-    The version lives in ``pyproject.toml``; this reads it at runtime so the
-    API never duplicates (and drifts from) that single source. Falls back to
-    ``"unknown"`` if the file cannot be read or parsed.
-    """
-    try:
-        data = tomllib.loads(_pyproject_path().read_text(encoding="utf-8"))
-        version = data["project"]["version"]
-        return str(version) if version else "unknown"
-    except (OSError, KeyError, TypeError, ValueError):
-        return "unknown"
+# Version resolution is implemented in app.version and shared with the CLI.
 
 
 # ---------------------------------------------------------------------------

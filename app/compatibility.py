@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
@@ -48,7 +49,16 @@ class CompatibilityConfig:
             raise ValueError("model_overhead must be > 0")
 
 
-def load_config(path: Path = Path("config/config.toml")) -> CompatibilityConfig:
+def default_config_path() -> Path:
+    """Return the user configuration path without creating it."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg).expanduser() if xdg else Path.home() / ".config"
+    return base / "castlearq" / "config.toml"
+
+
+def load_config(path: Path | None = None) -> CompatibilityConfig:
+    if path is None:
+        path = default_config_path()
     values: dict[str, float | int] = {}
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
