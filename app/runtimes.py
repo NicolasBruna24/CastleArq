@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 from dataclasses import dataclass
 from enum import Enum
@@ -52,6 +54,31 @@ class BackendStatus:
 
 Which = Callable[[str], str | None]
 Run = Callable[[tuple[str, ...]], "RuntimeProbeResult"]
+
+
+class RuntimeAvailability(str, Enum):
+    NOT_FOUND = "not_found"
+    FOUND_UNUSABLE = "found_unusable"
+    AVAILABLE = "available"
+    PROBE_ERROR = "probe_error"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class LlamaRuntimeIdentity:
+    canonical_id: str
+    executable_path: str | None
+    executable_name: str | None
+    version: str | None
+    build_identifier: str | None
+    availability: RuntimeAvailability
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedLlamaRuntime:
+    identity: LlamaRuntimeIdentity
+    capability: RuntimeCapability | None
 
 
 class PromptInputMode(str, Enum):
@@ -128,7 +155,7 @@ def query_llama_devices(executable: str, run: Run) -> str | None:
     return None
 
 
-def detect_llama_capability(
+def _detect_llama_capability(
     which: Which = shutil.which,
     run: Run | None = None,
 ) -> RuntimeCapability:
@@ -152,6 +179,7 @@ def detect_llama_capability(
     version_result = probe((executable, "cli", "--version"))
     help_result = probe((executable, "cli", "--help"))
     if version_result.returncode != 0 or help_result.returncode != 0:
+        reason = "llama cli version/help probe failed"
         return RuntimeCapability(
             name="llama.cpp CLI",
             executable_path=executable,
@@ -163,7 +191,7 @@ def detect_llama_capability(
             prompt_input_modes=(),
             supports_one_shot=False,
             available=False,
-            reason="llama cli version/help probe failed",
+            reason=reason,
         )
 
     help_text = f"{help_result.stdout}\n{help_result.stderr}"
@@ -211,6 +239,70 @@ def _version_line(output: str) -> str | None:
         if line.strip():
             return line.strip()
     return None
+
+
+def detect_llama_capability(
+    which: Which = shutil.which,
+    run: Run | None = None,
+) -> RuntimeCapability:
+    """Compatibility entry point backed by the unified resolver."""
+    resolved = resolve_llama_runtime(which=which, run=run)
+    if resolved.capability is not None:
+        return resolved.capability
+    return RuntimeCapability(
+        name="llama.cpp CLI",
+        executable_path=resolved.identity.executable_path,
+        version=resolved.identity.version,
+        supported_formats=(),
+        supported_backends=(),
+        prompt_input_modes=(),
+        supports_one_shot=False,
+        available=False,
+        reason=resolved.identity.reason,
+    )
+
+
+def _build_identifier(version: str | None) -> str | None:
+    if not version:
+        return None
+    match = re.search(r"build\s+([^\s,)]+)", version, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"commit\s+([0-9a-f]+)", version, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def resolve_llama_runtime(
+    which: Which = shutil.which,
+    run: Run | None = None,
+) -> ResolvedLlamaRuntime:
+    """Resolve and validate the official ``llama`` launcher from PATH."""
+    executable = which("llama")
+    if executable is None:
+        return ResolvedLlamaRuntime(
+            LlamaRuntimeIdentity("llama.cpp", None, None, None, None,
+                                 RuntimeAvailability.NOT_FOUND,
+                                 "llama executable was not found"),
+            None,
+        )
+    name = executable.rsplit("/", 1)[-1]
+    if os.path.exists(executable) and not os.access(executable, os.X_OK):
+        identity = LlamaRuntimeIdentity(
+            "llama.cpp", executable, name, None, None,
+            RuntimeAvailability.FOUND_UNUSABLE, "llama is not executable",
+        )
+        return ResolvedLlamaRuntime(identity, None)
+    capability = _detect_llama_capability(which=lambda _: executable, run=run)
+    version = capability.version
+    availability = (
+        RuntimeAvailability.AVAILABLE if capability.available
+        else RuntimeAvailability.FOUND_UNUSABLE
+    )
+    identity = LlamaRuntimeIdentity(
+        "llama.cpp", executable, name, version, _build_identifier(version),
+        availability, capability.reason,
+    )
+    return ResolvedLlamaRuntime(identity, capability if capability.available else None)
 
 
 def _run_runtime_probe(command: tuple[str, ...]) -> RuntimeProbeResult:

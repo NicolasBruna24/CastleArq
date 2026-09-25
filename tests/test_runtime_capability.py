@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from unittest import mock
 
 from app.runtimes import (
     PromptInputMode,
@@ -65,7 +66,58 @@ class RuntimeCapabilityTests(unittest.TestCase):
         capability = detect_llama_capability(which=lambda _: None, run=successful_probe)
         self.assertFalse(capability.available)
         self.assertIsNone(capability.executable_path)
-        self.assertEqual(capability.reason, "llama executable was not found")
+
+    def test_resolver_reports_not_found(self):
+        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+
+        resolved = resolve_llama_runtime(which=lambda _: None, run=successful_probe)
+        self.assertIs(resolved.identity.availability, RuntimeAvailability.NOT_FOUND)
+        self.assertIsNone(resolved.capability)
+        self.assertEqual(resolved.identity.canonical_id, "llama.cpp")
+
+    def test_resolver_reports_found_unusable_for_non_executable(self):
+        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "llama"
+            path.write_text("not executable", encoding="utf-8")
+            path.chmod(0o644)
+            resolved = resolve_llama_runtime(
+                which=lambda name: str(path) if name == "llama" else None,
+                run=successful_probe,
+            )
+        self.assertIs(resolved.identity.availability, RuntimeAvailability.FOUND_UNUSABLE)
+        self.assertIsNone(resolved.capability)
+
+    def test_resolver_preserves_probe_failure_without_claiming_success(self):
+        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+
+        with mock.patch("app.runtimes.os.access", return_value=True):
+            resolved = resolve_llama_runtime(
+                which=lambda name: "/opt/llama" if name == "llama" else None,
+                run=lambda command: RuntimeProbeResult(1, "", "probe failed"),
+            )
+        self.assertIs(resolved.identity.availability, RuntimeAvailability.FOUND_UNUSABLE)
+        self.assertIsNone(resolved.capability)
+        self.assertEqual(resolved.identity.reason, "llama cli version/help probe failed")
+
+    def test_resolver_reports_identity_and_capability(self):
+        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+
+        with mock.patch("app.runtimes.os.access", return_value=True):
+            resolved = resolve_llama_runtime(
+                which=lambda name: "/opt/llama" if name == "llama" else None,
+                run=successful_probe,
+            )
+        self.assertIs(resolved.identity.availability, RuntimeAvailability.AVAILABLE)
+        self.assertEqual(resolved.identity.executable_name, "llama")
+        self.assertEqual(resolved.identity.version, VERSION)
+        self.assertEqual(resolved.identity.build_identifier, "10909")
+        self.assertIsNotNone(resolved.capability)
+        self.assertIn("GGUF", resolved.capability.supported_formats)
+        self.assertIn("CPU", resolved.capability.supported_backends)
 
     def test_failed_probe_is_unavailable(self):
         def failed_probe(command):

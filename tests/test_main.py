@@ -28,6 +28,7 @@ from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResul
 from app.main import (
     _DEFAULT_EXECUTION_TIMEOUT_SECONDS,
     _download_status,
+    print_runtime_diagnostics,
     print_models,
     run_download,
     run_model,
@@ -35,6 +36,58 @@ from app.main import (
 from app.model_catalog import get_catalog
 from app.models import ArtifactSpec, Quantization
 from app.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
+
+class RuntimeDiagnosticsTests(unittest.TestCase):
+    def test_available_runtime_presentation_and_exit_zero(self):
+        from app.runtimes import (
+            LlamaRuntimeIdentity,
+            ResolvedLlamaRuntime,
+            RuntimeAvailability,
+            RuntimeCapability,
+        )
+        capability = RuntimeCapability(
+            name="llama.cpp CLI", executable_path="/tmp/llama", version="0.4",
+            supported_formats=("GGUF",), supported_backends=("CPU", "Vulkan"),
+            prompt_input_modes=("argument",), supports_one_shot=True, available=True,
+        )
+        resolved = ResolvedLlamaRuntime(
+            LlamaRuntimeIdentity("llama.cpp", "/tmp/llama", "llama", "0.4", "7",
+                                 RuntimeAvailability.AVAILABLE), capability)
+        output = io.StringIO()
+        with patch("app.main.resolve_llama_runtime", return_value=resolved):
+            code = print_runtime_diagnostics(out=output)
+        self.assertEqual(code, 0)
+        text = output.getvalue()
+        for expected in ("Runtime: llama.cpp", "Launcher: llama", "Executable: /tmp/llama",
+                         "Version: 0.4", "Build: 7", "Availability: AVAILABLE",
+                         "GGUF", "CPU", "Vulkan"):
+            self.assertIn(expected, text)
+
+    def test_not_found_is_nonzero_and_oriented(self):
+        from app.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
+        resolved = ResolvedLlamaRuntime(
+            LlamaRuntimeIdentity("llama.cpp", None, None, None, None,
+                                 RuntimeAvailability.NOT_FOUND, "llama executable was not found"), None)
+        output = io.StringIO()
+        with patch("app.main.resolve_llama_runtime", return_value=resolved):
+            code = print_runtime_diagnostics(out=output)
+        self.assertNotEqual(code, 0)
+        self.assertIn("Availability: NOT_FOUND", output.getvalue())
+        self.assertNotIn("Executable:", output.getvalue())
+
+    def test_other_states_preserve_enum_and_nonzero_exit(self):
+        from app.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
+        for state in (RuntimeAvailability.FOUND_UNUSABLE, RuntimeAvailability.PROBE_ERROR,
+                      RuntimeAvailability.UNKNOWN):
+            resolved = ResolvedLlamaRuntime(
+                LlamaRuntimeIdentity("llama.cpp", "/tmp/llama", "llama", None, None,
+                                     state, "reason"), None)
+            output = io.StringIO()
+            with patch("app.main.resolve_llama_runtime", return_value=resolved):
+                self.assertNotEqual(print_runtime_diagnostics(out=output), 0)
+            self.assertIn(f"Availability: {state.name}", output.getvalue())
+
+
 
 
 class MainRunTests(unittest.TestCase):

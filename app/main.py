@@ -83,11 +83,13 @@ from .models import ArtifactSpec, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runtimes import (
     RuntimeCapability,
+    RuntimeAvailability,
     RuntimeStatus,
     detect_backends,
     detect_llama_capability,
     detect_runtimes,
     recommend,
+    resolve_llama_runtime,
 )
 from .runner import LlamaCppRunner
 from .selection import RuntimeBackendSelector, RuntimeSelection, RuntimeSelectionError
@@ -1109,6 +1111,7 @@ usage flow:
   4. run a single prompt:  castlearq run <model-id> --prompt "..."
   5. start a chat session: castlearq chat <model-id>
   6. diagnose GPU software: castlearq diagnose
+  7. inspect llama runtime:  castlearq runtime
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
@@ -1124,6 +1127,31 @@ examples:
 
 
 """
+def print_runtime_diagnostics(out=None) -> int:
+    """Present the resolved official llama.cpp runtime state."""
+    out = out if out is not None else sys.stdout
+    resolved = resolve_llama_runtime()
+    identity = resolved.identity
+    print("Runtime: llama.cpp", file=out)
+    print("Launcher: llama", file=out)
+    if identity.executable_path is not None:
+        print(f"Executable: {identity.executable_path}", file=out)
+    if identity.version is not None:
+        print(f"Version: {identity.version}", file=out)
+    if identity.build_identifier is not None:
+        print(f"Build: {identity.build_identifier}", file=out)
+    print(f"Availability: {identity.availability.name}", file=out)
+    if identity.reason:
+        print(f"Reason: {identity.reason}", file=out)
+    if resolved.capability is not None:
+        print("Capabilities:", file=out)
+        for capability in resolved.capability.supported_formats:
+            print(f"  {capability}", file=out)
+        for backend in resolved.capability.supported_backends:
+            print(f"  {backend}", file=out)
+    return 0 if identity.availability is RuntimeAvailability.AVAILABLE else 1
+
+
 def serve_command(host: str | None = None, port: int | None = None) -> int:
     """Start the read-only HTTP API server (loopback-only)."""
     return serve(host=host or "127.0.0.1", port=8000 if port is None else port)
@@ -1163,7 +1191,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "source", "plan", "download", "run", "execute", "chat", "serve"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "download", "run", "execute", "chat", "serve"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -1207,6 +1235,7 @@ def main() -> int:
         "verify": (),
         "models": (),
         "list": (),
+        "runtime": (),
         "source": (),
         "plan": (),
         "download": ("quantization", "filename"),
@@ -1239,6 +1268,8 @@ def main() -> int:
         print_models()
     elif args.command == "list":
         print_local_models()
+    elif args.command == "runtime":
+        return print_runtime_diagnostics()
     elif args.command == "source":
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
