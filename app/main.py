@@ -1238,9 +1238,11 @@ read-only inspection:
 
 serving (EXECUTES MODELS - not a status-only surface):
   serve   HTTP API on 127.0.0.1. POST /v1/run runs real inference and
-          POST /v1/chat/sessions opens a live chat session. serve uses the
-          legacy execution path and does NOT apply the strict evaluation
-          admission that execute applies. See the README for details.
+          POST /v1/chat/sessions opens a live chat session.
+          Ratified policy (B9.51): HTTP execution shares the strict
+          evaluation admission that execute applies. Known transitional gap,
+          closed by B9.52: today serve still uses the legacy execution path
+          and does NOT apply that admission. See the README for details.
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
@@ -1295,21 +1297,28 @@ def serve_command(host: str | None = None, port: int | None = None) -> int:
     open live sessions. The previous docstring and README/help text called
     it a "read-only HTTP API", which was factually wrong.
 
-    Execution policy (B9.50 decision): the HTTP surface intentionally uses
-    the legacy execution path (``app.run_service``), the same one CLI ``run``
-    uses, and therefore does NOT apply the strict compatibility evaluation
-    admission that ``execute`` applies. This is preserved deliberately, not
-    by accident -- see ``docs/B9.50-*.md`` and the ``ExecutionGatePolicy``
-    tests in ``tests/test_api_serve_contract.py``, which pin the
-    documentation, the implementation and each other.
+    Execution policy: the RATIFIED architectural policy (B9.51, which closes
+    B9.23 section 13 K-3) is that HTTP execution shares the strict
+    compatibility admission that ``execute`` applies -- admission is a
+    property of execution, not of a command name or a transport. The ratified
+    contract (ordering, 403 for a denial, 500 for an evaluation ERROR which
+    is not a denial, 422 preparation, 503 runtime, and a rejection body
+    exposing only ``status``/``verdict``) is in
+    ``docs/B9.51-http-admission-contract-decision.md``.
 
-    RATIONALE (B9.23 section 13, K-3, left explicitly UNDECIDED): the HTTP
-    adapter block must first decide status mapping, admission-denied
-    projection and ``run_lock`` semantics before the evaluated route can
-    exist. That decision was never ratified, so adding admission here would
-    invent an HTTP error contract rather than reuse one. Loopback binding is
-    a NETWORK property and is not what makes the policy acceptable; the two
-    are documented separately.
+    What the code does TODAY is the other half of that story, and the
+    difference is bookkeeping, not endorsement: this surface still uses the
+    legacy execution path (``app.run_service``), the same one CLI ``run``
+    uses, and does NOT yet apply strict admission. B9.51 ratified the
+    decision and deferred its implementation to B9.52, so this is a KNOWN,
+    LABELLED, TEST-PINNED transitional gap -- not a second policy. The
+    ``ExecutionGatePolicyTests`` in ``tests/test_api_serve_contract.py`` pin
+    both the ratified policy and the existence of the gap, so the gap cannot
+    silently become permanent.
+
+    Loopback binding is a NETWORK property and is not what makes any policy
+    acceptable; the two are documented separately. ``run`` is unaffected:
+    B9.51 performs no ``run`` -> ``execute`` cutover.
     """
     return serve(host=host or "127.0.0.1", port=8000 if port is None else port)
 

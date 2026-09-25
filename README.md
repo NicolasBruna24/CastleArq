@@ -425,17 +425,26 @@ DELETE /v1/chat/sessions/{id}   -> cierra la sesión
 El servidor escucha en loopback (`127.0.0.1`) por defecto y rechaza hosts que
 no sean loopback. Eso es una propiedad de **exposición de red**.
 
-La **política de ejecución** es otra cosa, y conviene no confundirlas: `serve`
-usa el camino de ejecución heredado (el mismo que `run`) y **no aplica la
-admisión por evaluación estricta** que sí aplica `execute`. Un modelo
-incompatible según la evaluación estricta puede ejecutarse por HTTP. Si
-necesitas la garantía de compatibilidad, usa `execute` o consulta antes con
-`compatibility`.
+La **política de ejecución** ratificada es otra cosa, y conviene no
+ confundirla con la anterior: la admisión por evaluación estricta que aplica
+`execute` **debe** aplicarse también a la ejecución por HTTP. Esa es la
+decisión arquitectónica ratificada en B9.51
+(`docs/B9.51-http-admission-contract-decision.md`).
 
-Añadir la admisión estricta al camino HTTP requiere decidir antes su
-proyección de errores y sus códigos de estado, una decisión arquitectónica
-que sigue pendiente. El comportamiento actual es intencionado y está
-protegido por tests.
+Lo que existe hoy es una **brecha conocida y transitoria**: `serve` sigue
+usando el camino de ejecución heredado (el mismo que `run`) y **no aplica la
+admisión por evaluación estricta** que sí aplica `execute`. Un modelo
+incompatible según la evaluación estricta puede ejecutarse por HTTP. Esa
+brecha está etiquetada como tal, tiene un bloque que la cierra (B9.52) y
+está protegida por tests; no es una política ratificada.
+
+B9.51 también ratifico el contrato HTTP que esa implementación deberá
+cumplir: ordenación (`validación → run_lock → evaluación → admission →
+ejecución`), códigos de estado (`403` por admisión denegada, `500` por error
+de evaluación —que no es una denegación—, `422` por fallo de preparación,
+`503` por runtime no disponible) y un cuerpo de rechazo que expone **solo**
+`status` y `verdict` de la admisión, nunca checks ni evidencia interna. Esos
+detalles ya tienen transporte propio: `castlearq compatibility MODEL_ID`.
 
 ## Chat
 
