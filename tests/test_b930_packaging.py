@@ -6,6 +6,7 @@ import io
 import os
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -14,6 +15,72 @@ from unittest import mock
 from app.compatibility import default_config_path, load_config
 from app.model_store import default_models_directory
 from app.version import get_version
+
+
+class PackageMetadataTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pyproject = tomllib.loads(
+            Path(__file__).resolve().parents[1].joinpath("pyproject.toml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_distribution_metadata(self):
+        project = self.pyproject["project"]
+        self.assertEqual(project["name"], "castlearq")
+        self.assertEqual(project["version"], "0.1.0")
+        self.assertEqual(project["requires-python"], ">=3.10")
+        self.assertTrue(project["description"])
+        self.assertEqual(project["license"], "Apache-2.0")
+
+    def test_console_script_metadata(self):
+        self.assertEqual(
+            self.pyproject["project"]["scripts"],
+            {"castlearq": "app.main:main"},
+        )
+
+    def test_runtime_package_discovery_includes_production_subpackages(self):
+        discovery = self.pyproject["tool"]["setuptools"]["packages"]["find"]
+        self.assertEqual(discovery["include"], ["app*"])
+        self.assertIn("config*", discovery["exclude"])
+
+
+class ConsoleScriptTargetTests(unittest.TestCase):
+    def test_help(self):
+        output = io.StringIO()
+        with mock.patch.object(sys, "argv", ["castlearq", "--help"]):
+            with self.assertRaises(SystemExit) as context:
+                with redirect_stdout(output):
+                    from app.main import main
+
+                    main()
+        self.assertEqual(context.exception.code, 0)
+        self.assertIn("usage: castlearq", output.getvalue())
+        self.assertIn("download", output.getvalue())
+        self.assertIn("execute", output.getvalue())
+
+    def test_version(self):
+        output = io.StringIO()
+        with mock.patch.object(sys, "argv", ["castlearq", "--version"]):
+            with self.assertRaises(SystemExit) as context:
+                with redirect_stdout(output):
+                    from app.main import main
+
+                    main()
+        self.assertEqual(context.exception.code, 0)
+        self.assertEqual(
+            output.getvalue().strip(),
+            f"castlearq {self.pyproject_version()}",
+        )
+
+    @staticmethod
+    def pyproject_version():
+        return tomllib.loads(
+            Path(__file__).resolve().parents[1].joinpath("pyproject.toml").read_text(
+                encoding="utf-8"
+            )
+        )["project"]["version"]
 
 
 class VersionResolutionTests(unittest.TestCase):

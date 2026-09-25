@@ -7,7 +7,7 @@ name = "castlearq"
 version = "0.1.0"
 description = "CastleArq — Local AI Runtime Architecture"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [{ name = "Nicolás Bruna", email = "brunafuentealba@gmail.com" }]
 
 [project.urls]
