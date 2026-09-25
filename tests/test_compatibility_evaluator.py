@@ -216,13 +216,19 @@ class RuntimeBackendTests(unittest.TestCase):
         self.assertIs(
             _statuses(result)["runtime artifact support"], CheckStatus.FAILED)
 
-    def test_unknown_runtime_support_is_insufficient_evidence(self):
+    def test_unknown_runtime_support_does_not_block_global_evaluation(self):
         context = _context(runtime=_knowledge(supports_artifact=None))
         result = ce.evaluate(_model(), _artifact(), context)
         self.assertIs(
             _statuses(result)["runtime artifact support"], CheckStatus.UNKNOWN)
-        self.assertIs(
-            result.status, CompatibilityStatus.INSUFFICIENT_EVIDENCE)
+        self.assertIs(result.status, CompatibilityStatus.COMPATIBLE)
+
+    def test_other_unknown_support_still_requires_evidence(self):
+        context = _context(runtime=_knowledge(
+            supports_artifact=None, supported_architectures=(),
+            unsupported_architectures=()))
+        result = ce.evaluate(_model(), _artifact(), context)
+        self.assertIs(result.status, CompatibilityStatus.INSUFFICIENT_EVIDENCE)
 
     def test_explicit_backend_support_passes(self):
         result = ce.evaluate(_model(), _artifact(), _context())

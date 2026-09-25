@@ -44,7 +44,8 @@ from app.runtimes import PromptInputMode, RuntimeCapability
 
 MODULE_PATH = Path("app/evaluation_composition.py")
 PARAMETER_ORDER = ["result", "registry", "spec", "artifact", "capability",
-                   "backend", "required_capabilities", "scope"]
+                   "backend", "required_capabilities", "scope",
+                   "physical_evidence"]
 ALLOWED_IMPORTS = {"__future__", "typing", "compatibility_knowledge",
                    "evaluation_pipeline", "models", "observation_knowledge"}
 FORBIDDEN_CALLS = {"eval", "exec", "open", "__import__", "compile", "input",
@@ -160,6 +161,7 @@ class InjectionAndCallerValueTests(unittest.TestCase):
                 model_spec, artifact_spec, declared)
         arguments = delegate.call_args.args
         self.assertEqual(len(arguments), 4)
+        self.assertIsNone(delegate.call_args.kwargs["physical_evidence"])
         self.assertIs(arguments[0], ik.INITIAL_KNOWLEDGE_REGISTRY)
         self.assertIs(arguments[1], model_spec)
         self.assertIs(arguments[2], artifact_spec)
@@ -176,6 +178,7 @@ class InjectionAndCallerValueTests(unittest.TestCase):
         self.assertEqual(
             signature.parameters["required_capabilities"].default, ())
         self.assertIsNone(signature.parameters["scope"].default)
+        self.assertIsNone(signature.parameters["physical_evidence"].default)
 
 
 class ExistingContractReuseTests(unittest.TestCase):
@@ -348,7 +351,7 @@ class BoundaryAndPurityTests(unittest.TestCase):
         self.assertEqual(
             list(inspect.signature(ep.evaluate_strict).parameters),
             ["registry", "spec", "artifact", "capability", "backend",
-             "required_capabilities", "scope"])
+             "required_capabilities", "scope", "physical_evidence"])
         self.assertEqual(
             list(StrictEvaluation.__dataclass_fields__),
             ["model", "artifact", "context", "projection", "result"])

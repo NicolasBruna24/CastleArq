@@ -253,11 +253,13 @@ castlearq list
 Los estados distinguen `not_downloaded`, `downloading`, `downloaded`,
 `verified` y `failed`. Un checksum disponible se verifica al inspeccionar el
 artifact; sin checksum, un archivo nunca se marca como criptográficamente
-verificado. El estado operativo se deriva del filesystem y de metadata
-verificable; el estado persistido en el manifest es informativo/cache. La ruta
-local se deriva siempre del model ID sanitizado, artifact ID y filename, y no
-se utiliza ningún `local_path` externo. Esta subfase todavía no accede a
-Internet ni descarga archivos.
+verificado. El manifest no es la autoridad del estado local. Registra
+metadata del artefacto y su adquisición (`downloaded_at` es la marca de
+registro, no un estado). El estado (`not_downloaded`, `downloaded`, `verified`,
+`failed`) se deriva al inspeccionar el filesystem y contrastarlo con las
+expectativas declaradas. La ruta local se deriva siempre del model ID
+sanitizado, artifact ID y filename, y no se utiliza ningún `local_path`
+externo. Esta subfase todavía no accede a Internet ni descarga archivos.
 
 ## Fase 3.0-B.1: Hugging Face metadata discovery
 

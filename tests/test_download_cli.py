@@ -17,19 +17,24 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.downloads import (
+    Downloader,
     DownloadPlan,
     DownloadPlanStatus,
     DownloadResult,
     DownloadResultStatus,
 )
 from app.main import run_download
-from app.models import ArtifactSpec
+from app.model_store import ModelStore, UnsafePathError
+from app.models import ArtifactSpec, ArtifactState
+from app.resolver import ModelArtifactResolver
 
 
 def _artifact(**overrides):
@@ -94,10 +99,15 @@ def _downloader_factory(result):
 class RunDownloadTests(unittest.TestCase):
     def setUp(self):
         self.artifact = _artifact()
+        # A temporary store keeps every success path off the real user store.
+        self._tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tempdir.cleanup)
+        self.store = ModelStore(Path(self._tempdir.name) / "models")
 
     def _run(self, **kwargs):
         kwargs.setdefault("out", io.StringIO())
         kwargs.setdefault("err", io.StringIO())
+        kwargs.setdefault("model_store", self.store)
         code = run_download("qwen2.5-coder-7b-instruct", **kwargs)
         return code, kwargs["out"].getvalue(), kwargs["err"].getvalue()
 
@@ -162,6 +172,58 @@ class RunDownloadTests(unittest.TestCase):
         self.assertIn("Download complete.", out)
         self.assertIn("SHA-256 verified.", out)
         self.assertIn("Artifact state: downloaded", out)
+        # B9.40: the successful transfer also registers the manifest, and the
+        # store discovers exactly the downloaded artifact through it.
+        self.assertIn("Registered manifest:", out)
+        entries = self.store.list_artifacts()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].artifact.model_id, "qwen2.5-coder-7b-instruct")
+        self.assertEqual(
+            entries[0].artifact.filename, "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+        )
+        self.assertEqual(entries[0].artifact.quantization, "Q4_K_M")
+
+    def test_downloader_failure_does_not_persist_a_manifest(self):
+        plan = _plan(self.artifact)
+        store = Mock(spec=ModelStore)
+        result = DownloadResult(
+            False, DownloadResultStatus.NETWORK_ERROR, plan.destination, 0, "boom"
+        )
+        code, out, err = self._run(
+            model_store=store,
+            source_factory=_source_factory([self.artifact]),
+            planner_factory=_planner_factory(plan),
+            downloader_factory=_downloader_factory(result),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("boom", err)
+        store.save_manifest.assert_not_called()
+        self.assertNotIn("Download complete.", out)
+        self.assertNotIn("Registered manifest:", out)
+
+    def test_persistence_failure_is_reported_and_fails_the_command(self):
+        for error in (UnsafePathError("unsafe store path"), OSError("read-only")):
+            with self.subTest(error=type(error).__name__):
+                store = Mock(spec=ModelStore)
+                store.save_manifest.side_effect = error
+                plan = _plan(self.artifact)
+                result = DownloadResult(
+                    True, DownloadResultStatus.SUCCESS, plan.destination, 10
+                )
+                code, out, err = self._run(
+                    model_store=store,
+                    source_factory=_source_factory([self.artifact]),
+                    planner_factory=_planner_factory(plan),
+                    downloader_factory=_downloader_factory(result),
+                )
+                self.assertEqual(code, 1)
+                self.assertIn("manifest could not be persisted", err)
+                self.assertIn(str(error), err)
+                store.save_manifest.assert_called_once_with(self.artifact)
+                # A download whose manifest was not persisted is never
+                # reported as a complete success (B9.40, no rollback).
+                self.assertNotIn("Download complete.", out)
+                self.assertNotIn("Registered manifest:", out)
 
     def test_already_downloaded_is_successful_noop(self):
         plan = _plan(self.artifact, status=DownloadPlanStatus.ALREADY_DOWNLOADED)
@@ -393,6 +455,134 @@ class RunDownloadTests(unittest.TestCase):
         self.assertIn("Multiple artifacts match quantization 'Q4_K_M'", err)
         self.assertIn("--filename", err)
         planner.plan.assert_not_called()
+
+
+class _FakeHttpResponse:
+    """Minimal stand-in for the ``Downloader`` opener's response object."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+        self._sent = False
+        self.status = 200
+        self.headers: dict[str, str] = {}
+
+    def read(self, _size: int = -1) -> bytes:
+        if self._sent:
+            return b""
+        self._sent = True
+        return self._payload
+
+    def close(self) -> None:
+        return None
+
+
+class ArtifactRegistrationVerticalTests(unittest.TestCase):
+    """B9.40: the download flow itself registers the artifact in the store.
+
+    Real ``DownloadPlanner``, real ``Downloader``, real ``ModelStore`` and real
+    ``ModelArtifactResolver``; only HTTP is simulated through the ``Downloader``
+    opener seam. ``save_manifest`` is never called by the test: the artifact
+    must be discoverable and resolvable purely as a consequence of the
+    download flow.
+    """
+
+    CONTENT = b"synthetic GGUF payload for the B9.40 vertical slice"
+    REPOSITORY = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+    FILENAME = "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    MODEL_ID = "qwen2.5-coder-7b-instruct"
+
+    def setUp(self):
+        self._tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tempdir.cleanup)
+        self.store = ModelStore(Path(self._tempdir.name) / "models")
+        self.artifact = ArtifactSpec(
+            model_id=self.MODEL_ID,
+            source="huggingface",
+            repository=self.REPOSITORY,
+            filename=self.FILENAME,
+            format="GGUF",
+            quantization="Q4_K_M",
+            download_url=(
+                f"https://huggingface.co/{self.REPOSITORY}"
+                f"/resolve/main/{self.FILENAME}"
+            ),
+            size_bytes=len(self.CONTENT),
+            sha256=hashlib.sha256(self.CONTENT).hexdigest(),
+        )
+
+    def _opener(self, url, timeout, headers=None):
+        self.assertTrue(url.startswith("https://huggingface.co/"), url)
+        return _FakeHttpResponse(self.CONTENT)
+
+    def test_download_registers_the_artifact_without_manual_persistence(self):
+        out, err = io.StringIO(), io.StringIO()
+        code = run_download(
+            self.MODEL_ID,
+            model_store=self.store,
+            source_factory=_source_factory([self.artifact]),
+            downloader_factory=lambda store: Downloader(store, opener=self._opener),
+            out=out,
+            err=err,
+        )
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn("Download complete.", out.getvalue())
+        self.assertIn("Registered manifest:", out.getvalue())
+
+        # 1. The physical file was published by the real downloader.
+        published = (
+            self.store.root
+            / self.MODEL_ID
+            / self.artifact.artifact_id
+            / self.FILENAME
+        )
+        self.assertTrue(published.exists())
+        self.assertEqual(published.read_bytes(), self.CONTENT)
+
+        # 2. The manifest exists because of the flow, not because of the test.
+        manifest = published.parent / "manifest.json"
+        self.assertTrue(manifest.exists())
+
+        # 3. The store discovers exactly one artifact and derives VERIFIED.
+        entries = self.store.list_artifacts()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].artifact.model_id, self.MODEL_ID)
+        self.assertEqual(entries[0].artifact.filename, self.FILENAME)
+        self.assertEqual(entries[0].state, ArtifactState.VERIFIED)
+
+        # 4. The resolver can resolve the freshly downloaded artifact.
+        resolved = ModelArtifactResolver(self.store).resolve(
+            self.MODEL_ID, quantization="Q4_K_M"
+        )
+        self.assertEqual(resolved.artifact.filename, self.FILENAME)
+        self.assertEqual(resolved.artifact.artifact_id, self.artifact.artifact_id)
+
+    def test_second_run_sees_the_registered_artifact(self):
+        """The registered manifest closes the cycle: no second transfer."""
+        first_out, first_err = io.StringIO(), io.StringIO()
+        first_code = run_download(
+            self.MODEL_ID,
+            model_store=self.store,
+            source_factory=_source_factory([self.artifact]),
+            downloader_factory=lambda store: Downloader(store, opener=self._opener),
+            out=first_out,
+            err=first_err,
+        )
+        self.assertEqual(first_code, 0, first_err.getvalue())
+
+        spy = Mock(wraps=Downloader(self.store, opener=self._opener))
+        second_out, second_err = io.StringIO(), io.StringIO()
+        second_code = run_download(
+            self.MODEL_ID,
+            model_store=self.store,
+            source_factory=_source_factory([self.artifact]),
+            downloader_factory=lambda store: spy,
+            out=second_out,
+            err=second_err,
+        )
+        self.assertEqual(second_code, 0, second_err.getvalue())
+        self.assertIn("Artifact already downloaded.", second_out.getvalue())
+        spy.download.assert_not_called()
+        self.assertEqual(len(self.store.list_artifacts()), 1)
 
 
 class DownloadablePredicateGateTests(unittest.TestCase):

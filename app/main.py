@@ -101,6 +101,7 @@ from .execute_model import (
     ExecutePreparationError,
     execute_model,
 )
+from .evaluate_compatibility import evaluate_model_compatibility, to_admission
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -692,6 +693,7 @@ def run_download(
     source_factory=None,
     planner_factory=None,
     downloader_factory=None,
+    model_store: ModelStore | None = None,
     out=None,
     err=None,
 ) -> int:
@@ -705,6 +707,15 @@ def run_download(
       no ambiguity exists or matching the given selectors;
     - ``DownloadPlanner.plan`` then owns all destination/state/space
       validation and the ``Downloader`` performs the transfer.
+
+    Registration policy (B9.40): a successful transfer is not the end of the
+    flow. The orchestrator persists the artifact manifest through
+    :meth:`ModelStore.save_manifest` so the artifact becomes discoverable and
+    resolvable by the store and the resolver. Persistence happens only after
+    ``DownloadResult.success``; the ``Downloader`` itself never persists
+    manifests and its transfer contract is unchanged. If the manifest cannot
+    be persisted, the download is *not* reported as a complete success: an
+    explicit error is printed and the command fails.
     """
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
@@ -760,7 +771,14 @@ def run_download(
         )
         return 1
 
-    planner = (planner_factory or DownloadPlanner)()
+    # B9.40: one single store instance drives planning, transfer and
+    # registration, so the planned destination always belongs to the store
+    # that will persist the artifact.
+    store = model_store if model_store is not None else ModelStore()
+    if planner_factory is not None:
+        planner = planner_factory()
+    else:
+        planner = DownloadPlanner(store)
     try:
         plan = planner.plan(artifact)
     except (UnsafePathError, ValueError, TypeError) as error:
@@ -798,17 +816,29 @@ def run_download(
 
     print(f"Destination: {plan.destination}", file=out)
     print("Downloading...", file=out)
-    downloader = (downloader_factory or Downloader)(ModelStore())
+    downloader = (downloader_factory or Downloader)(store)
     try:
         result = downloader.download(plan)
     except UnsafePathError as error:
         print(f"Download error: {error}", file=err)
         return 1
     if result.success:
+        # B9.40: the transfer published the artifact file; registering its
+        # manifest is what makes it visible to the store and the resolver.
+        try:
+            manifest_path = store.save_manifest(artifact)
+        except (UnsafePathError, OSError, ValueError) as error:
+            print(
+                "Download error: artifact was downloaded but its local "
+                f"manifest could not be persisted: {error}",
+                file=err,
+            )
+            return 1
         print("Download complete.", file=out)
         if artifact.sha256:
             print("SHA-256 verified.", file=out)
         print("Artifact state: downloaded", file=out)
+        print(f"Registered manifest: {manifest_path}", file=out)
         return 0
     if result.status == DownloadResultStatus.CHECKSUM_MISMATCH:
         print(f"Download error: SHA-256 verification failed: {result.error}", file=err)
@@ -1009,7 +1039,8 @@ def execute_command(
     """Run one prompt through the Execute Model use case (B9.24).
 
     Thin Product Caller: usage validation, one composition per invocation,
-    one ``execute_model`` call with ``admission=None``, and projection of
+    one ``execute_model`` call with a fail-closed evaluation admission, and
+    projection of
     the Application result to streams and exit code (0 success, 1 failure,
     2 usage). Infrastructure stays behind the Composition Root.
     """
@@ -1024,12 +1055,22 @@ def execute_command(
 
     dependencies = compose_execute_model_dependencies()
     try:
+        evaluation_result = evaluate_model_compatibility(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+        )
+        admission = to_admission(evaluation_result)
+    except (ModelArtifactResolutionError, RuntimeError, ValueError, OSError):
+        admission = to_admission(None)
+
+    try:
         result = execute_model(
             model_id=model_id,
             prompt=prompt,
             quantization=quantization,
             filename=filename,
-            admission=None,
+            admission=admission,
             dependencies=dependencies,
         )
     except (ExecutePreparationError, ExecuteAdmissionDeniedError) as error:

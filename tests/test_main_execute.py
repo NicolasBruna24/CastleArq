@@ -15,8 +15,8 @@
 """B9.24 tests for the ``execute`` Product Caller (``app/main.py``).
 
 Observable behavior of the thin caller only: registration, usage exit 2
-before composition, one composition per invocation, argument forwarding with
-``admission=None``, ``ExecutionResult`` projection, preparation-error
+before composition, one composition per invocation, argument forwarding through
+strict evaluation admission, ``ExecutionResult`` projection, preparation-error
 projection, and the structural boundary of the new flow (no infrastructure
 introduced by ``main.py``). The internals of ``execute_model()`` stay covered
 by ``tests/test_execute_model.py`` and are not duplicated here.
@@ -29,6 +29,7 @@ import io
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 from app.execute_model import ExecuteAdmissionDeniedError, ExecutePreparationError
@@ -73,21 +74,37 @@ def _run_cli(*argv):
 
 
 def _invoke(model_id, prompt, *, result=None, error=None, **forward):
-    """Call ``execute_command`` with both Application seams patched.
+    """Call ``execute_command`` with its Application seams patched.
 
-    Returns (code, out, err, compose_mock, execute_mock).
+    Returns ``(code, out, err, compose_mock, execute_mock, evaluate_mock)``.
     """
     from app.main import execute_command
+    if result is None:
+        result = _success_result()
 
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    evaluation_result = mock.Mock(
+        model_id="m1",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
     deps = object()
     out, err = io.StringIO(), io.StringIO()
     with patch(
         "app.main.compose_execute_model_dependencies", return_value=deps
     ) as compose, patch(
+        "app.main.evaluate_model_compatibility", return_value=evaluation_result
+    ) as evaluate, patch(
         "app.main.execute_model", return_value=result, side_effect=error
     ) as execute:
         code = execute_command(model_id, prompt, out=out, err=err, **forward)
-    return code, out.getvalue(), err.getvalue(), compose, execute
+    return code, out.getvalue(), err.getvalue(), compose, execute, evaluate
 
 
 def _success_result(*, stdout="model output\n", warnings=()):
@@ -132,7 +149,7 @@ class UsageValidationTests(unittest.TestCase):
         self.assertEqual(out, "")
         compose.assert_not_called()
 
-        code, out, err, compose, _ = _invoke(None, "hello")
+        code, out, err, compose, _, _ = _invoke(None, "hello")
         self.assertEqual(code, 2)
         self.assertIn(USAGE, err)
         compose.assert_not_called()
@@ -146,14 +163,28 @@ class UsageValidationTests(unittest.TestCase):
 
         for prompt in (None, "", "   "):
             with self.subTest(prompt=prompt):
-                code, _, err, compose, _ = _invoke("m1", prompt)
+                code, _, err, compose, _, _ = _invoke("m1", prompt)
                 self.assertEqual(code, 2)
                 self.assertIn(USAGE, err)
                 compose.assert_not_called()
 
 
 class ApplicationCallTests(unittest.TestCase):
-    """T4-T8: forwarding, admission=None, composition, dependency identity."""
+    """T4-T8: forwarding, evaluation admission, composition, dependency identity."""
+
+    def _evaluation(self, verdict="compatible"):
+        strict_result = mock.Mock(status=verdict)
+        evaluation = mock.Mock(result=strict_result)
+        return mock.Mock(
+            model_id="m1",
+            artifact=None,
+            runtime="llama.cpp CLI",
+            capability=None,
+            evaluation=evaluation,
+            integration=None,
+            status="evaluated",
+            blocking_outcome=None,
+        )
 
     def _through_cli(self, *argv):
         with patch(
@@ -205,10 +236,15 @@ class ApplicationCallTests(unittest.TestCase):
         # composes again (never cached across calls).
         self.assertEqual(counts, [1, 2])
 
-    def test_admission_is_always_none(self):  # T7
-        code, _, _, _, execute = self._through_cli("execute", "m1", "hi")
+    def test_evaluation_result_is_projected_into_admission(self):
+        code, _, _, _, execute, evaluate = _invoke("m1", "hi")
         self.assertEqual(code, 0)
-        self.assertIsNone(execute.call_args.kwargs["admission"])
+        evaluate.assert_called_once_with(
+            "m1", quantization=None, filename=None
+        )
+        admission = execute.call_args.kwargs["admission"]
+        self.assertEqual(admission.status, "evaluated")
+        self.assertEqual(admission.verdict, "compatible")
 
     def test_dependencies_are_the_composed_value(self):  # T8
         with patch(
@@ -235,7 +271,7 @@ class ExecutionResultProjectionTests(unittest.TestCase):
     """T9-T11: success, warnings and failure projection."""
 
     def test_success_writes_output_to_stdout_and_exits_zero(self):  # T9
-        code, out, err, _, _ = _invoke(
+        code, out, err, _, _, _ = _invoke(
             "m1", "hi", result=_success_result(stdout="the answer\n")
         )
         self.assertEqual(code, 0)
@@ -243,7 +279,7 @@ class ExecutionResultProjectionTests(unittest.TestCase):
         self.assertEqual(err, "")
 
     def test_success_warnings_are_written_to_stderr(self):  # T10
-        code, out, err, _, _ = _invoke(
+        code, out, err, _, _, _ = _invoke(
             "m1",
             "hi",
             result=_success_result(stdout="the answer\n", warnings=("low memory",)),
@@ -253,7 +289,7 @@ class ExecutionResultProjectionTests(unittest.TestCase):
         self.assertIn("Warning: low memory", err)
 
     def test_failure_exits_one_with_execute_error_on_stderr(self):  # T11
-        code, out, err, _, _ = _invoke("m1", "hi", result=_failure_result())
+        code, out, err, _, _, _ = _invoke("m1", "hi", result=_failure_result())
         self.assertEqual(code, 1)
         self.assertEqual(out, "")
         self.assertIn("runtime exploded", err)
@@ -268,7 +304,7 @@ class PreparationErrorProjectionTests(unittest.TestCase):
             "Model compatibility does not permit execution",
             warnings=("marginal",),
         )
-        code, out, err, _, _ = _invoke("m1", "hi", error=error)
+        code, out, err, _, _, _ = _invoke("m1", "hi", error=error)
         self.assertEqual(code, 1)
         self.assertEqual(out, "")
         self.assertIn(
@@ -276,13 +312,35 @@ class PreparationErrorProjectionTests(unittest.TestCase):
         )
         self.assertIn("Warning: marginal", err)
 
-    def test_admission_denied_exits_one_on_stderr(self):
-        error = ExecuteAdmissionDeniedError(
-            "Execution denied by evaluation admission; deny-by-default applies"
-        )
-        code, out, err, _, _ = _invoke("m1", "hi", error=error)
+    def test_evaluation_failure_projects_denial_and_calls_execute(self):
+        from app.main import execute_command
+
+        out, err = io.StringIO(), io.StringIO()
+        with patch(
+            "app.main.compose_execute_model_dependencies", return_value=object()
+        ), patch(
+            "app.main.evaluate_model_compatibility", side_effect=RuntimeError
+        ) as evaluate, patch(
+            "app.main.execute_model", side_effect=ExecuteAdmissionDeniedError(
+                "Execution denied by evaluation admission; deny-by-default applies"
+            )
+        ) as execute:
+            code = execute_command("m1", "hi", out=out, err=err)
         self.assertEqual(code, 1)
-        self.assertEqual(out, "")
+        evaluate.assert_called_once()
+        admission = execute.call_args.kwargs["admission"]
+        self.assertEqual(admission.status, "blocked")
+        self.assertIsNone(admission.verdict)
+        self.assertIn("Execute error: Execution denied", err.getvalue())
+
+    def test_blocked_projection_still_reaches_execute_gate(self):
+        code, _, err, _, execute, _ = _invoke(
+            "m1",
+            "hi",
+            error=ExecuteAdmissionDeniedError("Execution denied"),
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(execute.call_args.kwargs["admission"].status, "evaluated")
         self.assertIn("Execute error: Execution denied", err)
 
     def test_unexpected_exception_propagates_unchanged(self):
@@ -347,11 +405,12 @@ class StructuralBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(imports, [], "the caller body must not import anything")
 
-    def test_new_flow_module_imports_are_exactly_the_two_allowed_modules(self):
+    def test_new_flow_module_imports_are_exactly_the_three_allowed_modules(self):
         received = {}
         for node in self.tree.body:
             if isinstance(node, ast.ImportFrom) and node.module in (
                 "application_wiring",
+                "evaluate_compatibility",
                 "execute_model",
             ):
                 received[node.module] = {alias.name for alias in node.names}
@@ -359,6 +418,10 @@ class StructuralBoundaryTests(unittest.TestCase):
             received,
             {
                 "application_wiring": {"compose_execute_model_dependencies"},
+                "evaluate_compatibility": {
+                    "evaluate_model_compatibility",
+                    "to_admission",
+                },
                 "execute_model": {
                     "ExecuteAdmissionDeniedError",
                     "ExecutePreparationError",

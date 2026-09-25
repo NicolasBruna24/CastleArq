@@ -150,6 +150,9 @@ ARCHITECTURE_LLAMA: KnowledgeSubject = KnowledgeSubject(
 ARCHITECTURE_QWEN3: KnowledgeSubject = KnowledgeSubject(
     kind=KnowledgeKind.ARCHITECTURE, canonical_id="qwen3",
 )
+ARCHITECTURE_QWEN2: KnowledgeSubject = KnowledgeSubject(
+    kind=KnowledgeKind.ARCHITECTURE, canonical_id="qwen2",
+)
 
 # Capability identifiers reuse the B8.1 taxonomy names (B9.6.0 §7).
 CAPABILITY_TEXT_GENERATION: KnowledgeSubject = KnowledgeSubject(
@@ -659,6 +662,13 @@ LLAMACPP_SUPPORTS_ARCHITECTURE_QWEN3: KnowledgeAssertion = KnowledgeAssertion(
     state=KnowledgeState.SUPPORTED,
     provenance=SOURCE_LLAMACPP_ARCH_REGISTRY,
 )
+LLAMACPP_SUPPORTS_ARCHITECTURE_QWEN2: KnowledgeAssertion = KnowledgeAssertion(
+    subject=LLAMACPP,
+    predicate=KnowledgePredicate.SUPPORTS,
+    object=ARCHITECTURE_QWEN2,
+    state=KnowledgeState.SUPPORTED,
+    provenance=SOURCE_LLAMACPP_ARCH_REGISTRY,
+)
 
 # Deliberate architecture UNKNOWN (§6 case 2, §19): no consulted Ollama page
 # states which model architectures the runtime supports. Model names that appear
@@ -868,6 +878,7 @@ INITIAL_KNOWLEDGE: tuple[KnowledgeAssertion, ...] = (
     # Architectures
     LLAMACPP_SUPPORTS_ARCHITECTURE_LLAMA,
     LLAMACPP_SUPPORTS_ARCHITECTURE_QWEN3,
+    LLAMACPP_SUPPORTS_ARCHITECTURE_QWEN2,
     OLLAMA_ARCHITECTURE_LLAMA_UNKNOWN,
     # Capabilities
     LLAMACPP_SUPPORTS_TEXT_GENERATION,

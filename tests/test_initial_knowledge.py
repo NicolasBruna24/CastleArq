@@ -32,7 +32,7 @@ ALLOWED_BACKENDS = {"cpu", "vulkan", "cuda", "rocm", "hip", "sycl"}
 ALLOWED_PLATFORMS = {"linux", "windows", "macos"}
 ALLOWED_CAPABILITIES = {"text_generation", "code_generation", "vision",
                         "embeddings", "tool_use"}
-ALLOWED_ARCHITECTURES = {"llama", "qwen3"}
+ALLOWED_ARCHITECTURES = {"llama", "qwen2", "qwen3"}
 VENDOR_IDS = {"nvidia", "amd", "intel", "arc", "b580", "level_zero", "apple",
               "metal", "cuda-backend", "hip7"}
 DATASET_CONSTRUCTORS = {"KnowledgeSubject", "KnowledgeScope", "KnowledgeProvenance",
@@ -292,7 +292,7 @@ class CodeGenerationAdjudicationTests(unittest.TestCase):
                  for assertion in ik.DELIBERATE_UNKNOWN_ROWS}
         self.assertEqual(kinds, {KIND.BACKEND, KIND.ARCHITECTURE})
         self.assertEqual(len(ik.DELIBERATE_UNKNOWN_ROWS), 4)
-        self.assertEqual(len(ALL_ASSERTIONS), 38)
+        self.assertEqual(len(ALL_ASSERTIONS), 39)
         for assertion in ALL_ASSERTIONS:
             self.assertIsNotNone(assertion.provenance)
         self.assertEqual(REGISTRY.conflicts(), ())

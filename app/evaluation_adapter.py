@@ -130,7 +130,7 @@ def to_artifact(spec: ArtifactSpec) -> ModelArtifact:
     return ModelArtifact(
         precision=ModelPrecision(),
         quantization=ModelQuantization(status=QuantizationStatus.UNKNOWN),
-        identifier=None,
+        identifier=_explicit(spec.model_id),
         format=_explicit(spec.format),
         storage_size_bytes=spec.size_bytes,
     )

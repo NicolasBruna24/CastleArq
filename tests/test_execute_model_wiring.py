@@ -333,7 +333,9 @@ class ComposedFeedTests(unittest.TestCase):
             quantization="Q4_K_M",
             size_bytes=len(self.content),
             sha256=hashlib.sha256(self.content).hexdigest(),
-            state=ArtifactState.DOWNLOADED,
+            # B9.41: discovery default — the manifest never persists `state`;
+            # the pipeline derives the local state from the filesystem.
+            state=ArtifactState.NOT_DOWNLOADED,
         )
         manifest = self.store.save_manifest(self.artifact)
         self.artifact_path = manifest.parent / self.artifact.filename

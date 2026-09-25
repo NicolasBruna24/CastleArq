@@ -16,6 +16,7 @@
 import tempfile
 import unittest
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 from app.model_catalog import get_catalog
@@ -33,7 +34,7 @@ class ModelArtifactResolverTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def _artifact(self, *, filename="model.Q4_K_M.gguf", state=ArtifactState.VERIFIED):
+    def _artifact(self, *, filename="model.Q4_K_M.gguf", state=ArtifactState.NOT_DOWNLOADED):
         return ArtifactSpec(
             model_id=self.model.model_id,
             source="huggingface",
@@ -45,20 +46,36 @@ class ModelArtifactResolverTests(unittest.TestCase):
         )
 
     def _store_artifact(self, artifact, *, final=True, partial=False):
-        directory = self.store.save_manifest(artifact).parent
+        manifest = self.store.save_manifest(artifact)
+        directory = manifest.parent
         if final:
             (directory / artifact.filename).write_bytes(b"model")
         if partial:
             (directory / f"{artifact.filename}.part").write_bytes(b"part")
+        return manifest
 
     def test_resolves_logical_model_to_local_artifact(self):
-        artifact = self._artifact()
-        self._store_artifact(artifact)
+        # B9.41: seeded VERIFIED in memory to prove it never round-trips —
+        # new manifests persist declared metadata + acquisition only.
+        artifact = self._artifact(state=ArtifactState.VERIFIED)
+        manifest = self._store_artifact(artifact)
 
         result = ModelArtifactResolver(self.store).resolve(self.model.model_id)
 
         self.assertEqual(result.model, self.model)
-        self.assertEqual(result.artifact, artifact)
+        # Identity and declared metadata survive the persist/read round-trip
+        # (artifact_id, repository, format, quantization, size, sha256…),
+        # while the resolved spec carries the discovery default instead of the
+        # seeded state: `state` is no longer part of the manifest schema.
+        self.assertEqual(
+            result.artifact,
+            replace(artifact, state=ArtifactState.NOT_DOWNLOADED),
+        )
+        # The local state authority is the derivation over manifest
+        # expectations + filesystem, never a persisted field.
+        self.assertEqual(
+            self.store.inspect_manifest(manifest).state, ArtifactState.DOWNLOADED
+        )
 
     def test_unknown_model_is_rejected(self):
         with self.assertRaisesRegex(ModelArtifactResolutionError, "not found"):

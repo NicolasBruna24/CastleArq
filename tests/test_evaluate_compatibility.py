@@ -13,6 +13,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from app.compatibility_domain import CheckStatus
 from app import evaluate_compatibility as uc
 from app import initial_knowledge as ik
 from app.models import ArtifactSpec, ArtifactState, ModelSpec
@@ -232,6 +233,69 @@ class B915FailureTests(unittest.TestCase):
                 "qwen2.5-coder-7b-instruct",
                 dependencies=_deps(evaluate_fn=failing),
             )
+
+
+class AdmissionProjectionTests(unittest.TestCase):
+    def _result(self, status="evaluated", verdict=None):
+        strict_result = None
+        if verdict is not None:
+            strict_result = mock.Mock(status=verdict)
+        evaluation = None
+        if strict_result is not None:
+            evaluation = mock.Mock(result=strict_result)
+        return uc.EvaluateModelCompatibilityResult(
+            model_id="m1",
+            artifact=None,
+            runtime="llama.cpp CLI",
+            capability=None,
+            evaluation=evaluation,
+            integration=None,
+            status=status,
+            blocking_outcome=None,
+        )
+
+    def test_compatible_admits(self):
+        admission = uc.to_admission(self._result(verdict="compatible"))
+        self.assertEqual(admission, uc.EvaluationAdmission("evaluated", "compatible"))
+
+    def test_compatible_with_conditions_admits(self):
+        admission = uc.to_admission(
+            self._result(verdict="compatible_with_conditions")
+        )
+        self.assertEqual(
+            admission,
+            uc.EvaluationAdmission("evaluated", "compatible_with_conditions"),
+        )
+
+    def test_incompatible_projects_denying_verdict(self):
+        admission = uc.to_admission(self._result(verdict="incompatible"))
+        self.assertEqual(admission, uc.EvaluationAdmission("evaluated", "incompatible"))
+
+    def test_insufficient_runtime_only_projects_admitting_verdict(self):
+        result = self._result(verdict="insufficient_evidence")
+        runtime_check = mock.Mock(status=CheckStatus.UNKNOWN)
+        runtime_check.name = "runtime artifact support"
+        result.evaluation.result.checks = (runtime_check,)
+        admission = uc.to_admission(result)
+        self.assertEqual(
+            admission,
+            uc.EvaluationAdmission("evaluated", "compatible"),
+        )
+
+    def test_blocked_result_has_no_admitting_verdict(self):
+        admission = uc.to_admission(self._result(status="blocked"))
+        self.assertEqual(admission, uc.EvaluationAdmission("blocked", None))
+
+    def test_missing_evaluation_fails_closed(self):
+        admission = uc.to_admission(self._result())
+        self.assertEqual(admission, uc.EvaluationAdmission("evaluated", None))
+
+    def test_missing_or_malformed_result_fails_closed(self):
+        self.assertEqual(uc.to_admission(None), uc.EvaluationAdmission("blocked", None))
+        malformed = mock.Mock(status="evaluated", evaluation=mock.Mock(result=None))
+        self.assertEqual(
+            uc.to_admission(malformed), uc.EvaluationAdmission("evaluated", None)
+        )
 
 
 if __name__ == "__main__":

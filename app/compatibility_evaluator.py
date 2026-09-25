@@ -392,7 +392,11 @@ def evaluate(
     )
     if any(check.status is CheckStatus.FAILED for check in checks):
         status = CompatibilityStatus.INCOMPATIBLE
-    elif any(check.status is CheckStatus.UNKNOWN for check in checks):
+    elif any(
+        check.status is CheckStatus.UNKNOWN
+        and check.name != "runtime artifact support"
+        for check in checks
+    ):
         status = CompatibilityStatus.INSUFFICIENT_EVIDENCE
     else:
         status = CompatibilityStatus.COMPATIBLE

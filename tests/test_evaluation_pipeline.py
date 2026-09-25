@@ -174,9 +174,9 @@ class PipelineTests(unittest.TestCase):
         evaluation = llama_pipeline()
         projection = evaluation.projection
         # llama.cpp, empty scope: cpu/cuda/hip backends + gguf format +
-        # llama/qwen3 architectures projected; rocm UNKNOWN; 5 capabilities
+        # llama/qwen2/qwen3 architectures projected; rocm UNKNOWN; 5 capabilities
         # unrepresentable; platforms absent from llama.cpp rows.
-        self.assertEqual(len(projection.projected), 6)
+        self.assertEqual(len(projection.projected), 7)
         self.assertEqual(
             sorted(row.object.canonical_id
                    for row in projection.excluded_unknown), ["rocm"])

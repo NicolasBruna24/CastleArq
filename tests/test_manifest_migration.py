@@ -56,6 +56,13 @@ class ManifestMigrationTestsBase(unittest.TestCase):
     def store_legacy_artifact(self, spec=None):
         spec = spec or legacy_spec()
         manifest = self.store.save_manifest(spec)
+        # B9.41: `save_manifest` no longer writes `state`/`verified`. Inject
+        # them to simulate a genuine pre-B9.41 manifest, so legacy read and
+        # migration preservation coverage stays honest.
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        payload["state"] = spec.state.value
+        payload["verified"] = spec.state == ArtifactState.VERIFIED
+        manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         manifest.parent.joinpath(spec.filename).write_bytes(ARTIFACT_BYTES)
         return manifest
 
@@ -76,7 +83,13 @@ class LegacyManifestMigrationTests(ManifestMigrationTestsBase):
         self.assertEqual(payload["model_id"], QWEN_LOGICAL_ID)
         self.assertEqual(payload["repository"], QWEN_REPOSITORY)
         self.assertEqual(payload["sha256"], ARTIFACT_SHA256)
+        # Legacy preservation/read compatibility: migration rewrites only the
+        # identity and keeps legacy fields readable as-is. This is NOT
+        # authorization to persist `state` in new manifests — that contract is
+        # covered by test_saved_manifest_omits_state_and_verified in
+        # tests/test_model_store.py.
         self.assertEqual(payload["state"], "verified")
+        self.assertTrue(payload["verified"])
         artifact_file = migrated_manifest.parent / payload["filename"]
         self.assertEqual(artifact_file.read_bytes(), ARTIFACT_BYTES)
         entry = self.store.list_artifacts()[0]
@@ -110,6 +123,32 @@ class LegacyManifestMigrationTests(ManifestMigrationTestsBase):
         self.assertEqual(migrated.sha256, spec.sha256)
         self.assertEqual(migrated.size_bytes, spec.size_bytes)
         self.assertNotEqual(migrated.model_id, migrated.repository)
+
+
+class NewSchemaManifestTests(ManifestMigrationTestsBase):
+    def test_manifest_without_legacy_state_is_migrated(self):
+        # B9.41: new manifests carry no `state`/`verified`; migration must
+        # handle them and the store must still derive the local state from
+        # manifest expectations + filesystem facts.
+        spec = legacy_spec()
+        manifest = self.store.save_manifest(spec)
+        payload = self.payload_of(manifest)
+        self.assertNotIn("state", payload)
+        self.assertNotIn("verified", payload)
+        manifest.parent.joinpath(spec.filename).write_bytes(ARTIFACT_BYTES)
+
+        report = migrate_model_store(self.store)
+        self.assertEqual(report.migrated, 1)
+
+        migrated = (
+            self.store.root / QWEN_LOGICAL_ID / spec.artifact_id / "manifest.json"
+        )
+        migrated_payload = self.payload_of(migrated)
+        self.assertNotIn("state", migrated_payload)
+        self.assertNotIn("verified", migrated_payload)
+        self.assertEqual(migrated_payload["model_id"], QWEN_LOGICAL_ID)
+        entry = self.store.list_artifacts()[0]
+        self.assertEqual(entry.state, ArtifactState.VERIFIED)
 
 
 class UnmappedManifestTests(ManifestMigrationTestsBase):

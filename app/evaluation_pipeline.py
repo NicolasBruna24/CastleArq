@@ -94,10 +94,11 @@ def evaluate_strict(
     registry: KnowledgeRegistry,
     spec: ModelSpec,
     artifact: ArtifactSpec,
-    capability: "RuntimeCapability",
+    capability: RuntimeCapability,
     backend: str | None = None,
     required_capabilities: tuple[str, ...] = (),
     scope: KnowledgeScope | None = None,
+    physical_evidence: object | None = None,
 ) -> StrictEvaluation:
     """Run the strict B9.8 → B9.7 → B9.3 chain deterministically.
 
@@ -108,6 +109,14 @@ def evaluate_strict(
     never used to decide execution.
     """
     model = to_model(spec)
+    if physical_evidence is not None and physical_evidence.architecture_raw is not None:
+        model = replace(
+            model,
+            architecture=replace(
+                model.architecture,
+                architecture=physical_evidence.architecture_raw,
+            ),
+        )
     adapted_artifact = to_artifact(artifact)
     adapted_artifact = replace(
         adapted_artifact,

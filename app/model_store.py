@@ -15,6 +15,10 @@
 
 """Local model artifact manifests and safe storage inspection.
 
+Manifests persist declared metadata plus an acquisition record; the local
+artifact state is never persisted — it is always derived by inspecting the
+filesystem against the manifest's expectations (B9.41).
+
 This module intentionally does not perform network access or model downloads.
 """
 
@@ -96,6 +100,23 @@ class ModelStore:
         return entries
 
     def save_manifest(self, artifact: ArtifactSpec) -> Path:
+        """Persist declared artifact metadata plus an acquisition record.
+
+        The manifest records identity, provenance, declared metadata, the
+        integrity expectations (size/sha256) and the acquisition timestamp
+        ``downloaded_at`` (conceptually ``registered_at``: the physical field
+        name is kept to avoid an extra migration; it is registration metadata,
+        never an authority of state).
+
+        No derived state is computed or stored here: ``state`` and ``verified``
+        are not written, and ``ArtifactSpec.state`` is only an in-memory
+        discovery default — not a source of truth and never persisted in new
+        manifests. Nothing is inspected or verified in this operation; the
+        local artifact state is always derived by :meth:`inspect_manifest`
+        from manifest expectations plus filesystem facts. Legacy manifests
+        that still carry ``state``/``verified`` remain readable; their values
+        are tolerated for compatibility and never authoritative.
+        """
         self._safe_filename(artifact.filename)
         root_fd = self._open_root(create=True)
         try:
@@ -134,9 +155,13 @@ class ModelStore:
             "download_url": artifact.download_url,
             "size_bytes": artifact.size_bytes,
             "sha256": artifact.sha256,
-            "state": artifact.state.value,
+            # B9.41: `state` and `verified` are deliberately NOT persisted —
+            # the local artifact state is derived by `inspect_manifest()` from
+            # manifest expectations plus filesystem facts, never read back
+            # from the manifest. `downloaded_at` stays as the acquisition /
+            # registration timestamp (conceptually `registered_at`); the
+            # physical name is kept to avoid an extra migration.
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
-            "verified": artifact.state == ArtifactState.VERIFIED,
         }
         temporary_name = "manifest.json.part"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -289,6 +314,10 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
     for key in required:
         if not isinstance(payload.get(key), str) or not payload[key]:
             raise ValueError(f"Invalid manifest field: {key}")
+    # Legacy manifests (pre-B9.41) persisted `state`; new manifests never do.
+    # The value is validated only so legacy manifests keep loading (read
+    # tolerance). It is never used to derive the current local state — that
+    # authority belongs exclusively to `ModelStore.inspect_manifest()`.
     state_value = payload.get("state", ArtifactState.NOT_DOWNLOADED.value)
     try:
         state = ArtifactState(str(state_value))

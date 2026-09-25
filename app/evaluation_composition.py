@@ -68,10 +68,11 @@ def compose_evaluation(
     registry: KnowledgeRegistry,
     spec: ModelSpec,
     artifact: ArtifactSpec,
-    capability: "RuntimeCapability",
+    capability: RuntimeCapability,
     backend: str | None = None,
     required_capabilities: tuple[str, ...] = (),
     scope: KnowledgeScope | None = None,
+    physical_evidence: object | None = None,
 ) -> StrictEvaluation:
     """Assemble one Evaluation from the Q-8 delivery and caller-declared values.
 
@@ -124,4 +125,5 @@ def compose_evaluation(
         backend=backend,
         required_capabilities=required_capabilities,
         scope=scope,
+        physical_evidence=physical_evidence,
     )

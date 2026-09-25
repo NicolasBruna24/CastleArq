@@ -178,10 +178,21 @@ class ArtifactAdapterTests(unittest.TestCase):
         self.assertIsNone(ea.to_artifact(artifact(format="Unknown")).format)
         self.assertIsNone(ea.to_artifact(artifact(format="")).format)
 
-    def test_identifier_is_always_none(self):
-        adapted = ea.to_artifact(artifact(model_id="Qwen3 Demo"))
+    def test_explicit_model_id_is_logical_identifier(self):
+        adapted = ea.to_artifact(artifact(model_id="logical-model"))
+        self.assertEqual(adapted.identifier, "logical-model")
+
+    def test_missing_model_id_stays_unknown(self):
+        adapted = ea.to_artifact(artifact(model_id=None))
         self.assertIsNone(adapted.identifier)
-        self.assertIsNone(ea.to_artifact(artifact()).identifier)
+
+    def test_physical_artifact_id_is_never_identifier(self):
+        spec = artifact(model_id="logical-model")
+        self.assertNotEqual(spec.artifact_id, "logical-model")
+        adapted = ea.to_artifact(spec)
+        self.assertEqual(adapted.identifier, "logical-model")
+        self.assertNotEqual(adapted.identifier, spec.artifact_id)
+        self.assertEqual(spec.artifact_id, spec.artifact_id)
 
     def test_quantization_label_never_implies_precision(self):
         adapted = ea.to_artifact(artifact(quantization="Q4_K_M"))

@@ -18,6 +18,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -50,6 +51,33 @@ class ModelStoreTests(unittest.TestCase):
             entries = store.list_artifacts()
             self.assertEqual(len(entries), 1)
             self.assertEqual(entries[0].state, ArtifactState.NOT_DOWNLOADED)
+
+    def test_saved_manifest_omits_state_and_verified(self):
+        # B9.41: new manifests persist declared metadata + acquisition record
+        # only; the in-memory state never leaks into the payload.
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            spec = artifact(state=ArtifactState.VERIFIED)
+            manifest = store.save_manifest(spec)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertNotIn("state", payload)
+            self.assertNotIn("verified", payload)
+            # The acquisition/registration timestamp remains.
+            self.assertIn("downloaded_at", payload)
+            datetime.fromisoformat(payload["downloaded_at"])
+            # The declared metadata contract is intact.
+            for key in (
+                "model_id",
+                "source",
+                "repository",
+                "filename",
+                "format",
+                "quantization",
+                "download_url",
+                "size_bytes",
+                "sha256",
+            ):
+                self.assertIn(key, payload)
 
     def test_verified_artifact_requires_matching_size_and_checksum(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -214,13 +242,46 @@ class ModelStoreTests(unittest.TestCase):
             self.assertEqual(store.inspect_manifest(manifest).state, ArtifactState.NOT_DOWNLOADED)
 
     def test_manifest_state_is_recomputed_from_filesystem(self):
+        # B9.41: new manifests no longer persist `state`, so the legacy field
+        # is seeded by hand: even a manifest claiming VERIFIED is only an
+        # expectation record — the derived state comes from the filesystem.
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
-            manifest = store.save_manifest(
-                artifact(state=ArtifactState.VERIFIED, size_bytes=5)
-            )
+            manifest = store.save_manifest(artifact(size_bytes=5))
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["state"] = ArtifactState.VERIFIED.value
+            payload["verified"] = True
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
             manifest.parent.joinpath("model-q4.gguf").write_bytes(b"model")
             self.assertEqual(store.inspect_manifest(manifest).state, ArtifactState.DOWNLOADED)
+
+    def test_legacy_persisted_state_is_never_authoritative(self):
+        # B9.41: legacy `state`/`verified` are read tolerantly but must never
+        # become the source of truth, in either direction.
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            content = b"model"
+            spec = artifact(
+                size_bytes=len(content), sha256=hashlib.sha256(content).hexdigest()
+            )
+            manifest = store.save_manifest(spec)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            # A legacy manifest claiming VERIFIED does not invent a file.
+            payload["state"] = ArtifactState.VERIFIED.value
+            payload["verified"] = True
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(
+                store.inspect_manifest(manifest).state, ArtifactState.NOT_DOWNLOADED
+            )
+            # A legacy manifest claiming NOT_DOWNLOADED does not hide a file
+            # that meets the declared expectations.
+            manifest.parent.joinpath(spec.filename).write_bytes(content)
+            payload["state"] = ArtifactState.NOT_DOWNLOADED.value
+            payload["verified"] = False
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(
+                store.inspect_manifest(manifest).state, ArtifactState.VERIFIED
+            )
 
     def test_missing_directory_is_not_created_by_list(self):
         with tempfile.TemporaryDirectory() as directory:

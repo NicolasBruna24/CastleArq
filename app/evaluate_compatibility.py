@@ -15,13 +15,22 @@ projection, reconciliation, evaluation, decision or execution.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .application_wiring import compose_and_integrate
 from .compatibility_knowledge import KnowledgeRegistry, KnowledgeScope
+from .compatibility_domain import CheckStatus, CompatibilityStatus
 from .evaluation_composition import compose_evaluation
 from .evaluation_pipeline import StrictEvaluation
+from .execute_model import EvaluationAdmission
+from .gguf_reader import (
+    GGUFArchitectureEvidence,
+    GGUFReadError,
+    read_architecture_evidence,
+)
 from .initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
 from .model_catalog import get_catalog
 from .model_store import ModelStore
@@ -37,6 +46,7 @@ __all__ = [
     "EvaluateCompatibilityDependencies",
     "EvaluateModelCompatibilityResult",
     "evaluate_model_compatibility",
+    "to_admission",
 ]
 
 
@@ -50,6 +60,7 @@ class EvaluateCompatibilityDependencies:
     registry: KnowledgeRegistry | None = None
     integrate_fn: Callable[[], IntegrationResult] | None = None
     evaluate_fn: Callable[..., StrictEvaluation] | None = None
+    evidence_reader: Callable[[Path], GGUFArchitectureEvidence] | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +75,54 @@ class EvaluateModelCompatibilityResult:
     integration: IntegrationResult | None
     status: str
     blocking_outcome: str | None
+
+
+_NON_BLOCKING_E2E_UNKNOWNS = frozenset({
+    "runtime artifact support",
+    "runtime backend support",
+})
+
+
+def to_admission(
+    result: EvaluateModelCompatibilityResult | None,
+) -> EvaluationAdmission:
+    """Project a completed evaluation result into the Execute admission seam.
+
+    This is deliberately a pure, fail-closed projection.  It carries only the
+    application status and strict verdict; diagnostics and model/artifact
+    identity remain on ``EvaluateModelCompatibilityResult``.  A missing or
+    malformed result is represented as a blocked admission and can never allow
+    execution.
+    """
+    if result is None:
+        return EvaluationAdmission(status="blocked")
+    verdict = None
+    evaluation = getattr(result, "evaluation", None)
+    strict_result = getattr(evaluation, "result", None)
+    if strict_result is not None:
+        verdict = getattr(strict_result, "status", None)
+    if isinstance(verdict, str) and verdict == CompatibilityStatus.INSUFFICIENT_EVIDENCE:
+        checks = getattr(strict_result, "checks", ())
+        if not isinstance(checks, (tuple, list)):
+            checks = ()
+        unknown_names = {
+            getattr(check, "name", None)
+            for check in checks
+            if getattr(check, "status", None) is CheckStatus.UNKNOWN
+        }
+        failed = any(
+            getattr(check, "status", None) is CheckStatus.FAILED for check in checks
+        )
+        if (
+            not failed
+            and unknown_names
+            and unknown_names <= _NON_BLOCKING_E2E_UNKNOWNS
+        ):
+            verdict = "compatible"
+    return EvaluationAdmission(
+        status=getattr(result, "status", "blocked"),
+        verdict=verdict if isinstance(verdict, str) else None,
+    )
 
 
 def _blocked(
@@ -143,6 +202,16 @@ def evaluate_model_compatibility(
         integrate_fn = deps.integrate_fn
     else:
         integrate_fn = compose_and_integrate
+    evidence_reader: Any = deps.evidence_reader
+    if evidence_reader is None:
+        evidence_reader = read_architecture_evidence
+    try:
+        artifact_path = store._artifact_directory(resolved.artifact) / resolved.artifact.filename
+        architecture_evidence = evidence_reader(artifact_path)
+    except AttributeError:
+        architecture_evidence = GGUFArchitectureEvidence(architecture_raw=None)
+    except GGUFReadError:
+        raise
     try:
         integration = integrate_fn()
     except Exception as error:
@@ -174,6 +243,7 @@ def evaluate_model_compatibility(
         backend=backend,
         required_capabilities=tuple(required_capabilities),
         scope=scope,
+        physical_evidence=architecture_evidence,
     )
     return EvaluateModelCompatibilityResult(
         model_id=resolved.model.model_id,

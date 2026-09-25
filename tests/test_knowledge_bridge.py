@@ -268,7 +268,7 @@ class DatasetB961Tests(unittest.TestCase):
         self.assertEqual(rk.unsupported_backends, ())
         self.assertEqual(rk.supported_formats, ("gguf",))
         self.assertEqual(rk.unsupported_formats, ())
-        self.assertEqual(rk.supported_architectures, ("llama", "qwen3"))
+        self.assertEqual(rk.supported_architectures, ("llama", "qwen2", "qwen3"))
         self.assertEqual(rk.unsupported_architectures, ())
         self.assertIsNone(rk.supports_artifact)
         self.assertEqual([row.object.canonical_id
