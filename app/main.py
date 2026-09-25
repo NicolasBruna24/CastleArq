@@ -104,6 +104,10 @@ from .execute_model import (
     execute_model,
 )
 from .evaluate_compatibility import evaluate_model_compatibility, to_admission
+from .compatibility_report import (
+    evaluation_report,
+    format_evaluation_report,
+)
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -1062,9 +1066,31 @@ def execute_command(
             quantization=quantization,
             filename=filename,
         )
-        admission = to_admission(evaluation_result)
-    except (ModelArtifactResolutionError, RuntimeError, ValueError, OSError):
+    except (
+        ModelArtifactResolutionError,
+        RuntimeError,
+        ValueError,
+        OSError,
+    ) as error:
+        # B9.48 (P0-2): an evaluation that RAISED is not an evaluation that
+        # DENIED. The previous behaviour folded both into
+        # ``to_admission(None)``, so a broken GGUF read or a resolution
+        # failure surfaced to the user as "deny-by-default applies" -- a
+        # policy statement that was never actually made.
+        #
+        # The distinction is preserved end to end:
+        #   * the cause is reported as an EVALUATION ERROR, not a denial;
+        #   * execution is still fail-closed (no admission is minted, so the
+        #     Execute gate cannot admit), preserving deny-by-default for the
+        #     cases that really are decisions.
+        print(
+            f"Compatibility evaluation error: {type(error).__name__}: {error}",
+            file=err,
+        )
+        evaluation_result = None
         admission = to_admission(None)
+    else:
+        admission = to_admission(evaluation_result)
 
     try:
         result = execute_model(
@@ -1077,6 +1103,13 @@ def execute_command(
         )
     except (ExecutePreparationError, ExecuteAdmissionDeniedError) as error:
         print(f"Execute error: {error.message}", file=err)
+        # B9.48 (P0-1): when the admission gate is what refused execution,
+        # show the evaluation that produced it. The gate's own message says
+        # only that deny-by-default applies; the checks, reasons and evidence
+        # already computed by the evaluation are printed here so the user can
+        # see WHICH check blocked and why. Nothing is inferred or invented.
+        if evaluation_result is not None:
+            print(format_evaluation_report(evaluation_result), file=err)
         for warning in error.warnings:
             print(f"Warning: {warning}", file=err)
         return 1
@@ -1103,24 +1136,121 @@ def execute_command(
     return 1
 
 
+def compatibility_command(
+    model_id: str | None,
+    *,
+    quantization: str | None = None,
+    filename: str | None = None,
+    out=None,
+    err=None,
+) -> int:
+    """Report the existing strict compatibility evaluation (B9.48).
+
+    Read-only Product Caller for
+    :func:`~app.evaluate_compatibility.evaluate_model_compatibility`.
+    It asks the question ``execute`` would answer implicitly, and it answers
+    it WITHOUT running inference.
+
+    Guarantees, in line with B9.48 section 7:
+
+    * it runs no inference and launches no runtime process;
+    * it performs no download and creates no artifact;
+    * it does not modify the ModelStore -- it only reads it, through the same
+      use case ``execute`` uses;
+    * it creates no persistent state and writes no session or manifest;
+    * it does not alter evaluation policy: it reuses ``to_admission`` for the
+      exit code only, exactly as ``execute`` does.
+
+    Exit codes follow the existing CLI convention: ``0`` when the evaluation
+    admits execution, ``1`` when it does not, ``2`` on usage error.
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not model_id or not model_id.strip():
+        print(
+            "Usage: python3 -m app.main compatibility <model-id>",
+            file=err,
+        )
+        return 2
+
+    try:
+        result = evaluate_model_compatibility(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+        )
+    except (
+        ModelArtifactResolutionError,
+        RuntimeError,
+        ValueError,
+        OSError,
+    ) as error:
+        # Same P0-2 distinction as `execute`: a raised error is reported as an
+        # evaluation error, never as a compatibility verdict.
+        print(
+            f"Compatibility evaluation error: {type(error).__name__}: {error}",
+            file=err,
+        )
+        return 1
+
+    print(format_evaluation_report(result), file=out)
+    # Reuse the existing fail-closed projection for the exit code. This does
+    # not change policy; it only reports what `execute` would decide.
+    admission = to_admission(result)
+    return 0 if admission.status == "evaluated" and admission.verdict in (
+        "compatible",
+        "compatible_with_conditions",
+    ) else 1
+
+
 USAGE_FLOW = """\
 usage flow:
   1. discover models:      castlearq models
   2. download a model:     castlearq download <model-id>
   3. list local artifacts: castlearq list
-  4. run a single prompt:  castlearq run <model-id> --prompt "..."
-  5. start a chat session: castlearq chat <model-id>
-  6. diagnose GPU software: castlearq diagnose
-  7. inspect llama runtime:  castlearq runtime
+  4. check compatibility:  castlearq compatibility <model-id>
+  5. run a single prompt:  castlearq execute <model-id> "<prompt>"
+  6. start a chat session: castlearq chat <model-id>
+  7. diagnose GPU software: castlearq diagnose
+  8. inspect llama runtime:  castlearq runtime
+  9. re-check remediation:   castlearq verify
+
+execution:
+  execute is the recommended command. It evaluates strict compatibility
+  first and refuses to run when admission denies, printing the checks,
+  reasons and evidence behind the refusal.
+  run <model-id> --prompt "<text>" is the legacy interface. It reaches the
+  same llama.cpp runtime through the legacy preparation pipeline and does
+  NOT apply the strict evaluation admission. Prefer execute.
+
+read-only inspection:
+  detect  system, CPU, memory and GPU
+  runtime resolved llama.cpp runtime state
+  models  scored model recommendations
+  list    locally stored artifacts
+  compatibility <model-id>
+          strict compatibility evaluation, without running inference
+  source huggingface <repository>   inspect a remote source
+  plan <repository> <filename>      inspect one remote artifact
+  diagnose / verify
+          GPU software diagnosis and its read-only re-verification
+          (these concern the ENVIRONMENT, not artifact integrity)
+  serve   read-only HTTP API on 127.0.0.1
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
   with the canonical model id (e.g. "qwen2.5-coder-7b-instruct"). Always pass
-  the model id, never the friendly name, to download, run and chat.
+  the model id, never the friendly name, to download, execute, chat,
+  compatibility and run.
+
+exit codes:
+  0  success / compatible      1  failure / not compatible      2  usage error
 
 examples:
   castlearq models
   castlearq download qwen2.5-coder-7b-instruct
+  castlearq compatibility qwen2.5-coder-7b-instruct
+  castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly OK"
   castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"
   castlearq diagnose
   python3 -m app.main --help  # development from checkout
@@ -1191,13 +1321,13 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "download", "run", "execute", "chat", "serve"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "download", "run", "execute", "chat", "serve"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
         help=(
-            "command-specific value: model-id for download/run/chat/execute; "
-            "source provider for source; repository for plan"
+            "command-specific value: model-id for download/run/chat/execute/"
+            "compatibility; source provider for source; repository for plan"
         ),
     )
     parser.add_argument(
@@ -1220,11 +1350,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--quantization",
-        help="quantization level to select for download, run or chat",
+        help="quantization level to select for download, execute, compatibility, run or chat",
     )
     parser.add_argument(
         "--filename",
-        help="exact artifact filename to select for download, run or chat",
+        help="exact artifact filename to select for download, execute, compatibility, run or chat",
     )
     args = parser.parse_args()
     if args.command is None:
@@ -1238,6 +1368,7 @@ def main() -> int:
         "runtime": (),
         "source": (),
         "plan": (),
+        "compatibility": ("quantization", "filename"),
         "download": ("quantization", "filename"),
         "run": ("prompt", "quantization", "filename"),
         "execute": ("quantization", "filename"),
@@ -1274,6 +1405,14 @@ def main() -> int:
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
         return print_plan(args.provider, args.repository)
+    elif args.command == "compatibility":
+        if args.repository is not None:
+            parser.error("compatibility accepts exactly one model-id")
+        return compatibility_command(
+            args.provider,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
     elif args.command == "download":
         if args.repository is not None:
             parser.error("download accepts exactly one model-id")

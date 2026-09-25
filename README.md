@@ -15,6 +15,7 @@ CastleArq ofrece un flujo local para:
 - consultar el catálogo de modelos;
 - descargar explícitamente artifacts GGUF;
 - almacenarlos y volver a listarlos localmente;
+- consultar la evaluación de compatibilidad sin ejecutar nada;
 - validar compatibilidad y seleccionar backend;
 - ejecutar un primer prompt o una sesión chat.
 
@@ -142,6 +143,43 @@ y el fallback es:
 la ruta recomendada para nuevas instalaciones. No es necesario editar manifests
 ni mover modelos manualmente para usar CastleArq.
 
+## Check compatibility (without running anything)
+
+Antes de ejecutar puedes consultar la evaluación de compatibilidad estricta:
+
+```bash
+castlearq compatibility qwen2.5-coder-7b-instruct
+```
+
+Este comando es de **solo lectura**: no ejecuta inferencia, no lanza el
+runtime, no descarga modelos, no modifica el ModelStore y no crea estado
+persistente. Imprime el veredicto y, para cada check, su estado, lo esperado,
+lo observado y la evidencia que ya tiene registrada:
+
+```text
+Compatibility evaluation
+  Model: qwen2.5-coder-7b-instruct
+  Artifact: qwen2.5-coder-7b-instruct-q4_k_m.gguf (Q4_K_M)
+  Runtime: llama.cpp CLI
+  Verdict: INSUFFICIENT_EVIDENCE
+
+Checks:
+  artifact format support: PASSED
+    Expected: 'gguf'
+    Observed: 'gguf'
+    Evidence (observed): artifact.format = 'gguf'
+  runtime artifact support: UNKNOWN
+    Evidence (observed): runtime.supports_artifact = None
+```
+
+`UNKNOWN` significa que no hay evidencia suficiente. No es un fallo:
+CastleArq no lo trata como incompatible. Los códigos de salida son `0` cuando
+la evaluación admite la ejecución, `1` cuando no la admite y `2` si el uso es
+incorrecto.
+
+El mismo criterio que usa `execute` decide aquí: este comando informa, no
+cambia la política.
+
 ## First execution
 
 La interfaz recomendada para el primer uso es `execute`:
@@ -169,8 +207,25 @@ castlearq run qwen2.5-coder-7b-instruct --prompt "Reply with exactly B9.34-OK"
 ```
 
 `run` y `execute` no son aliases sintácticos: `run` recibe `--prompt`, mientras
-que `execute` recibe el prompt como argumento. Usa `execute` para el primer
-flujo recomendado y conserva `run` como interfaz existente.
+que `execute` recibe el prompt como argumento.
+
+### `execute` frente a `run`
+
+No son equivalentes en política:
+
+| | `execute` | `run` |
+|---|---|---|
+| Prompt | posicional | `--prompt` |
+| Evaluación estricta | sí, antes de ejecutar | no |
+| Admission fail-closed | sí | no |
+| Runtime | llama.cpp | llama.cpp |
+
+`execute` evalúa la compatibilidad estricta y se niega a ejecutar cuando la
+admisión lo deniega, mostrando los checks, razones y evidencia. `run` es la
+interfaz heredada: llega al mismo runtime de llama.cpp por el pipeline de
+preparación heredado y **no** aplica la admisión por evaluación estricta.
+
+Usa `execute`. `run` se conserva por compatibilidad.
 
 ## Model management
 
@@ -245,8 +300,33 @@ runtime. Usa un backend compatible con lo detectado.
 
 ### Admission denied
 
-CastleArq bloqueó la ejecución según la evaluación actual. Lee el motivo
-mostrado; no hay una instrucción para forzar la ejecución.
+CastleArq bloqueó la ejecución según la evaluación actual. La salida incluye la
+evaluación completa que produjo el bloqueo: el veredicto, cada check con su
+estado, lo esperado, lo observado y la evidencia. No hay una instrucción para
+forzar la ejecución.
+
+```bash
+castlearq compatibility MODEL_ID
+```
+
+muestra esa misma evaluación sin ejecutar nada, y es la forma recomendada de
+entender el motivo antes de intentarlo de nuevo.
+
+Un check `UNKNOWN` no es un fallo: significa que no hay evidencia suficiente y
+no se trata como incompatibilidad.
+
+### Compatibility evaluation error
+
+Si la evaluación no pudo completarse, CastleArq lo dice explícitamente:
+
+```text
+Compatibility evaluation error: GGUFReadError: ...
+```
+
+Esto **no** es una denegación por política: significa que la evaluación
+falló. La causa indicada (por ejemplo, un artifact GGUF corrupto o ilegible)
+es el problema real, y la ejecución sigue bloqueada. Revisa el artifact con
+`castlearq list` y vuelve a descargarlo si su estado no es utilizable.
 
 ### Execution failure
 
@@ -279,6 +359,32 @@ castlearq --help
 
 El exit code `2` indica uso incorrecto, como argumentos faltantes o flags no
 válidos.
+
+## Command reference
+
+| Comando | Qué hace |
+|---|---|
+| `models` | Catálogo con recomendaciones puntuadas según el hardware detectado |
+| `download MODEL_ID` | Descarga explícita de un artifact GGUF |
+| `list` | Artifacts almacenados localmente y su estado |
+| `compatibility MODEL_ID` | Evaluación de compatibilidad **sin ejecutar** |
+| `execute MODEL_ID "PROMPT"` | Ejecuta un prompt (recomendado; con evaluación estricta) |
+| `run MODEL_ID --prompt "T"` | Interfaz heredada; sin evaluación estricta |
+| `chat MODEL_ID` | Sesión de chat interactiva con el modelo |
+| `runtime` | Estado del runtime llama.cpp resuelto |
+| `detect` | Sistema, CPU, memoria y GPU |
+| `diagnose` | Diagnóstico del software de GPU (Vulkan/CUDA/ROCm) |
+| `verify` | **Revisa el diagnóstico de GPU**, no la integridad del artifact |
+| `source huggingface REPO` | Inspecciona una fuente remota |
+| `plan REPO FILENAME` | Inspecciona un artifact remoto concreto |
+| `serve` | API HTTP de solo lectura en `127.0.0.1` |
+
+`detect`, `runtime`, `models`, `list`, `compatibility`, `source` y `plan` son de
+solo lectura: no modifican nada.
+
+`verify` verifica la **remediación del entorno** tras un `diagnose`. No es una
+verificación de integridad del artifact; para eso, consulta `list`, que muestra
+el estado de verificación de cada artifact almacenado.
 
 ## Architecture
 

@@ -695,8 +695,16 @@ class CliHelpTests(unittest.TestCase):
     def test_help_explains_flags(self):
         text = " ".join(self._help_text().split())
         self.assertIn("prompt text for run", text)
-        self.assertIn("quantization level to select for download, run or chat", text)
-        self.assertIn("exact artifact filename to select for download, run or chat", text)
+        # B9.48 (P1-3): the selection flags apply to execute and
+        # compatibility too, not only to download/run/chat.
+        self.assertIn(
+            "quantization level to select for download, execute, compatibility, run or chat",
+            text,
+        )
+        self.assertIn(
+            "exact artifact filename to select for download, execute, compatibility, run or chat",
+            text,
+        )
 
     def test_help_shows_usage_flow(self):
         text = self._help_text()
