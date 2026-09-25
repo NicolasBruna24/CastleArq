@@ -425,26 +425,47 @@ DELETE /v1/chat/sessions/{id}   -> cierra la sesión
 El servidor escucha en loopback (`127.0.0.1`) por defecto y rechaza hosts que
 no sean loopback. Eso es una propiedad de **exposición de red**.
 
-La **política de ejecución** ratificada es otra cosa, y conviene no
- confundirla con la anterior: la admisión por evaluación estricta que aplica
-`execute` **debe** aplicarse también a la ejecución por HTTP. Esa es la
-decisión arquitectónica ratificada en B9.51
-(`docs/B9.51-http-admission-contract-decision.md`).
+La **política de ejecución** es otra cosa, y conviene no confundirlas con la
+exposición de red: la ejecución por HTTP **aplica la misma admisión por
+evaluación estricta** que `execute`. La admisión es una propiedad de la
+ejecución, no del comando ni del transporte (decisión arquitectónica ratificada
+en B9.51, implementada en B9.52; ver
+`docs/B9.51-http-admission-contract-decision.md`).
 
-Lo que existe hoy es una **brecha conocida y transitoria**: `serve` sigue
-usando el camino de ejecución heredado (el mismo que `run`) y **no aplica la
-admisión por evaluación estricta** que sí aplica `execute`. Un modelo
-incompatible según la evaluación estricta puede ejecutarse por HTTP. Esa
-brecha está etiquetada como tal, tiene un bloque que la cierra (B9.52) y
-está protegida por tests; no es una política ratificada.
+Un modelo que la evaluación estricta declara incompatible, o cuya evidencia es
+insuficiente, **no se ejecuta** por HTTP.
 
-B9.51 también ratifico el contrato HTTP que esa implementación deberá
-cumplir: ordenación (`validación → run_lock → evaluación → admission →
-ejecución`), códigos de estado (`403` por admisión denegada, `500` por error
-de evaluación —que no es una denegación—, `422` por fallo de preparación,
-`503` por runtime no disponible) y un cuerpo de rechazo que expone **solo**
-`status` y `verdict` de la admisión, nunca checks ni evidencia interna. Esos
-detalles ya tienen transporte propio: `castlearq compatibility MODEL_ID`.
+El contrato HTTP completo:
+
+| Código | Significado |
+| --- | --- |
+| `200` | ejecución correcta (`model_id`, `output`, `exit_code`, `warnings`) |
+| `400` | petición malformada |
+| `404` | el modelo no está en el catálogo local |
+| `409` | ya hay una ejecución en curso (bloqueo global, sin cola) |
+| `403` | **admisión denegada** por la evaluación de compatibilidad |
+| `422` | fallo de preparación (artifact inválido, sin target ejecutable) |
+| `500` | **error de evaluación** — la evaluación falló; no es una denegación |
+| `503` | runtime no disponible o fallo del runner |
+
+Un rechazo devuelve solo el resumen de la admisión:
+
+```json
+{
+  "error": "execution refused by compatibility admission",
+  "admission": { "status": "evaluated", "verdict": "incompatible" }
+}
+```
+
+Nunca se exponen checks, diagnósticos, evidencia, rutas locales ni detalles de
+excepción. Para el detalle completo usa `castlearq compatibility MODEL_ID`.
+
+Un `500` significa que la evaluación **lanzó una excepción** (p. ej. un GGUF
+ilegible), no que denegara: por eso no muestra ningún veredicto. La ejecución
+sigue siendo fail-closed en ambos casos.
+
+`POST /v1/chat/sessions` abre una sesión viva, así que **también** está sujeta
+a esta admisión y al mismo bloqueo global.
 
 ## Chat
 

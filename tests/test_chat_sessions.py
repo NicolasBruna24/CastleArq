@@ -169,6 +169,66 @@ class TurnSession:
             raise self.close_error
 
 
+def _admitting_evaluation(model_id, **kwargs):
+    """A minimal evaluation result that ADMITS, for the chat lifecycle tests.
+
+    B9.52 made ``POST /v1/chat/sessions`` an execution surface: it now crosses
+    the same admission gate as ``/v1/run``. These tests use invented model ids
+    ("m", "my-model") and stub only the launcher, so without this the gate
+    would correctly refuse them as unknown models and every lifecycle test
+    would fail on a 403/404 it never meant to exercise.
+
+    The fixture is deliberately explicit and opt-out: it fakes the *policy
+    input* (an evaluated, compatible verdict), never the gate itself, so the
+    chat tests keep exercising the registry, the turn lock and the launch
+    lifecycle. Tests about the gate itself live in
+    ``tests/test_api_serve_contract.py``.
+    """
+    return SimpleNamespace(
+        model_id=model_id,
+        artifact=None,
+        runtime="fake",
+        capability=None,
+        evaluation=SimpleNamespace(result=SimpleNamespace(status="compatible")),
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
+
+def _denying_evaluation(model_id, **kwargs):
+    """An evaluation that completes and is REFUSED (never raises)."""
+    return SimpleNamespace(
+        model_id=model_id,
+        artifact=None,
+        runtime="fake",
+        capability=None,
+        evaluation=SimpleNamespace(result=SimpleNamespace(status="incompatible")),
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
+
+class AdmissionDefault(unittest.TestCase):
+    """Base class: admit by default so lifecycle tests test their own subject.
+
+    Every test in this module that opens a session either passes
+    ``admit=False`` (to exercise a refusal) or patches the evaluation itself.
+    """
+
+    admit = True
+
+    def setUp(self):
+        if self.admit:
+            patcher = mock.patch(
+                "app.api.evaluate_model_compatibility",
+                side_effect=_admitting_evaluation,
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+
 class ServerHarness:
     def __init__(self, **kwargs):
         self.server = build_server(HOST, 0, **kwargs)
@@ -240,7 +300,7 @@ class ParseTests(unittest.TestCase):
                 parse_session_id(bad)
 
 
-class PostTests(unittest.TestCase):
+class PostTests(AdmissionDefault):
     def test_create_201(self):
         with ServerHarness() as h, mock.patch(
                 "app.api.open_chat_session", return_value=_opened("my-model")):
@@ -350,7 +410,7 @@ class PostTests(unittest.TestCase):
         self.assertEqual(len(registry), 0)
 
 
-class GetDeleteTests(unittest.TestCase):
+class GetDeleteTests(AdmissionDefault):
     def _create(self, h):
         status, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "my-model"})
         self.assertEqual(status, 201)
@@ -413,7 +473,7 @@ class GetDeleteTests(unittest.TestCase):
         self.assertEqual((first, second), (204, 404))
 
 
-class ShutdownTests(unittest.TestCase):
+class ShutdownTests(AdmissionDefault):
     def test_close_all(self):
         s1, s2 = FakeSession(), FakeSession()
         registry = _ChatSessionRegistry()
@@ -436,7 +496,7 @@ class ShutdownTests(unittest.TestCase):
         self.assertEqual(len(registry), 0)
 
 
-class RegressionTests(unittest.TestCase):
+class RegressionTests(AdmissionDefault):
     def test_no_shellout_no_cli(self):
         with ServerHarness() as h, mock.patch(
                 "app.api.open_chat_session", return_value=_opened("m")
@@ -548,7 +608,7 @@ class ChatTurnRegistryTests(unittest.TestCase):
         self.assertFalse(removed.turn_lock.locked())
 
 
-class ChatTurnHttpTests(unittest.TestCase):
+class ChatTurnHttpTests(AdmissionDefault):
     """``POST /v1/chat/sessions/{id}/turns`` contract (single-threaded)."""
 
     def _create(self, harness, session):
@@ -765,7 +825,7 @@ class ChatTurnHttpTests(unittest.TestCase):
         self.assertEqual(session.prompts, [])
 
 
-class ChatTurnConcurrencyTests(unittest.TestCase):
+class ChatTurnConcurrencyTests(AdmissionDefault):
     """Real multithreaded coverage of the per-session turn policy."""
 
     def _create(self, harness, session):
@@ -889,7 +949,7 @@ class ChatTurnConcurrencyTests(unittest.TestCase):
             self.assertEqual(json.loads(result[2].decode())["turn_count"], 1)
 
 
-class ChatTurnLifecycleTests(unittest.TestCase):
+class ChatTurnLifecycleTests(AdmissionDefault):
     """DELETE×DELETE, DELETE/turn races and shutdown with the new turn slot."""
 
     def _create(self, harness, session):
@@ -1023,7 +1083,7 @@ class ChatTurnLifecycleTests(unittest.TestCase):
             harness.stop()
 
 
-class LifecycleHardeningTests(unittest.TestCase):
+class LifecycleHardeningTests(AdmissionDefault):
     """Block 3.3: registry/shutdown races never orphan a session.
 
     Races are exercised with real threads plus barriers/gates; the core
@@ -1136,45 +1196,115 @@ class LifecycleHardeningTests(unittest.TestCase):
             self.assertEqual([s.close_count for s in sessions], [1] * 8)
 
     def test_create_concurrent_with_shutdown_never_orphans_http(self):
-        """HTTP race, drain wins: 3 blocked creates answer 503 and self-close.
+        """HTTP race, drain wins: the in-flight create answers 503 and self-closes.
 
-        The patched factory blocks the create handlers *between* the launch
-        and the registration, so ``close_all`` is guaranteed to drain the
-        (still empty) registry first. This is the exact race that leaked
-        orphaned runtimes before Block 3.3.
+        The patched factory blocks the create handler *between* the launch and
+        the registration, so ``close_all`` is guaranteed to drain the (still
+        empty) registry first. This is the exact race that leaked orphaned
+        runtimes before Block 3.3.
+
+        B9.52 note: this is ONE create in flight, not three concurrent ones.
+        ``POST /v1/chat/sessions`` now takes the same ``run_lock`` as
+        ``/v1/run`` (B9.51 section 5.4 -- opening a session starts a model), so
+        concurrent creates are answered 409 by design and can no longer all be
+        inside the launcher at once. The orphan guarantee is unchanged and is
+        what is asserted here: the in-flight create is refused registration
+        (503) and closes its own runtime exactly once.
         """
-        for _ in range(3):
-            registry = _ChatSessionRegistry()
-            created = []
-            lock = threading.Lock()
-            all_launched = threading.Event()
-            release = threading.Event()
+        registry = _ChatSessionRegistry()
+        created = []
+        in_flight = threading.Event()
+        release = threading.Event()
 
-            def factory(*args, **kwargs):
-                session = FakeSession()
-                with lock:
-                    created.append(session)
-                    if len(created) == 3:
-                        all_launched.set()
-                release.wait(timeout=10)
-                return ChatSessionOpened(session=session, model_id="m")
+        def factory(*args, **kwargs):
+            session = FakeSession()
+            created.append(session)
+            in_flight.set()
+            release.wait(timeout=10)
+            return ChatSessionOpened(session=session, model_id="m")
 
-            outcomes = {}
-            with ServerHarness(chat_registry=registry) as h, mock.patch(
-                    "app.api.open_chat_session", side_effect=factory):
-                def create(i):
-                    outcomes[i] = self._post_create(h)
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session", side_effect=factory):
+            outcome = {}
 
-                threads = self._spawn(3, lambda i: (lambda i=i: create(i)))
-                self.assertTrue(all_launched.wait(timeout=10))
-                registry.close_all()  # drain wins: registration is rejected
-                release.set()
-                self._join_all(threads)
-            self.assertEqual(
-                sorted(status for status, _, _ in outcomes.values()),
-                [503, 503, 503])
-            self.assertEqual(len(registry), 0)
-            self.assertEqual([s.close_count for s in created], [1, 1, 1])
+            def create():
+                outcome["status"] = self._post_create(h)[0]
+
+            worker = threading.Thread(target=create, daemon=True)
+            worker.start()
+            self.assertTrue(in_flight.wait(timeout=10))
+            registry.close_all()  # drain wins: registration is rejected
+            release.set()
+            worker.join(timeout=10)
+        self.assertEqual(outcome["status"], 503)
+        self.assertEqual(len(registry), 0)
+        # The launched runtime was closed exactly once and never registered.
+        self.assertEqual([s.close_count for s in created], [1])
+
+    def test_create_after_shutdown_is_refused_without_launching(self):
+        """Creates that arrive after the drain never start a runtime.
+
+        Companion to the test above: once ``close_all`` has run, the shutdown
+        gate answers 503 before any launch is attempted, so no runtime can be
+        orphaned by a late create. Independent of ``run_lock``, which is
+        already released by then.
+        """
+        registry = _ChatSessionRegistry()
+        launches = []
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session",
+                side_effect=lambda *a, **k: launches.append(1)):
+            registry.close_all()
+            first = self._post_create(h)
+            second = self._post_create(h)
+        for status, _, raw in (first, second):
+            self.assertEqual(status, 503)
+            self.assertEqual(json.loads(raw)["error"], "server is shutting down")
+        self.assertEqual(launches, [])
+        self.assertEqual(len(registry), 0)
+
+    def test_concurrent_session_creates_are_serialised_by_the_run_lock(self):
+        """B9.51 section 5.4: session open shares the single execution lock.
+
+        A chat session launch starts a model, so it may not run concurrently
+        with another execution (or another launch) on the same GPU. Concurrent
+        creates therefore cannot all be in flight at once: exactly one reaches
+        the launcher and the others are told 409 rather than queued.
+        """
+        registry = _ChatSessionRegistry()
+        started = threading.Event()
+        release = threading.Event()
+        launches = []
+        lock = threading.Lock()
+
+        def factory(*args, **kwargs):
+            with lock:
+                launches.append(1)
+            started.set()
+            release.wait(timeout=10)
+            return ChatSessionOpened(session=FakeSession(), model_id="m")
+
+        outcomes = {}
+        with ServerHarness(chat_registry=registry) as h, mock.patch(
+                "app.api.open_chat_session", side_effect=factory):
+            def create(i):
+                outcomes[i] = self._post_create(h)
+
+            threads = self._spawn(3, lambda i: (lambda i=i: create(i)))
+            self.assertTrue(started.wait(timeout=10))
+            # While one launch is in flight the lock is held: every other
+            # create is refused immediately, with no queue behind it.
+            for _ in range(20):
+                if 409 in [s for s, _, _ in outcomes.values()]:
+                    break
+                time.sleep(0.01)
+            release.set()
+            self._join_all(threads)
+        codes = sorted(status for status, _, _ in outcomes.values())
+        self.assertEqual(codes.count(409), 2)
+        self.assertEqual(codes.count(201), 1)
+        # Proof of exclusion: only one launcher call was ever in flight.
+        self.assertEqual(len(launches), 1)
 
     def test_create_registered_before_shutdown_is_closed_by_close_all(self):
         """HTTP race, register wins: close_all closes the registered session."""
@@ -1326,7 +1456,7 @@ class ServiceTests(unittest.TestCase):
                 rs.open_chat_session("x", dependencies=mk)
 
 
-class OversizedBodyDrainTests(unittest.TestCase):
+class OversizedBodyDrainTests(AdmissionDefault):
     """Post-fix regression tests: the early 413 drains a bounded body so
     clients deterministically receive it (no mid-upload TCP reset race)."""
 

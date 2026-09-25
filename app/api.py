@@ -32,14 +32,26 @@ Block 1 endpoints (read-only):
 
 Block 2 endpoint:
 
-- ``POST /v1/run``     -> one-shot execution through the shared run
-  pipeline (``app.run_service.run_once``), guarded by one global
-  execution lock: a second concurrent run gets HTTP 409.
+- ``POST /v1/run``     -> one-shot execution through the SAME use case as the
+  CLI ``execute`` command (``app.execute_model.execute_model``), preceded by
+  the strict compatibility evaluation and its admission gate
+  (``evaluate_model_compatibility`` -> ``to_admission``), exactly as ratified
+  in ``docs/B9.51-http-admission-contract-decision.md`` (B9.52). One global
+  execution lock, taken after validation and before evaluation and released in
+  ``finally``: a second concurrent request gets HTTP 409, and there is no
+  queue. Status mapping: 400 malformed, 404 unknown model, 409 lock busy,
+  403 admission denied, 422 preparation failure, 500 evaluation ERROR (which
+  is not a denial), 503 runtime/runner failure, 200 success. Rejection bodies
+  expose only ``admission.status``/``admission.verdict`` -- never checks,
+  evidence, paths or exception details.
 
 Block 3.1 endpoints (chat session lifecycle):
 
 - ``POST /v1/chat/sessions``          -> open a session through the shared
-  chat pipeline (``app.run_service.open_chat_session``); HTTP 201.
+  chat pipeline (``app.run_service.open_chat_session``); HTTP 201. Opening a
+  session starts a model, so B9.52 applies the same admission contract and
+  takes the same ``run_lock`` (released as soon as the launch completes, never
+  held for the session's lifetime).
 - ``GET /v1/chat/sessions/{id}``      -> session metadata (no history yet).
 - ``DELETE /v1/chat/sessions/{id}``   -> ``session.close()`` + unregister;
   204 when the session exists and is idle, 409 while it is processing a turn
@@ -115,6 +127,16 @@ from pathlib import Path
 from typing import Any
 
 from .chat import ChatSessionClosedError, ChatSessionError
+from .evaluate_compatibility import evaluate_model_compatibility, to_admission
+from .application_wiring import compose_execute_model_dependencies
+from .execute_model import (
+    EvaluationAdmission,
+    ExecuteAdmissionDeniedError,
+    ExecutePreparationError,
+    _check_admission,
+    execute_model,
+)
+from .execution import ExecutionResult
 from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
@@ -125,12 +147,8 @@ from .run_service import (
     ChatLaunchFailedError,
     ChatSessionOpened,
     ModelNotFoundError,
-    RunDependencies,
-    RunExecutionFailedError,
-    RunOutcome,
     RunPreparationFailedError,
     open_chat_session,
-    run_once,
 )
 
 # Module-level logger for infrastructure paths that run outside a request
@@ -158,6 +176,7 @@ __all__ = [
     "list_model_dtos",
     "parse_chat_session_request",
     "parse_chat_turn_request",
+    "run_response_from_execution",
     "serve",
 ]
 
@@ -700,14 +719,76 @@ class _ChatSessionRegistry:
                     session_id, error)
 
 
-def run_response_from_outcome(outcome: RunOutcome) -> RunResponseDTO:
-    """Project a :class:`RunOutcome` into its API-safe DTO."""
+def run_response_from_execution(
+    model_id: str, result: ExecutionResult
+) -> RunResponseDTO:
+    """Project a successful :class:`ExecutionResult` into its API-safe DTO.
+
+    B9.52: ``/v1/run`` now executes through ``execute_model`` (the same use
+    case as CLI ``execute``), so the DTO is built from an
+    :class:`ExecutionResult` instead of a legacy ``RunOutcome``. The wire shape
+    is unchanged (B9.51 section 6): ``model_id``, ``output``, ``exit_code``,
+    ``warnings``. Only the success path is projected; every failure has its
+    own status/body.
+    """
     return RunResponseDTO(
-        model_id=outcome.model_id,
-        output=outcome.output,
-        exit_code=outcome.exit_code,
-        warnings=tuple(outcome.warnings),
+        model_id=model_id,
+        output=result.stdout,
+        exit_code=result.exit_code,
+        warnings=tuple(result.warnings),
     )
+
+
+def _admission_body(admission: EvaluationAdmission) -> dict[str, object]:
+    """B9.51 section 5.3: project ONLY what ``EvaluationAdmission`` carries.
+
+    ``status`` and ``verdict`` are the complete public summary of the gate, so
+    the HTTP body cannot disagree with the decision that was actually taken.
+    Checks, diagnostics, expected/observed, evidence, conditions, artifact and
+    capability internals are deliberately NOT exposed: they are unbounded, they
+    name local filesystem paths, and they already have a sanctioned transport
+    (``castlearq compatibility <model-id>``). Nothing here can leak a prompt, a
+    path or an exception message.
+    """
+    return {
+        "status": admission.status,
+        "verdict": admission.verdict,
+    }
+
+
+def _admission_denied_body(
+    admission: EvaluationAdmission,
+) -> dict[str, object]:
+    """B9.51 section 5.3: the 403 body for a completed-but-denied evaluation."""
+    return {
+        "error": "execution refused by compatibility admission",
+        "admission": _admission_body(admission),
+    }
+
+
+#: B9.51 section 5.2 keeps ``404`` for "model id not in the local catalog",
+#: and section 6 requires it to stay unchanged. After the gate, an unknown
+#: model reaches us as a *blocked evaluation* whose ``blocking_outcome`` is the
+#: resolver's own message -- it is not an admission decision, it is the
+#: resource not existing, so it must be answered before the gate is consulted.
+#: This is the same marker ``app.run_service`` already matches on, reused here
+#: rather than a second notion of "not found".
+_MODEL_NOT_FOUND_PREFIX = "Model not found in the local catalog:"
+
+
+def _evaluation_failed_body() -> dict[str, object]:
+    """B9.51 section 5.3: the 500 body when the evaluation RAISED.
+
+    B9.48 (P0-2) established that an evaluation which raised is not an
+    evaluation which denied. This body therefore never claims a verdict: the
+    admission is reported truthfully as ``blocked`` because no admission was
+    ever minted, so nothing was authorized. The cause stays in the server log
+    -- no exception type, message, traceback or path reaches the client.
+    """
+    return {
+        "error": "compatibility evaluation failed",
+        "admission": {"status": "blocked", "verdict": None},
+    }
 
 
 def _model_dto(spec: ModelSpec) -> ModelDTO:
@@ -795,7 +876,6 @@ def _make_handler(
     catalog: tuple[ModelSpec, ...],
     store: ModelStore,
     version: str,
-    run_dependencies: RunDependencies | None,
     run_lock: threading.Lock,
     chat_dependencies: ChatDependencies | None = None,
     chat_registry: _ChatSessionRegistry | None = None,
@@ -946,8 +1026,81 @@ def _make_handler(
                 self._send_json(400, {"error": "invalid JSON"})
                 return None
 
+        def _admit_or_respond(
+            self, model_id: str, request: Any
+        ) -> EvaluationAdmission | None:
+            """Run the ratified B9.51 gate for one execution request.
+
+            Implements B9.51 sections 5.1/5.2 for the two outcomes decided
+            BEFORE ``execute_model`` is reached, and returns the minted
+            admission so the caller can continue:
+
+            * the evaluation RAISED -> 500 with the evaluation-failure body
+              (B9.48 P0-2: an error is not a denial; cause stays in the log);
+            * the evaluation completed but admission DENIES -> 403 with the
+              admission body, and ``execute_model`` is never called, so no
+              subprocess can be launched for a refused model.
+
+            Returns ``None`` when the request has already been answered and the
+            handler must stop. A returned admission is passed to
+            ``execute_model`` unchanged: this method never invents, relaxes or
+            re-decides the verdict, it only projects the existing one.
+            """
+            try:
+                evaluation = evaluate_model_compatibility(
+                    model_id,
+                    quantization=request.quantization,
+                    filename=request.filename,
+                )
+            except Exception as error:  # any raise during evaluation is a 500
+                # Deliberately broad: the contract says ANY unexpected
+                # exception during evaluation is a 500, not a denial. The
+                # message/type never reach the client; only the module log
+                # keeps them. Execution stays fail-closed: we answer and
+                # return, so nothing is launched.
+                self.log_error(
+                    "compatibility evaluation failed for %s: %r", model_id, error
+                )
+                self._send_json(500, _evaluation_failed_body())
+                return None
+            admission = to_admission(evaluation)
+            # 404 is answered BEFORE the gate (see _MODEL_NOT_FOUND_PREFIX):
+            # a model that does not exist is not "incompatible", it is absent.
+            if (
+                getattr(evaluation, "status", "") == "blocked"
+                and str(getattr(evaluation, "blocking_outcome", "") or "").startswith(
+                    _MODEL_NOT_FOUND_PREFIX
+                )
+            ):
+                self._send_json(
+                    404, {"error": evaluation.blocking_outcome}
+                )
+                return None
+            try:
+                # Reuse the Application gate itself, not a second copy of the
+                # admitting-verdict rule: this is the very function
+                # ``execute_model`` applies, so HTTP and CLI can never disagree
+                # about what admits execution.
+                _check_admission(admission)
+            except ExecuteAdmissionDeniedError:
+                self._send_json(403, _admission_denied_body(admission))
+                return None
+            return admission
+
         def _handle_run(self) -> None:
-            """Validate ``POST /v1/run`` and execute it under the global lock."""
+            """Validate ``POST /v1/run`` and execute it under the global lock.
+
+            B9.52 implements the ratified B9.51 contract:
+
+                validation (400) -> run_lock (409) -> evaluation -> admission
+                (403) -> execute_model (422/503) -> 200
+
+            The lock is taken AFTER validation and BEFORE evaluation and is
+            released in ``finally`` on every path, so at most one of
+            {evaluate, admit, execute} runs at a time, and a refusal, an
+            evaluation error, a preparation failure or a runtime failure all
+            leave the server immediately usable.
+            """
             content_type = self.headers.get("Content-Type", "")
             media_type = content_type.split(";")[0].strip().lower()
             if media_type != "application/json":
@@ -969,23 +1122,46 @@ def _make_handler(
                 )
                 return
             try:
-                outcome = run_once(
-                    request.model_id,
-                    request.prompt,
-                    quantization=request.quantization,
-                    filename=request.filename,
-                    timeout_seconds=request.timeout,
-                    dependencies=run_dependencies,
-                )
-            except ModelNotFoundError as error:
-                self._send_json(404, {"error": str(error)})
-                return
-            except RunPreparationFailedError as error:
-                self._send_json(422, {"error": str(error)})
-                return
-            except RunExecutionFailedError as error:
-                self._send_json(503, {"error": str(error)})
-                return
+                admission = self._admit_or_respond(request.model_id, request)
+                if admission is None:
+                    return
+                try:
+                    result = execute_model(
+                        model_id=request.model_id,
+                        prompt=request.prompt,
+                        quantization=request.quantization,
+                        filename=request.filename,
+                        timeout_seconds=request.timeout,
+                        admission=admission,
+                        dependencies=compose_execute_model_dependencies(),
+                    )
+                except ExecuteAdmissionDeniedError as error:
+                    # Defence in depth: the gate inside ``execute_model``
+                    # refused (B9.51 section 5.2 maps this to 403). Unreachable
+                    # while the pre-check above runs, and kept deliberately: a
+                    # rejection must never be reported as anything else.
+                    self.log_error("admission denied at execution: %r", error)
+                    self._send_json(403, _admission_denied_body(admission))
+                    return
+                except ExecutePreparationError as error:
+                    # 422 keeps its ratified meaning and its ``{"error"}``
+                    # shape; the optional ``warnings`` are additive.
+                    body: dict[str, object] = {"error": error.message}
+                    if error.warnings:
+                        body["warnings"] = list(error.warnings)
+                    self._send_json(422, body)
+                    return
+                if not result.success:
+                    # The use case reports a failed run as a result, not an
+                    # exception; the legacy 503 for "the runtime could not
+                    # complete this run" is preserved verbatim.
+                    detail = (
+                        result.error.message
+                        if result.error is not None
+                        else "execution failed"
+                    )
+                    self._send_json(503, {"error": detail})
+                    return
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception as error:  # never leak details to the client
@@ -997,10 +1173,21 @@ def _make_handler(
                 return
             finally:
                 run_lock.release()
-            self._send_json(200, run_response_from_outcome(outcome).to_dict())
+            self._send_json(
+                200, run_response_from_execution(request.model_id, result).to_dict()
+            )
 
         def _handle_chat_create(self) -> None:
-            """Validate ``POST /v1/chat/sessions`` and open one session."""
+            """Validate ``POST /v1/chat/sessions`` and open one session.
+
+            B9.52: opening a session STARTS A MODEL, so this route is an
+            execution surface and is subject to the same ratified contract as
+            ``/v1/run`` -- validation -> ``run_lock`` -> evaluation ->
+            admission -> session launch, with 403 on denial and 500 when the
+            evaluation raises. Nothing else about chat changes: the session
+            registry, ``turn_lock`` semantics (409 while a turn is generating)
+            and the launch/registration lifecycle are untouched.
+            """
             content_type = self.headers.get("Content-Type", "")
             media_type = content_type.split(";")[0].strip().lower()
             if media_type != "application/json":
@@ -1028,32 +1215,53 @@ def _make_handler(
                     409, {"error": "maximum chat sessions reached"}
                 )
                 return
-            try:
-                opened = open_chat_session(
-                    request.model_id,
-                    quantization=request.quantization,
-                    filename=request.filename,
-                    dependencies=chat_dependencies,
+            # B9.51 section 5.4: session open takes the SAME lock as /v1/run,
+            # because it launches a runtime against the same single GPU. It is
+            # released as soon as the launch finishes -- it must NOT be held
+            # for the session's lifetime, or a live session would block every
+            # other execution. Per-session turn contention keeps its own
+            # separate turn_lock.
+            if not run_lock.acquire(blocking=False):
+                self._send_json(
+                    409, {"error": "another execution is already running"}
                 )
-            except ModelNotFoundError as error:
-                self._send_json(404, {"error": str(error)})
                 return
-            except RunPreparationFailedError as error:
-                self._send_json(422, {"error": str(error)})
-                return
-            except ChatLaunchFailedError as error:
-                self.log_error("chat session launch failed: %r", error)
-                self._send_json(503, {"error": "chat runtime failed to start"})
-                return
-            except (BrokenPipeError, ConnectionResetError):
-                return
-            except Exception as error:  # never leak details to the client
-                self.log_error("internal error handling %s: %r", self.path, error)
+            try:
+                admission = self._admit_or_respond(request.model_id, request)
+                if admission is None:
+                    return
                 try:
-                    self._send_json(500, {"error": "internal server error"})
-                except OSError:
-                    pass
-                return
+                    opened = open_chat_session(
+                        request.model_id,
+                        quantization=request.quantization,
+                        filename=request.filename,
+                        dependencies=chat_dependencies,
+                    )
+                except ModelNotFoundError as error:
+                    self._send_json(404, {"error": str(error)})
+                    return
+                except RunPreparationFailedError as error:
+                    self._send_json(422, {"error": str(error)})
+                    return
+                except ChatLaunchFailedError as error:
+                    self.log_error("chat session launch failed: %r", error)
+                    self._send_json(503, {"error": "chat runtime failed to start"})
+                    return
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                except Exception as error:  # never leak details to the client
+                    self.log_error(
+                        "internal error handling %s: %r", self.path, error
+                    )
+                    try:
+                        self._send_json(
+                            500, {"error": "internal server error"}
+                        )
+                    except OSError:
+                        pass
+                    return
+            finally:
+                run_lock.release()
             # Register only after a successful launch; never a partial entry.
             session_id = str(uuid.uuid4())
             try:
@@ -1351,7 +1559,6 @@ def build_server(
     *,
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
-    run_dependencies: RunDependencies | None = None,
     chat_dependencies: ChatDependencies | None = None,
     chat_registry: _ChatSessionRegistry | None = None,
 ) -> ThreadingHTTPServer:
@@ -1360,16 +1567,21 @@ def build_server(
     ``port=0`` binds an ephemeral loopback port, which is what tests use.
     Non-loopback hosts are rejected explicitly so the API cannot be exposed
     on a public interface accidentally in this block.
+
+    B9.52: the ``run_dependencies`` parameter is GONE. ``/v1/run`` no longer
+    calls the legacy ``run_service.run_once``; it composes its own execution
+    dependencies per request through ``compose_execute_model_dependencies``,
+    exactly as CLI ``execute`` does (B9.22: one composition per invocation,
+    never cached). Keeping an injection point for a pipeline this route no
+    longer uses would be a misleading second way to configure execution.
     """
     resolved_host = _validate_loopback_host(host)
     specs = tuple(catalog) if catalog is not None else get_catalog()
     store = model_store if model_store is not None else ModelStore()
-    if run_dependencies is None:
-        run_dependencies = RunDependencies(model_store=store, models=specs)
     if chat_registry is None:
         chat_registry = _ChatSessionRegistry()
     handler = _make_handler(
-        specs, store, get_version(), run_dependencies, threading.Lock(),
+        specs, store, get_version(), threading.Lock(),
         chat_dependencies, chat_registry,
     )
     return _APIServer((resolved_host, port), handler, chat_registry=chat_registry)
@@ -1381,13 +1593,12 @@ def serve(
     *,
     catalog: tuple[ModelSpec, ...] | None = None,
     model_store: ModelStore | None = None,
-    run_dependencies: RunDependencies | None = None,
     chat_dependencies: ChatDependencies | None = None,
 ) -> int:
     """Run the API server until interrupted. Returns a process exit code."""
     server = build_server(
         host, port, catalog=catalog, model_store=model_store,
-        run_dependencies=run_dependencies, chat_dependencies=chat_dependencies,
+        chat_dependencies=chat_dependencies,
     )
     bound_host, bound_port = server.server_address[:2]
     print(f"CastleArq API listening on http://{bound_host}:{bound_port}")

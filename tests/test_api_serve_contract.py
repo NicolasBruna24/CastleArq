@@ -12,32 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""B9.50 public-surface contract tests, updated by B9.51.
+"""B9.50 public-surface contract tests, updated by B9.51 and B9.52.
 
 B9.50 existed because B9.48 wrote ``serve read-only HTTP API`` into ``--help``
-and the README while ``POST /v1/run`` performs real inference. Nothing tested
-the claim, so it shipped. B9.50 also declared the serve/execute divergence a
-*deliberate policy*; B9.51 (which closes B9.23 section 13 K-3) reversed that:
+and the README while ``POST /v1/run`` performs real inference. B9.50 also
+declared the serve/execute divergence a *deliberate policy*; B9.51 reversed
+that (OPTION A: HTTP shares strict admission) and deferred the implementation.
+B9.52 implemented it, so the divergence is now closed in code, in the
+documentation and in the tests.
 
-    the RATIFIED policy is that HTTP execution DOES share strict admission;
-    the current implementation is a KNOWN, LABELLED transitional gap whose
-    closure is deferred to B9.52.
-
-The suite therefore pins four things that must agree with each other:
+The suite therefore pins four things that must agree:
 
     CODE  <->  POLICY  <->  DOCUMENTATION  <->  RATIFIED CONTRACT
 
 * :class:`ReadmeCommandReferenceTests` -- every command documented in the
-  README exists in the CLI (and vice versa), without depending on line
-  numbers.
+  README exists in the CLI (and vice versa), without line numbers.
 * :class:`ServeIsNotReadOnlyTests` -- behavioural proof that ``serve``
   executes models, not a restatement of the README.
 * :class:`ExecutionGatePolicyTests` -- the ratified policy (strict admission on
-  HTTP) and, separately, the existence and labelling of the implementation
-  gap, asserted against the real call graph and the real documentation.
+  HTTP) AND that the implementation actually reaches the gate. Both drift
+  directions fail: removing the gate trips the name scan, reverting the flag
+  trips the flag assertion.
 * :class:`HttpAdmissionContractTests` -- the ratified HTTP contract itself
   (status mapping, rejection body, ``run_lock`` ordering), pinned against the
-  decision document so B9.52 cannot implement a different contract silently.
+  decision document so the implementation cannot diverge from it silently.
 """
 
 from __future__ import annotations
@@ -67,11 +65,12 @@ DECISION_DOC = Path(
 #: not a second policy.
 SERVE_USES_STRICT_ADMISSION = True
 
-#: B9.51 ratified the contract and DEFERRED the implementation to B9.52.
-#: While this is ``False`` the gap is expected; when it is flipped to ``True``
-#: the gap assertions below must be inverted in the same commit, otherwise
-#: this suite fails and the drift cannot pass silently.
-HTTP_ADMISSION_IMPLEMENTED = False
+#: B9.51 ratified the contract and deferred the implementation to B9.52.
+#: B9.52 implemented it, so the gap is closed. The flag stays as the explicit
+#: switch between "policy only" and "policy + code": the gap assertions below
+#: are written so that flipping either this or the code without the other
+#: fails the suite, which is what makes the closure auditable.
+HTTP_ADMISSION_IMPLEMENTED = True
 
 
 def _read(path: Path) -> str:
@@ -175,8 +174,8 @@ class ServeIsNotReadOnlyTests(unittest.TestCase):
         with self.assertRaises(APIConfigurationError):
             serve(host="0.0.0.0", port=0)
 
-    def test_run_handler_calls_run_once(self):
-        """``_handle_run`` must route to the shared execution service."""
+    def test_run_handler_calls_the_execute_use_case(self):
+        """``_handle_run`` must route to the gated execution use case."""
         source = _read(API_PY)
         tree = ast.parse(source)
         functions = {
@@ -190,7 +189,17 @@ class ServeIsNotReadOnlyTests(unittest.TestCase):
             for child in ast.walk(functions["_handle_run"])
             if isinstance(child, ast.Name)
         }
-        self.assertIn("run_once", names)
+        self.assertIn("execute_model", names)
+        # And it must consult the gate before doing so. The gate is reached
+        # through ``self``, so look for the attribute as well as a bare name.
+        self.assertTrue(
+            "_admit_or_respond" in names
+            or "_admit_or_respond" in {
+                child.attr for child in ast.walk(functions["_handle_run"])
+                if isinstance(child, ast.Attribute)
+            },
+            "_handle_run does not consult the admission gate",
+        )
 
     def test_api_module_does_not_expose_a_status_only_surface(self):
         """POST routes exist: the API is not read-only."""
@@ -223,42 +232,76 @@ class ExecutionGatePolicyTests(unittest.TestCase):
             "change; B9.50's Option B rationale was rejected on merit.",
         )
 
-    def test_implementation_gap_is_still_open_and_labelled(self):
-        """The gap is expected (B9.52 closes it) but must be explicit."""
-        self.assertFalse(
+    def test_implementation_gap_is_closed_and_the_gate_is_reachable(self):
+        """B9.52: the HTTP path now crosses the ratified gate.
+
+        Inverted from the B9.51 version of this test, which asserted the
+        absence of the gate. Both directions now fail loudly: if the code ever
+        stops consulting the gate, the banned-name scan below trips; if the flag
+        is flipped back while the code is still gated, the flag assertion
+        trips.
+        """
+        self.assertTrue(
             HTTP_ADMISSION_IMPLEMENTED,
-            "HTTP admission is implemented. Flip the gap assertions in this "
-            "class in the same commit: app/api.py must now consult the gate.",
+            "HTTP admission is implemented in app/api.py. The flag must not be "
+            "reverted while the gate is reachable: the policy in B9.51 is "
+            "OPTION A, so an ungated HTTP path is a defect, not a state.",
         )
         source = _read(API_PY)
-        for banned in (
+        for required in (
             "evaluate_model_compatibility",
             "to_admission",
             "execute_model",
         ):
-            self.assertNotIn(
-                banned,
+            self.assertIn(
+                required,
                 source,
-                f"app/api.py now references {banned}: the deferred B9.52 "
-                "implementation landed, so HTTP_ADMISSION_IMPLEMENTED and "
-                "the gap assertions in this class must be updated together",
+                f"app/api.py no longer references {required}: HTTP execution "
+                "stopped crossing the ratified admission gate",
             )
 
-    def test_documentation_labels_the_gap_as_transitional(self):
-        """A known gap must be named as a gap, not justified as a policy."""
-        readme = _read(README)
-        self.assertIn("brecha conocida y transitoria", readme)
-        self.assertIn("B9.51", readme)
-        help_text = _help_text()
-        self.assertIn("Ratified policy (B9.51)", help_text)
-        self.assertIn("Known transitional gap", help_text)
-        self.assertIn("does NOT apply that admission", help_text)
+    def test_http_no_longer_uses_the_legacy_run_pipeline(self):
+        """The ungated legacy path must not remain as an HTTP fallback.
 
-    def test_documentation_states_the_ratified_contract(self):
-        """The ratified mapping must be discoverable by a user of ``serve``."""
+        Checked on the CODE, not on the whole file: the module docstrings
+        legitimately mention ``run_once`` to explain what ``/v1/run`` stopped
+        calling. What must be absent is an actual reference to the legacy
+        entry points.
+        """
+        tree = ast.parse(_read(API_PY))
+        imported, called = set(), set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    imported.add(alias.asname or alias.name)
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name):
+                    called.add(func.id)
+                elif isinstance(func, ast.Attribute):
+                    called.add(func.attr)
+        for legacy in ("run_once", "RunOutcome", "run_dependencies"):
+            self.assertNotIn(legacy, imported, f"app/api.py imports {legacy}")
+            self.assertNotIn(legacy, called, f"app/api.py calls {legacy}")
+
+    def test_documentation_no_longer_describes_a_transitional_gap(self):
+        """The gap label is gone now that the gate is implemented."""
         readme = _read(README)
-        for token in ("403", "500", "422", "503"):
-            self.assertIn(token, readme)
+        self.assertNotIn("brecha conocida y transitoria", readme)
+        self.assertNotIn("B9.52 requerido", readme)
+        help_text = _help_text()
+        self.assertNotIn("Known transitional gap", help_text)
+        self.assertNotIn("does NOT apply that admission", help_text)
+
+    def test_documentation_states_the_ratified_policy(self):
+        readme = _read(README)
+        # Compare on whitespace-normalised text: the README is hard-wrapped,
+        # so a phrase can straddle a newline.
+        flat = " ".join(readme.split())
+        self.assertIn("admisión por evaluación estricta", flat)
+        self.assertIn("403", readme)
+        help_text = _help_text()
+        self.assertIn("strict evaluation admission as execute", help_text)
 
     def test_execute_does_apply_strict_evaluation(self):
         """The contrast that makes the divergence meaningful."""
@@ -276,14 +319,13 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         self.assertIn("evaluate_model_compatibility", names)
         self.assertIn("to_admission", names)
 
-    def test_documentation_states_the_transitional_gap_in_both_languages(self):
-        """B9.51: the divergence is documented as a gap, in README and --help."""
+    def test_documentation_states_the_implemented_policy_in_both_languages(self):
+        """README and --help must both describe the gate as active."""
         readme = _read(README)
-        self.assertIn("no aplica la", readme)
-        self.assertIn("admisión por evaluación estricta", readme)
+        self.assertIn("admisión", readme)
         self.assertIn("serve", readme)
         help_text = _help_text()
-        self.assertIn("does NOT apply that admission", help_text)
+        self.assertIn("same strict evaluation admission as execute", help_text)
 
     def test_documentation_separates_network_from_execution_policy(self):
         """B9.50 section 4: the two properties must not be conflated."""
@@ -397,10 +439,11 @@ class HttpAdmissionContractTests(unittest.TestCase):
         self.assertIn("RunResponseDTO", text)
         self.assertIn("`GET /health`", text)
 
-    def test_implementation_deferral_is_explicit(self):
+    def test_implementation_status_is_recorded(self):
+        """B9.52 completed the deferral; the record must say so explicitly."""
         text = _read(DECISION_DOC)
         self.assertIn("DECISION RATIFIED", text)
-        self.assertIn("IMPLEMENTATION DEFERRED TO B9.52", text)
+        self.assertIn("COMPLETED IN B9.52", text)
 
     def test_evaluation_core_is_untouched_by_this_block(self):
         """B9.51 §9: a decision block must not redesign the engine."""

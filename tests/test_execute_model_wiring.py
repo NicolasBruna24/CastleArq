@@ -64,7 +64,18 @@ from app.selection import RuntimeBackendSelector
 # ``app/`` must stay unaware of it: B9.22 established the composition
 # boundary; B9.23 authorized ``main.py`` as the first Product Caller; other
 # Application/Infrastructure modules must not consume the composition root.
-_COMPOSITION_ENTRY_POINTS = frozenset({"application_wiring.py", "main.py"})
+#
+# B9.52 adds ``api.py`` as the SECOND Product Caller. B9.23 section 3 already
+# identified the HTTP API as a valid product candidate "deferred until a block
+# decides K-3's HTTP status mapping"; B9.51 decided it (OPTION A) and B9.52
+# implemented it, so ``POST /v1/run`` now reaches ``execute_model`` and must
+# compose its own dependencies -- exactly as the CLI does. This is a
+# Presentation module acting as a Product Caller, not Application or
+# Infrastructure reaching into the composition root, which is what the rule
+# below forbids. The boundary itself is unchanged and still enforced.
+_COMPOSITION_ENTRY_POINTS = frozenset(
+    {"application_wiring.py", "main.py", "api.py"}
+)
 
 
 def _capability(

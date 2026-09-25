@@ -17,9 +17,14 @@
 
 These tests exercise the HTTP transport against the real core mapping
 functions with minimal doubles: a stub ``ModelStore``-like object and, where
-useful, a tiny in-test catalog. ``POST /v1/run`` tests patch
-``app.api.run_once`` so no real model is required, llama.cpp is never
-executed, nothing is downloaded and Ollama is never touched.
+useful, a tiny in-test catalog.
+
+B9.52: ``POST /v1/run`` no longer calls the legacy ``run_service.run_once``.
+It now crosses the ratified admission contract (evaluation -> ``to_admission``
+-> ``execute_model``), so these tests patch ``app.api.evaluate_model_compatibility``
+to control the policy input and ``app.api.execute_model`` to control execution.
+llama.cpp is never executed, nothing is downloaded and Ollama is never touched.
+The gate itself is the real one -- only its inputs are doubles.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ import threading
 import tomllib
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from app.api import (
@@ -45,7 +51,6 @@ from app.api import (
 from app.main import main as cli_main
 from app.model_store import ModelStore
 from app.models import ArtifactSpec, ModelSpec
-from app.run_service import RunDependencies, RunOutcome
 
 HOST = "127.0.0.1"
 
@@ -398,24 +403,118 @@ class ServerLifecycleTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 2)
 
 
-def _run_outcome(**kwargs) -> RunOutcome:
-    values = {
-        "model_id": "qwen2.5-coder-7b-instruct",
-        "output": "hello from fake runtime",
-        "exit_code": 0,
-        "warnings": (),
-    }
-    values.update(kwargs)
-    return RunOutcome(**values)
+def _evaluation(
+    model_id, *, status="evaluated", verdict="compatible",
+    blocking_outcome=None,
+):
+    """A stand-in ``EvaluateModelCompatibilityResult``.
+
+    B9.52 controls the *policy input* only. The admission projection
+    (``to_admission``) and the gate (``_check_admission``) are the real ones,
+    so these tests exercise the production decision, not a re-implementation.
+    """
+    evaluation = (
+        SimpleNamespace(result=SimpleNamespace(status=verdict))
+        if verdict is not None
+        else None
+    )
+    return SimpleNamespace(
+        model_id=model_id,
+        artifact=None,
+        runtime="fake-llama.cpp",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status=status,
+        blocking_outcome=blocking_outcome,
+    )
+
+
+def _execution_result(success=True, stdout="hello from fake runtime",
+                      exit_code=0, warnings=(), error=None):
+    """A stand-in ``ExecutionResult`` (what ``execute_model`` returns)."""
+    return SimpleNamespace(
+        success=success,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr="",
+        error=error,
+        warnings=tuple(warnings),
+        diagnostics=None,
+        runtime_metrics=None,
+    )
+
+
+def _not_found(model_id):
+    """The blocked evaluation the resolver produces for an unknown model."""
+    return _evaluation(
+        model_id, status="blocked", verdict=None,
+        blocking_outcome=f"Model not found in the local catalog: {model_id}",
+    )
+
+
+class GateHarness:
+    """Patch the evaluation + execution seams for one request.
+
+    ``verdict`` drives the policy input, ``result``/``error`` drive execution.
+    Defaults to a compatible evaluation and a successful execution, i.e. the
+    happy path; each test overrides only what it is about.
+    """
+
+    def __init__(self, *, verdict="compatible", evaluation=None,
+                 result=None, error=None, eval_error=None, status="evaluated"):
+        self.verdict = verdict
+        self._evaluation = evaluation
+        self._result = result
+        self._error = error
+        self._eval_error = eval_error
+        self._status = status
+        self.evaluations = []
+        self.executions = []
+
+    def __enter__(self):
+        def evaluate(model_id, **kwargs):
+            self.evaluations.append((model_id, kwargs))
+            if self._eval_error is not None:
+                raise self._eval_error
+            if self._evaluation is not None:
+                return self._evaluation
+            return _evaluation(model_id, status=self._status,
+                               verdict=self.verdict)
+
+        def execute(**kwargs):
+            self.executions.append(kwargs)
+            if self._error is not None:
+                raise self._error
+            return self._result or _execution_result()
+
+        self._p1 = mock.patch("app.api.evaluate_model_compatibility",
+                              side_effect=evaluate)
+        self._p2 = mock.patch("app.api.execute_model", side_effect=execute)
+        self._p3 = mock.patch("app.api.compose_execute_model_dependencies",
+                              return_value=object())
+        self._p1.start()
+        self._p2.start()
+        self._p3.start()
+        return self
+
+    def __exit__(self, *exc):
+        for patcher in (self._p3, self._p2, self._p1):
+            patcher.stop()
+        return False
 
 
 class RunEndpointTests(unittest.TestCase):
-    """POST /v1/run: validation, core-error mapping and the global lock."""
+    """POST /v1/run under the B9.51 admission contract (implemented in B9.52).
+
+    Covers validation, the full status mapping, the rejection bodies, the
+    global lock and the guarantee that a refusal never reaches the runner.
+    """
 
     def test_valid_request_returns_200_with_run_dto(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=_run_outcome()
-        ) as run_mock:
+        """16.1 happy path: evaluation -> admission -> execution -> 200."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness() as gate:
             status, headers, raw = harness.post_json(
                 "/v1/run",
                 {"model_id": "qwen2.5-coder-7b-instruct", "prompt": "Hello"},
@@ -429,14 +528,17 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual(payload["output"], "hello from fake runtime")
         self.assertEqual(payload["exit_code"], 0)
         self.assertEqual(payload["warnings"], [])
-        run_mock.assert_called_once()
-        _, kwargs = run_mock.call_args
-        self.assertIsInstance(kwargs.get("dependencies"), RunDependencies)
+        # The contract requires the gate to be crossed BEFORE execution.
+        self.assertEqual(len(gate.evaluations), 1)
+        self.assertEqual(len(gate.executions), 1)
+        # And the admission actually minted is the one handed to the use case.
+        admission = gate.executions[0]["admission"]
+        self.assertEqual(admission.status, "evaluated")
+        self.assertEqual(admission.verdict, "compatible")
 
     def test_optional_fields_are_forwarded(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=_run_outcome()
-        ) as run_mock:
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness() as gate:
             status, _, _ = harness.post_json(
                 "/v1/run",
                 {
@@ -448,10 +550,13 @@ class RunEndpointTests(unittest.TestCase):
                 },
             )
         self.assertEqual(status, 200)
-        _, kwargs = run_mock.call_args
-        self.assertEqual(kwargs.get("quantization"), "Q4_K_M")
-        self.assertEqual(kwargs.get("filename"), "model.gguf")
-        self.assertEqual(kwargs.get("timeout_seconds"), 120.0)
+        _, eval_kwargs = gate.evaluations[0]
+        self.assertEqual(eval_kwargs.get("quantization"), "Q4_K_M")
+        self.assertEqual(eval_kwargs.get("filename"), "model.gguf")
+        exec_kwargs = gate.executions[0]
+        self.assertEqual(exec_kwargs.get("quantization"), "Q4_K_M")
+        self.assertEqual(exec_kwargs.get("filename"), "model.gguf")
+        self.assertEqual(exec_kwargs.get("timeout_seconds"), 120.0)
 
     def test_run_dto_parsing_rejects_bad_inputs(self):
         self.assertEqual(
@@ -490,16 +595,17 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual(json.loads(raw), {"error": "invalid JSON"})
 
     def test_unknown_field_returns_400(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=_run_outcome()
-        ) as run_mock:
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness() as gate:
             status, _, raw = harness.post_json(
                 "/v1/run",
                 {"model_id": "m", "prompt": "p", "foo": "bar"},
             )
         self.assertEqual(status, 400)
         self.assertIn("unknown field", json.loads(raw)["error"])
-        run_mock.assert_not_called()
+        # Validation precedes the lock, the evaluation and execution.
+        self.assertEqual(gate.evaluations, [])
+        self.assertEqual(gate.executions, [])
 
     def test_missing_and_mistyped_fields_return_400(self):
         cases = (
@@ -514,12 +620,10 @@ class RunEndpointTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with ServerHarness(
                     model_store=StubStore([])
-                ) as harness, mock.patch(
-                    "app.api.run_once", return_value=_run_outcome()
-                ) as run_mock:
+                ) as harness, GateHarness() as gate:
                     status, _, _ = harness.post_json("/v1/run", payload)
                 self.assertEqual(status, 400)
-                run_mock.assert_not_called()
+                self.assertEqual(gate.executions, [])
 
     def test_oversized_run_body_returns_413(self):
         big = b'{"model_id": "m", "prompt": "' + b"x" * (
@@ -541,47 +645,189 @@ class RunEndpointTests(unittest.TestCase):
         self.assertIn("Content-Type", json.loads(raw)["error"])
 
     def test_unknown_model_returns_404(self):
-        from app.run_service import ModelNotFoundError
-
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once",
-            side_effect=ModelNotFoundError("Model not found: nope"),
-        ):
-            status, _, _ = harness.post_json(
-                "/v1/run", {"model_id": "nope", "prompt": "hi"}
-            )
+        """An absent model is 404 (unchanged), not a 403 refusal."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness() as gate:
+            def evaluate(model_id, **kwargs):
+                gate.evaluations.append((model_id, kwargs))
+                return _not_found(model_id)
+            with mock.patch("app.api.evaluate_model_compatibility",
+                            side_effect=evaluate):
+                status, _, raw = harness.post_json(
+                    "/v1/run", {"model_id": "nope", "prompt": "hi"}
+                )
         self.assertEqual(status, 404)
+        self.assertIn("not found", json.loads(raw)["error"].lower())
+        self.assertEqual(gate.executions, [])
+
+    def test_admission_denied_returns_403_with_the_ratified_body(self):
+        """16.2 INCOMPATIBLE -> 403 + admission body, and no execution."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(verdict="incompatible") as gate:
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 403)
+        self.assertEqual(
+            json.loads(raw),
+            {
+                "error": "execution refused by compatibility admission",
+                "admission": {"status": "evaluated", "verdict": "incompatible"},
+            },
+        )
+        # 16.8: a refusal must never reach the runner.
+        self.assertEqual(gate.executions, [])
+
+    def test_insufficient_evidence_is_denied(self):
+        """insufficient_evidence is not an admitting verdict -> 403."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(verdict="insufficient_evidence") as gate:
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 403)
+        self.assertEqual(
+            json.loads(raw)["admission"],
+            {"status": "evaluated", "verdict": "insufficient_evidence"},
+        )
+        self.assertEqual(gate.executions, [])
+
+    def test_blocked_evaluation_is_denied(self):
+        """A blocked evaluation carries no verdict and still refuses."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(status="blocked", verdict=None) as gate:
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 403)
+        self.assertEqual(
+            json.loads(raw)["admission"], {"status": "blocked", "verdict": None}
+        )
+        self.assertEqual(gate.executions, [])
+
+    def test_evaluation_exception_returns_500_and_is_not_a_denial(self):
+        """16.3 an evaluation that RAISED is 500, never a false INCOMPATIBLE."""
+        boom = RuntimeError("gguf header corrupt at /models/secret.gguf")
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(eval_error=boom) as gate:
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 500)
+        text = raw.decode("utf-8")
+        self.assertEqual(
+            json.loads(text),
+            {
+                "error": "compatibility evaluation failed",
+                "admission": {"status": "blocked", "verdict": None},
+            },
+        )
+        # No verdict is invented, no internal detail leaks, nothing ran.
+        self.assertNotIn("INCOMPATIBLE", text)
+        self.assertNotIn("incompatible", text)
+        self.assertNotIn("Traceback", text)
+        self.assertNotIn("gguf", text)
+        self.assertNotIn("secret.gguf", text)
+        self.assertNotIn("corrupt", text)
+        self.assertEqual(gate.executions, [])
+
+    def test_rejection_bodies_expose_only_the_admission_summary(self):
+        """7.2: no checks, evidence, paths or diagnostics reach the client."""
+        for verdict in ("incompatible", "insufficient_evidence"):
+            with self.subTest(verdict=verdict):
+                with ServerHarness(model_store=StubStore([])) as harness, \
+                        GateHarness(verdict=verdict):
+                    _, _, raw = harness.post_json(
+                        "/v1/run", {"model_id": "m", "prompt": "hi"}
+                    )
+                payload = json.loads(raw)
+                # Assert on the KEYS, not on substrings: the verdict value
+                # "insufficient_evidence" legitimately contains the word
+                # "evidence", which must not be confused with a leaked
+                # evidence payload.
+                self.assertEqual(sorted(payload), ["admission", "error"])
+                self.assertEqual(sorted(payload["admission"]),
+                                 ["status", "verdict"])
+                self.assertEqual(payload["admission"]["verdict"], verdict)
+                text = raw.decode("utf-8")
+                for forbidden in ("checks", "diagnostics", "expected",
+                                  "observed", "artifact", "capability",
+                                  "filename", "/", "\\"):
+                    self.assertNotIn(forbidden, text)
 
     def test_preparation_failure_returns_422(self):
-        from app.run_service import RunPreparationFailedError
+        from app.execute_model import ExecutePreparationError
 
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once",
-            side_effect=RunPreparationFailedError("artifact not found"),
-        ):
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(
+                    error=ExecutePreparationError("artifact not found")
+                ):
             status, _, raw = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )
         self.assertEqual(status, 422)
         self.assertEqual(json.loads(raw), {"error": "artifact not found"})
 
-    def test_runtime_failure_returns_503(self):
-        from app.run_service import RunExecutionFailedError
+    def test_preparation_failure_preserves_warnings(self):
+        """5.2: 422 keeps its shape and gains the optional warnings."""
+        from app.execute_model import ExecutePreparationError
 
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once",
-            side_effect=RunExecutionFailedError("llama.cpp exited"),
-        ):
-            status, _, _ = harness.post_json(
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(
+                    error=ExecutePreparationError(
+                        "no executable target",
+                        warnings=("cpu fallback selected",),
+                    )
+                ):
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 422)
+        self.assertEqual(
+            json.loads(raw),
+            {"error": "no executable target",
+             "warnings": ["cpu fallback selected"]},
+        )
+
+    def test_admission_denied_inside_execute_model_is_still_403(self):
+        """10: the defence in depth maps ExecuteAdmissionDeniedError to 403."""
+        from app.execute_model import ExecuteAdmissionDeniedError
+
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(
+                    error=ExecuteAdmissionDeniedError("denied by evaluation")
+                ):
+            status, _, raw = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 403)
+        self.assertEqual(
+            json.loads(raw)["error"],
+            "execution refused by compatibility admission",
+        )
+
+    def test_runtime_failure_returns_503(self):
+        """A failed run is a result, not an exception -> 503."""
+        failure = SimpleNamespace(
+            code="runtime_error", message="llama.cpp exited with status 1"
+        )
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(
+                    result=_execution_result(
+                        success=False, stdout="", exit_code=1, error=failure
+                    )
+                ):
+            status, _, raw = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )
         self.assertEqual(status, 503)
+        self.assertEqual(
+            json.loads(raw)["error"], "llama.cpp exited with status 1"
+        )
 
     def test_unexpected_error_returns_500_without_details(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once",
-            side_effect=RuntimeError("secret /tmp/boom --argv"),
-        ):
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(error=RuntimeError("secret /tmp/boom --argv")):
             status, _, raw = harness.request(
                 "POST", "/v1/run",
                 body=b'{"model_id": "m", "prompt": "hi"}',
@@ -594,17 +840,18 @@ class RunEndpointTests(unittest.TestCase):
         self.assertNotIn("/tmp/boom", text)
 
     def test_concurrent_run_returns_409(self):
+        """16.6: request A holds the lock, request B is refused, not queued."""
         started = threading.Event()
         release = threading.Event()
 
-        def slow_run(*args, **kwargs):
+        def slow_execute(**kwargs):
             started.set()
             assert release.wait(timeout=10)
-            return _run_outcome()
+            return _execution_result()
 
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", side_effect=slow_run
-        ):
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness() as gate, mock.patch(
+                    "app.api.execute_model", side_effect=slow_execute):
             results = {}
 
             def first():
@@ -620,14 +867,48 @@ class RunEndpointTests(unittest.TestCase):
             )
             self.assertEqual(status, 409)
             self.assertIn("already running", json.loads(raw)["error"])
+            # The refused request never even evaluated: the lock is taken
+            # before evaluation, so B did no work at all.
+            self.assertEqual(len(gate.evaluations), 1)
             release.set()
             worker.join(timeout=10)
         self.assertEqual(results["first"][0], 200)
 
+    def test_lock_is_released_and_a_later_request_is_served(self):
+        """20: A acquires, B -> 409, A finishes, C is allowed."""
+        started = threading.Event()
+        release = threading.Event()
+        gate = GateHarness()
+
+        def slow_execute(**kwargs):
+            started.set()
+            assert release.wait(timeout=10)
+            return _execution_result()
+
+        with ServerHarness(model_store=StubStore([])) as harness, gate, \
+                mock.patch("app.api.execute_model", side_effect=slow_execute):
+            worker = threading.Thread(
+                target=lambda: harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "one"}
+                ),
+                daemon=True,
+            )
+            worker.start()
+            self.assertTrue(started.wait(timeout=10))
+            busy = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "two"}
+            )[0]
+            release.set()
+            worker.join(timeout=10)
+            # A is finished: the very next request must be served normally.
+            after = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "three"}
+            )[0]
+        self.assertEqual(busy, 409)
+        self.assertEqual(after, 200)
+
     def test_lock_released_after_success(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=_run_outcome()
-        ):
+        with ServerHarness(model_store=StubStore([])) as harness, GateHarness():
             first = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "one"}
             )[0]
@@ -636,20 +917,60 @@ class RunEndpointTests(unittest.TestCase):
             )[0]
         self.assertEqual((first, second), (200, 200))
 
+    def test_lock_released_after_admission_denial(self):
+        """16.7: a refusal must not leave the server locked forever."""
+        with ServerHarness(model_store=StubStore([])) as harness:
+            with GateHarness(verdict="incompatible"):
+                denied = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "one"}
+                )[0]
+            with GateHarness():
+                allowed = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "two"}
+                )[0]
+        self.assertEqual((denied, allowed), (403, 200))
+
+    def test_lock_released_after_evaluation_error(self):
+        """16.7: a failed evaluation must not leave the server locked."""
+        with ServerHarness(model_store=StubStore([])) as harness:
+            with GateHarness(eval_error=RuntimeError("gguf unreadable")):
+                failed = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "one"}
+                )[0]
+            with GateHarness():
+                allowed = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "two"}
+                )[0]
+        self.assertEqual((failed, allowed), (500, 200))
+
+    def test_lock_released_after_preparation_failure(self):
+        from app.execute_model import ExecutePreparationError
+
+        with ServerHarness(model_store=StubStore([])) as harness:
+            with GateHarness(error=ExecutePreparationError("no artifact")):
+                failed = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "one"}
+                )[0]
+            with GateHarness():
+                allowed = harness.post_json(
+                    "/v1/run", {"model_id": "m", "prompt": "two"}
+                )[0]
+        self.assertEqual((failed, allowed), (422, 200))
+
     def test_lock_released_after_failure(self):
-        from app.run_service import RunExecutionFailedError
+        failure = SimpleNamespace(code="runtime_error", message="boom")
 
-        calls = {"n": 0}
+        def flaky(**kwargs):
+            if not hasattr(flaky, "seen"):
+                flaky.seen = True
+                return _execution_result(
+                    success=False, stdout="", exit_code=1, error=failure
+                )
+            return _execution_result()
 
-        def flaky(*args, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise RunExecutionFailedError("boom")
-            return _run_outcome()
-
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", side_effect=flaky
-        ):
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(result=_execution_result()), \
+                mock.patch("app.api.execute_model", side_effect=flaky):
             first = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "one"}
             )[0]
@@ -659,10 +980,11 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual((first, second), (503, 200))
 
     def test_response_contains_no_paths_or_process_details(self):
-        outcome = _run_outcome(output="ok generated text", warnings=("slow",))
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=outcome
-        ):
+        result = _execution_result(
+            stdout="ok generated text", warnings=("slow",)
+        )
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(result=result):
             status, _, raw = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )
@@ -671,22 +993,32 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual(
             sorted(payload), ["exit_code", "model_id", "output", "warnings"]
         )
+        self.assertEqual(payload["warnings"], ["slow"])
         for forbidden in ("argv", "env", "environment", "command", "local_path"):
             self.assertNotIn(forbidden, payload)
             self.assertNotIn(forbidden, raw.decode("utf-8"))
 
     def test_api_does_not_shell_out_to_cli(self):
-        with ServerHarness(model_store=StubStore([])) as harness, mock.patch(
-            "app.api.run_once", return_value=_run_outcome()
-        ), mock.patch("subprocess.run") as subprocess_mock, mock.patch(
-            "app.main.run_model"
-        ) as cli_mock:
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(), mock.patch("subprocess.run") as subprocess_mock, \
+                mock.patch("app.main.run_model") as cli_mock:
             status, _, _ = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )
         self.assertEqual(status, 200)
         subprocess_mock.assert_not_called()
         cli_mock.assert_not_called()
+
+    def test_api_does_not_fall_back_to_the_legacy_run_pipeline(self):
+        """B9.52: /v1/run must not silently keep the ungated legacy path."""
+        with ServerHarness(model_store=StubStore([])) as harness, \
+                GateHarness(), \
+                mock.patch("app.run_service.run_once") as legacy_mock:
+            status, _, _ = harness.post_json(
+                "/v1/run", {"model_id": "m", "prompt": "hi"}
+            )
+        self.assertEqual(status, 200)
+        legacy_mock.assert_not_called()
 
 
 
