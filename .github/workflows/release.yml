@@ -11,7 +11,12 @@ name: release
 # committed at the tag, and published unmodified.
 #
 # Chain:
-#   annotated tag -> GitHub Release assets -> SHA-256 gate -> PyPI
+#   trigger (tag push | manual dispatch) -> annotated tag -> manifest committed
+#   at the tag -> GitHub Release assets -> SHA-256 gate -> PyPI
+#
+# Both triggers funnel into the same `verify` job, which re-derives the release
+# identity from the tag. The dispatch input is a selector, not an authority, so
+# there is no `arbitrary ref -> publish` path.
 #
 # The PyPI Pending Publisher is registered as:
 #   project castlearq / GitHub / NicolasBruna24 / CastleArq
@@ -23,13 +28,35 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  # Reconciliation trigger (B9.43-A).
+  #
+  # The tag v0.1.0 (2ebbeb4) predates this workflow file (b81f9ce), so the
+  # historical `push: tags` event can never fire for it again without moving
+  # the tag. `workflow_dispatch` gives v0.1.0 a valid, auditable execution path
+  # without rewriting history, and it does not add a second automatic trigger
+  # (unlike `release: published`, which would fire a second run for every
+  # future release and double-trigger alongside the tag push).
+  #
+  # The input is only a SELECTOR, never an authority: `verify` re-derives the
+  # release identity from the tag itself (annotated tag -> semver -> manifest
+  # committed in the tagged tree -> GitHub Release assets -> SHA-256 gate).
+  # A wrong or forged input cannot reach `publish`; it fails in `verify`.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing annotated semver tag to publish, e.g. v0.1.0'
+        required: true
+        type: string
 
 # Deny by default. `id-token: write` is granted only to the publish job.
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  # Keyed on the release TAG, not on github.ref: a dispatch run is launched
+  # from a branch, so a ref-keyed group would not serialise a dispatch against
+  # the tag push of the same release. One release => one concurrency group.
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -40,30 +67,51 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.identify.outputs.version }}
+      tag: ${{ steps.identify.outputs.tag }}
     steps:
       - name: Identify release tag
         id: identify
         env:
-          TAG: ${{ github.ref_name }}
+          # A dispatch run carries the operator input; a tag push carries the
+          # pushed tag. Both are re-validated here against the semver shape and
+          # then re-derived from the repository itself.
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+            # The tag must be an explicit full ref name, never a branch-like or
+            # path-like selector.
+            if [ "$TAG" != "${TAG#refs/}" ]; then
+              echo "Refusing to process a non tag name: $TAG" >&2
+              exit 1
+            fi
+          else
+            TAG="$REF_NAME"
+          fi
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Refusing to process non-semver tag: $TAG" >&2
             exit 1
           fi
           version="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Release tag: $TAG (version $version)"
+          echo "Release tag: $TAG (version $version), event: $EVENT_NAME"
 
       - name: Check out the tagged release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.ref }}
+          # Always the TAG, never the dispatch branch: the manifest and the
+          # audited artifacts must come from the tagged tree.
+          ref: refs/tags/${{ steps.identify.outputs.tag }}
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Assert the tag is annotated and resolve it
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.identify.outputs.tag }}
         run: |
           set -euo pipefail
           type=$(git cat-file -t "refs/tags/$TAG")
@@ -72,6 +120,28 @@ jobs:
             exit 1
           fi
           echo "Annotated tag $TAG resolves to $(git rev-parse "refs/tags/$TAG^{commit}")"
+
+      - name: Assert the GitHub Release matches the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.identify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # The release must exist, be published (not a draft), and its tag must
+          # be exactly $TAG. gh release download in the next step therefore only
+          # ever reaches assets of the audited release.
+          json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+          draft=$(jq -r '.draft' <<<"$json")
+          target=$(jq -r '.tag_name' <<<"$json")
+          if [ "$draft" != "false" ]; then
+            echo "Release $TAG is still a draft; refusing to publish." >&2
+            exit 1
+          fi
+          if [ "$target" != "$TAG" ]; then
+            echo "Release tag_name '$target' does not match requested tag '$TAG'." >&2
+            exit 1
+          fi
+          echo "GitHub Release $TAG is published and bound to tag $target."
 
       - name: Read expected SHA-256 from the release manifest
         env:
@@ -108,7 +178,7 @@ jobs:
       - name: Download the audited artifacts from the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.identify.outputs.tag }}
           VERSION: ${{ steps.identify.outputs.version }}
         run: |
           set -euo pipefail
@@ -156,6 +226,28 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Duplicate-publication guard, enforced by the workflow itself and not
+      # delegated to PyPI's append-only behaviour: if this version is already
+      # present in the index, the run aborts before any OIDC token is minted.
+      # Combined with the tag-keyed concurrency group above, the same artifacts
+      # can never be published twice from two triggers.
+      - name: Refuse to publish a version that already exists
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://pypi.org/pypi/castlearq/${VERSION}/json")
+          if [ "$code" = "200" ]; then
+            echo "castlearq ${VERSION} is already published on PyPI; aborting." >&2
+            exit 1
+          fi
+          if [ "$code" != "404" ]; then
+            echo "Unexpected PyPI response ($code); refusing to publish." >&2
+            exit 1
+          fi
+          echo "castlearq ${VERSION} is not published yet."
+
       - name: Download the verified distributions
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
