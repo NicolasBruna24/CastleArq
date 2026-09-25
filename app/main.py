@@ -1235,7 +1235,12 @@ read-only inspection:
   diagnose / verify
           GPU software diagnosis and its read-only re-verification
           (these concern the ENVIRONMENT, not artifact integrity)
-  serve   read-only HTTP API on 127.0.0.1
+
+serving (EXECUTES MODELS - not a status-only surface):
+  serve   HTTP API on 127.0.0.1. POST /v1/run runs real inference and
+          POST /v1/chat/sessions opens a live chat session. serve uses the
+          legacy execution path and does NOT apply the strict evaluation
+          admission that execute applies. See the README for details.
 
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
@@ -1283,7 +1288,29 @@ def print_runtime_diagnostics(out=None) -> int:
 
 
 def serve_command(host: str | None = None, port: int | None = None) -> int:
-    """Start the read-only HTTP API server (loopback-only)."""
+    """Start the HTTP API server (loopback-only).
+
+    B9.50: this is NOT a read-only surface. It executes models --
+    ``POST /v1/run`` performs real inference and the ``/v1/chat`` routes
+    open live sessions. The previous docstring and README/help text called
+    it a "read-only HTTP API", which was factually wrong.
+
+    Execution policy (B9.50 decision): the HTTP surface intentionally uses
+    the legacy execution path (``app.run_service``), the same one CLI ``run``
+    uses, and therefore does NOT apply the strict compatibility evaluation
+    admission that ``execute`` applies. This is preserved deliberately, not
+    by accident -- see ``docs/B9.50-*.md`` and the ``ExecutionGatePolicy``
+    tests in ``tests/test_api_serve_contract.py``, which pin the
+    documentation, the implementation and each other.
+
+    RATIONALE (B9.23 section 13, K-3, left explicitly UNDECIDED): the HTTP
+    adapter block must first decide status mapping, admission-denied
+    projection and ``run_lock`` semantics before the evaluated route can
+    exist. That decision was never ratified, so adding admission here would
+    invent an HTTP error contract rather than reuse one. Loopback binding is
+    a NETWORK property and is not what makes the policy acceptable; the two
+    are documented separately.
+    """
     return serve(host=host or "127.0.0.1", port=8000 if port is None else port)
 
 

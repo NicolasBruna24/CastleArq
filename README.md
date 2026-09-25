@@ -180,6 +180,26 @@ incorrecto.
 El mismo criterio que usa `execute` decide aquí: este comando informa, no
 cambia la política.
 
+### `INSUFFICIENT_EVIDENCE` no significa incompatible
+
+`INSUFFICIENT_EVIDENCE` es el veredicto global cuando no todos los checks tienen
+evidencia suficiente. No afirma que el modelo sea incompatible: afirma que
+CastleArq no sabe suficiente para afirmar nada en un sentido u otro.
+
+El comportamiento real, que `compatibility` no altera, es este:
+
+* si algún check está en `FAILED`, hay un fallo demostrado y la ejecución se
+  deniega;
+* si los únicos checks sin evidencia son los que no dependen de una evaluación
+  previa a la ejecución, CastleArq los trata como no bloqueantes y admite la
+  ejecución. Por eso puedes ver `Verdict: INSUFFICIENT_EVIDENCE` junto a un
+  código de salida `0`: el veredicto es honesto sobre lo que no sabe, y la
+  admisión es igualmente honesta sobre lo que sí sabe.
+
+`UNKNOWN` nunca se convierte en `FAILED`, e `INSUFFICIENT_EVIDENCE` no se
+convierte automáticamente en "no compatible". Para saber si un modelo concreto
+bloquea o no, decide el resultado de la admisión, no el nombre del veredicto.
+
 ## First execution
 
 La interfaz recomendada para el primer uso es `execute`:
@@ -377,7 +397,7 @@ válidos.
 | `verify` | **Revisa el diagnóstico de GPU**, no la integridad del artifact |
 | `source huggingface REPO` | Inspecciona una fuente remota |
 | `plan REPO FILENAME` | Inspecciona un artifact remoto concreto |
-| `serve` | API HTTP de solo lectura en `127.0.0.1` |
+| `serve` | API HTTP en `127.0.0.1` que **ejecuta modelos** (ver abajo) |
 
 `detect`, `runtime`, `models`, `list`, `compatibility`, `source` y `plan` son de
 solo lectura: no modifican nada.
@@ -385,6 +405,52 @@ solo lectura: no modifican nada.
 `verify` verifica la **remediación del entorno** tras un `diagnose`. No es una
 verificación de integridad del artifact; para eso, consulta `list`, que muestra
 el estado de verificación de cada artifact almacenado.
+
+### `serve` ejecuta modelos
+
+`serve` **no es** un endpoint de consulta o estado. Levanta una API HTTP y
+**ejecuta inferencia real**:
+
+```text
+GET  /health                    -> liveness y versión (esto sí es de solo lectura)
+GET  /v1/models                 -> catálogo
+GET  /v1/artifacts              -> artifacts locales
+POST /v1/run                    -> EJECUTA un prompt (infersencia real)
+POST /v1/chat/sessions          -> abre una sesión de chat viva
+POST /v1/chat/sessions/{id}/turns -> envía un prompt a esa sesión
+GET  /v1/chat/sessions/{id}     -> estado de la sesión
+DELETE /v1/chat/sessions/{id}   -> cierra la sesión
+```
+
+El servidor escucha en loopback (`127.0.0.1`) por defecto y rechaza hosts que
+no sean loopback. Eso es una propiedad de **exposición de red**.
+
+La **política de ejecución** es otra cosa, y conviene no confundirlas: `serve`
+usa el camino de ejecución heredado (el mismo que `run`) y **no aplica la
+admisión por evaluación estricta** que sí aplica `execute`. Un modelo
+incompatible según la evaluación estricta puede ejecutarse por HTTP. Si
+necesitas la garantía de compatibilidad, usa `execute` o consulta antes con
+`compatibility`.
+
+Añadir la admisión estricta al camino HTTP requiere decidir antes su
+proyección de errores y sus códigos de estado, una decisión arquitectónica
+que sigue pendiente. El comportamiento actual es intencionado y está
+protegido por tests.
+
+## Chat
+
+```bash
+castlearq chat qwen2.5-coder-7b-instruct
+```
+
+Abre una sesión interactiva con el modelo ya cargado. Durante la sesión
+responde a `/regen` (regenerar), `/clear` (limpiar historial), `/read <file>`
+y `/glob <patrón>`; `/exit` o `Ctrl+C` cierran la sesión.
+
+`chat` usa el mismo runtime y el mismo artifact local que `execute`, así que
+un modelo descargado con `download` se reutiliza sin volver a bajarlo. Si
+necesitas comprobar compatibilidad antes de conversar, consulta
+`castlearq compatibility MODEL_ID`.
 
 ## Architecture
 
