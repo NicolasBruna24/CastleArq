@@ -93,7 +93,7 @@ application.
 You need:
 
 - **Linux** as the exercised baseline.
-- **Python 3.10 or newer.**
+- **Python 3.11 or newer.**
 - **llama.cpp provided externally.** CastleArq does not install, build or vendor
   it, and does not ship models, drivers, Vulkan, CUDA or ROCm. The official
   `llama` launcher must be on your `PATH`.
@@ -681,7 +681,7 @@ python3 -m pip install ".[dev]"
 ```
 
 The same command runs on every push to `main` and on every pull request, across
-Python 3.10, 3.11, 3.12 and 3.13. A red run is a validation failure: it is
+Python 3.11, 3.12 and 3.13. A red run is a validation failure: it is
 diagnosed, not worked around. The suite needs no llama.cpp, no models and no
 GPU; tests that open a socket do so on `127.0.0.1` only. Working from a
 checkout is not required to use the installed package.

@@ -30,7 +30,7 @@ class PackageMetadataTests(unittest.TestCase):
         project = self.pyproject["project"]
         self.assertEqual(project["name"], "castlearq")
         self.assertEqual(project["version"], "0.1.0")
-        self.assertEqual(project["requires-python"], ">=3.10")
+        self.assertEqual(project["requires-python"], ">=3.11")
         self.assertTrue(project["description"])
         self.assertEqual(project["license"], "Apache-2.0")
 

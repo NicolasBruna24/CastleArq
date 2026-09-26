@@ -60,7 +60,7 @@ jobs:
       matrix:
         # Exactly the declared range (pyproject.toml classifiers). 3.14 is
         # deliberately absent: it is neither claimed nor in scope here.
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
 

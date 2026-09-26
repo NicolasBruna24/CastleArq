@@ -292,7 +292,7 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertTrue(url.startswith("https://"), url)
 
     def test_python_requirement_is_preserved(self):
-        self.assertEqual(self.project["requires-python"], ">=3.10")
+        self.assertEqual(self.project["requires-python"], ">=3.11")
 
 
 if __name__ == "__main__":
