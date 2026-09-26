@@ -1342,7 +1342,10 @@ class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="castlearq",
-        description="CastleArq: local model discovery, download, execution and chat",
+        description=(
+            "CastleArq: local GGUF model management, compatibility evaluation "
+            "and admitted execution with llama.cpp"
+        ),
         epilog=USAGE_FLOW,
         formatter_class=_HelpFormatter,
     )

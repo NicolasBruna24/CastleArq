@@ -202,11 +202,11 @@ class ExplanationTests(unittest.TestCase):
                     name="backend", description="Vulkan is required"
                 )
             ],
-            warnings=["La memoria del modelo es una estimacion."],
+            warnings=["Model memory is an estimate."],
         )
         text = format_evaluation_report(result)
         self.assertIn("Condition: backend: Vulkan is required", text)
-        self.assertIn("Warning: La memoria del modelo", text)
+        self.assertIn("Warning: Model memory is an estimate", text)
 
     def test_none_result_does_not_raise(self):
         self.assertIn(

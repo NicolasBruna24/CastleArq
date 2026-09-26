@@ -680,8 +680,12 @@ class CliHelpTests(unittest.TestCase):
         self._help_text()
 
     def test_help_has_current_product_description(self):
+        # B9.54: the one-line description was replaced with the B9.53 public
+        # definition, so it names compatibility evaluation and admitted
+        # execution rather than only discovery/download/execution/chat.
         self.assertIn(
-            "CastleArq: local model discovery, download, execution and chat",
+            "CastleArq: local GGUF model management, compatibility evaluation "
+            "and admitted execution with llama.cpp",
             self._help_text(),
         )
         self.assertNotIn("hardware detection", self._help_text())

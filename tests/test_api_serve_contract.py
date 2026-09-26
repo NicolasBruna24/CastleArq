@@ -296,9 +296,10 @@ class ExecutionGatePolicyTests(unittest.TestCase):
     def test_documentation_states_the_ratified_policy(self):
         readme = _read(README)
         # Compare on whitespace-normalised text: the README is hard-wrapped,
-        # so a phrase can straddle a newline.
+        # so a phrase can straddle a newline. B9.54 moved the public surface
+        # to English (B9.53 section 10).
         flat = " ".join(readme.split())
-        self.assertIn("admisión por evaluación estricta", flat)
+        self.assertIn("same strict evaluation admission", flat)
         self.assertIn("403", readme)
         help_text = _help_text()
         self.assertIn("strict evaluation admission as execute", help_text)
@@ -320,18 +321,25 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         self.assertIn("to_admission", names)
 
     def test_documentation_states_the_implemented_policy_in_both_languages(self):
-        """README and --help must both describe the gate as active."""
+        """README and --help must both describe the gate as active.
+
+        B9.54 moved the public surface to English, so the assertion follows.
+        """
         readme = _read(README)
-        self.assertIn("admisión", readme)
+        self.assertIn("admission", readme)
         self.assertIn("serve", readme)
         help_text = _help_text()
         self.assertIn("same strict evaluation admission as execute", help_text)
 
     def test_documentation_separates_network_from_execution_policy(self):
-        """B9.50 section 4: the two properties must not be conflated."""
+        """B9.50 section 4: the two properties must not be conflated.
+
+        B9.54 translated the README to the canonical English surface, so the
+        marker is now the English phrase; the property under test is unchanged.
+        """
         readme = _read(README)
-        self.assertIn("exposición de red", readme)
-        self.assertIn("política de ejecución", readme.lower())
+        self.assertIn("network exposure", readme)
+        self.assertIn("**Execution policy**", readme)
 
     def test_evaluation_core_is_untouched_by_this_block(self):
         """B9.50 must not have modified the evaluation engine."""

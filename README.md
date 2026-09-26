@@ -1,160 +1,169 @@
 # CastleArq
 
-CastleArq es un gestor y orquestador local de artifacts de IA. Descubre y
-diagnostica un runtime local, gestiona modelos GGUF, evalúa compatibilidad,
-selecciona el backend disponible y ejecuta prompts con llama.cpp.
+CastleArq is a command-line tool for running local GGUF models with
+[llama.cpp](https://github.com/ggml-org/llama.cpp) that checks whether a model
+can run on your machine — and shows its work — before running it.
 
-CastleArq no reemplaza a llama.cpp: el runtime, sus drivers y sus modelos son
-dependencias externas que debe proporcionar el usuario.
+CastleArq does not replace llama.cpp and does not perform inference itself.
+llama.cpp is the runtime that loads the model and generates text. CastleArq
+manages model files, evaluates compatibility, applies admission and orchestrates
+execution against that runtime.
 
-## What is CastleArq?
+> **Version note.** The published PyPI release is `0.1.0`. This README describes
+> the current `main` branch, which is ahead of that release.
 
-CastleArq ofrece un flujo local para:
+## What problem does it solve?
 
-- descubrir y diagnosticar el runtime oficial `llama`;
-- consultar el catálogo de modelos;
-- descargar explícitamente artifacts GGUF;
-- almacenarlos y volver a listarlos localmente;
-- consultar la evaluación de compatibilidad sin ejecutar nada;
-- validar compatibilidad y seleccionar backend;
-- ejecutar un primer prompt o una sesión chat.
+You have GGUF model files and a local llama.cpp runtime. Pointing `llama-cli` at
+a model gives you either output or a failure, and nothing in between: no answer
+to *why* it failed, and no way to know in advance whether it could have worked at
+all on this machine, with this artifact, on this runtime.
 
-La documentación técnica de arquitectura, contratos, evaluación y ejecución
-está en [`docs/`](docs/). El usuario no necesita leerla para completar el
-flujo básico.
+CastleArq answers that question first, with evidence, and refuses to run what it
+cannot justify running.
 
-## Requirements
+## How it works
 
-- Linux como baseline actual.
-- Python `>=3.10`.
-- Un entorno virtual de Python.
-- `llama.cpp` proporcionado externamente, con el ejecutable oficial `llama`
-  disponible en `PATH`.
+```text
+runtime       -> inspect the llama.cpp runtime that is actually installed
+models        -> catalog of candidate models for this machine
+download      -> fetch a GGUF artifact (the model file) and store it locally
+compatibility -> evaluate five conditions and print the evidence
+execute       -> refuse or run, according to that evaluation
+```
 
-CastleArq no incluye llama.cpp, modelos, drivers, Vulkan, CUDA, ROCm ni otros
-stacks de GPU. El flujo normal no requiere `sudo` y no modifica el sistema.
+## Why compatibility evidence matters
+
+The compatibility evaluation checks exactly five named conditions between one
+specific artifact and the detected runtime:
+
+| Condition | Question |
+|---|---|
+| artifact–model identity | is this file the model that was asked for? |
+| artifact format support | does the runtime accept this file format? |
+| model architecture support | does the runtime know this architecture? |
+| runtime artifact support | does the runtime report supporting this artifact? |
+| runtime backend support | does the selected backend support this model? |
+
+Each condition is reported with what was **Expected**, what was **Observed**, and
+the **Evidence** recorded for that observation. A condition is `PASSED`,
+`FAILED`, or `UNKNOWN` — and `UNKNOWN` is reported as `UNKNOWN`. It is never
+silently converted into a failure.
+
+When the evaluation does not admit the model, **admission** — the decision that
+allows or refuses execution — refuses it, and the run does not happen. There is
+no flag to force execution past a refusal.
+
+The same admission policy applies to every surface that runs a model: the
+`execute` command, `POST /v1/run` over HTTP, and opening a chat session.
+
+Throughout this document:
+
+- **model** — the logical model you want to use;
+- **`MODEL_ID`** — the canonical identifier the CLI accepts;
+- **artifact** — the concrete model file (GGUF) stored locally;
+- **quantization** — the chosen size/precision variant of that file;
+- **runtime** — the llama.cpp installation that loads and runs the model.
 
 ## Installation
 
-Desde un checkout:
+```bash
+pip install castlearq
+```
+
+From a checkout:
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 pip install .
 castlearq --version
-castlearq --help
 ```
 
-También puede instalarse desde un wheel o sdist construido previamente. Por
-ejemplo, con un wheel local:
+A previously built wheel or sdist can also be installed, for example
+`pip install dist/castlearq-0.1.0-py3-none-any.whl`. Installation needs neither
+`PYTHONPATH` nor the source tree afterwards, and the package contains no models.
 
-```bash
-pip install dist/castlearq-0.1.0-py3-none-any.whl
-```
+## Requirements
 
-La instalación no necesita `PYTHONPATH` ni el código fuente después de
-instalarse. El paquete no contiene modelos.
+CastleArq is for **developers already working with local AI models on Linux who
+have, or can obtain, llama.cpp, and who use GGUF files.** It is not a consumer
+application.
+
+You need:
+
+- **Linux** as the exercised baseline.
+- **Python 3.10 or newer.**
+- **llama.cpp provided externally.** CastleArq does not install, build or vendor
+  it, and does not ship models, drivers, Vulkan, CUDA or ROCm. The official
+  `llama` launcher must be on your `PATH`.
+- **Disk space** for model files. A single 7B Q4_K_M artifact is roughly 4.4 GiB.
+
+The normal flow does not require `sudo` and does not modify your system.
 
 ## Runtime setup
 
-CastleArq requiere el ejecutable `llama`; no instala ni compila llama.cpp.
-Comprueba primero que el launcher esté en el `PATH`:
+CastleArq requires the `llama` executable; it does not install or build
+llama.cpp. First check that the launcher is on your `PATH`:
 
 ```bash
 command -v llama
 ```
 
-Después consulta el estado que CastleArq puede observar:
+Then inspect the state CastleArq can observe:
 
 ```bash
 castlearq runtime
 ```
 
-La salida muestra el runtime, launcher, executable resuelto, versión, build,
-estado de disponibilidad y capabilities detectadas.
+The output shows the runtime, launcher, resolved executable, version, build,
+availability and detected capabilities.
 
-| Estado | Significado | Acción |
+| State | Meaning | Action |
 |---|---|---|
-| `AVAILABLE` | Runtime utilizable | Continuar con modelos. |
-| `NOT_FOUND` | `llama` no está disponible | Proporcionar llama.cpp externamente. |
-| `FOUND_UNUSABLE` | Se encontró un path no utilizable | Revisar path, permisos y tipo de ejecutable. |
-| `PROBE_ERROR` | La validación no pudo completarse | Revisar el `reason`, instalación o build de llama.cpp. |
-| `UNKNOWN` | No hay evidencia suficiente | Revisar el `reason` y repetir el diagnóstico. |
+| `AVAILABLE` | runtime usable | continue with models |
+| `NOT_FOUND` | `llama` is not available | provide llama.cpp externally |
+| `FOUND_UNUSABLE` | a path was found but is not usable | check path, permissions and file type |
+| `PROBE_ERROR` | validation could not complete | read `reason`, check the llama.cpp install/build |
+| `UNKNOWN` | not enough evidence | read `reason` and re-run the diagnostic |
 
-`llama` es el launcher oficial. `llama-cli`, `llama-server` y `llama.app` no
-sustituyen automáticamente a `llama` para la ejecución de CastleArq 0.1.x.
+`llama` is the official launcher. `llama-cli`, `llama-server` and `llama.app` do
+not automatically stand in for `llama` in CastleArq 0.1.x.
 
-## First model
-
-Consulta el catálogo y elige el `MODEL_ID` canónico:
+## Quick start
 
 ```bash
+# 1. Check the runtime CastleArq will drive
+castlearq runtime
+
+# 2. See which models are candidates for this machine
 castlearq models
-```
 
-Descarga explícitamente el artifact:
-
-```bash
+# 3. Fetch one explicitly (multi-GB download)
 castlearq download qwen2.5-coder-7b-instruct
+
+# 4. Check it can run here, and see the evidence
+castlearq compatibility qwen2.5-coder-7b-instruct
+
+# 5. Run a prompt
+castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly: OK"
 ```
 
-La descarga requiere conexión con la fuente remota. Si el catálogo ofrece
-varias variantes, puedes seleccionar una con:
+`compatibility` is a normal step in this flow, not optional troubleshooting: it
+is the same evaluation `execute` uses to decide whether to run.
 
-```bash
-castlearq download MODEL_ID --quantization QUANTIZATION
-```
-
-o indicar un archivo concreto con `--filename` cuando corresponda. No se
-asume que un modelo remoto permanezca disponible para siempre.
-
-En este flujo:
-
-- **model**: el modelo lógico que quieres usar;
-- **`MODEL_ID`**: el identificador canónico que acepta la CLI;
-- **artifact**: el archivo concreto que se descarga y almacena;
-- **GGUF**: el formato del artifact usado por el runtime actual;
-- **quantization**: la variante de precisión/tamaño elegida;
-- **filename**: el nombre exacto del artifact.
-
-## Verify local artifacts
-
-```bash
-castlearq list
-```
-
-`list` muestra los artifacts locales con su model ID, filename, quantización,
-tamaño y estado. Los artifacts se reutilizan en ejecuciones posteriores.
-
-El ModelStore oficial es independiente del checkout:
-
-```text
-$XDG_DATA_HOME/castlearq/models
-```
-
-y el fallback es:
-
-```text
-~/.local/share/castlearq/models
-```
-
-`~/.local/share/localai-hub/models` es únicamente compatibilidad legacy; no es
-la ruta recomendada para nuevas instalaciones. No es necesario editar manifests
-ni mover modelos manualmente para usar CastleArq.
-
-## Check compatibility (without running anything)
-
-Antes de ejecutar puedes consultar la evaluación de compatibilidad estricta:
+## Check compatibility before running anything
 
 ```bash
 castlearq compatibility qwen2.5-coder-7b-instruct
 ```
 
-Este comando es de **solo lectura**: no ejecuta inferencia, no lanza el
-runtime, no descarga modelos, no modifica el ModelStore y no crea estado
-persistente. Imprime el veredicto y, para cada check, su estado, lo esperado,
-lo observado y la evidencia que ya tiene registrada:
+This command is **read-only**: it runs no inference, starts no runtime,
+downloads nothing, does not modify the model store and creates no persistent
+state. It prints the verdict and, for each condition, its status, what was
+expected, what was observed, and the evidence already recorded.
+
+Abridged output (the real command prints all five conditions):
 
 ```text
 Compatibility evaluation
@@ -172,283 +181,278 @@ Checks:
     Evidence (observed): runtime.supports_artifact = None
 ```
 
-`UNKNOWN` significa que no hay evidencia suficiente. No es un fallo:
-CastleArq no lo trata como incompatible. Los códigos de salida son `0` cuando
-la evaluación admite la ejecución, `1` cuando no la admite y `2` si el uso es
-incorrecto.
+Exit codes: `0` when the evaluation admits execution, `1` when it does not,
+`2` on incorrect usage.
 
-El mismo criterio que usa `execute` decide aquí: este comando informa, no
-cambia la política.
+The criterion is the same one `execute` uses: this command reports, it does not
+change policy.
 
-### `INSUFFICIENT_EVIDENCE` no significa incompatible
+### `INSUFFICIENT_EVIDENCE` does not mean incompatible
 
-`INSUFFICIENT_EVIDENCE` es el veredicto global cuando no todos los checks tienen
-evidencia suficiente. No afirma que el modelo sea incompatible: afirma que
-CastleArq no sabe suficiente para afirmar nada en un sentido u otro.
+`INSUFFICIENT_EVIDENCE` is the overall verdict when not every condition has
+sufficient evidence. It does not assert that the model is incompatible; it
+asserts that CastleArq does not know enough to assert either way.
 
-El comportamiento real, que `compatibility` no altera, es este:
+The actual behaviour, which `compatibility` does not alter:
 
-* si algún check está en `FAILED`, hay un fallo demostrado y la ejecución se
-  deniega;
-* si los únicos checks sin evidencia son los que no dependen de una evaluación
-  previa a la ejecución, CastleArq los trata como no bloqueantes y admite la
-  ejecución. Por eso puedes ver `Verdict: INSUFFICIENT_EVIDENCE` junto a un
-  código de salida `0`: el veredicto es honesto sobre lo que no sabe, y la
-  admisión es igualmente honesta sobre lo que sí sabe.
+- if any condition is `FAILED`, a failure is demonstrated and execution is
+  refused;
+- if the only conditions without evidence are the ones that do not depend on a
+  prior evaluation, CastleArq treats them as non-blocking and admits execution.
+  That is why you can see `Verdict: INSUFFICIENT_EVIDENCE` together with exit
+  code `0`: the verdict is honest about what it does not know, and the admission
+  is equally honest about what it does.
 
-`UNKNOWN` nunca se convierte en `FAILED`, e `INSUFFICIENT_EVIDENCE` no se
-convierte automáticamente en "no compatible". Para saber si un modelo concreto
-bloquea o no, decide el resultado de la admisión, no el nombre del veredicto.
+`UNKNOWN` never becomes `FAILED`, and `INSUFFICIENT_EVIDENCE` never
+automatically becomes "not compatible". To know whether a given model is
+blocked, the admission result decides — not the name of the verdict.
 
 ## First execution
 
-La interfaz recomendada para el primer uso es `execute`:
-
 ```bash
-castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly B9.34-OK"
+castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly: OK"
 ```
 
-Un prompt exitoso muestra la respuesta del modelo en stdout. El runtime
-puede escribir mensajes de carga y generación, y CastleArq puede mostrar
-warnings en stderr. Un warning no implica por sí solo que la ejecución haya
-fallado.
+A successful prompt prints the model's response on stdout. The runtime may print
+loading and generation messages, and CastleArq may print warnings on stderr. A
+warning does not by itself mean the execution failed.
 
-- exit code `0`: ejecución exitosa;
-- exit code `1`: fallo operativo;
-- exit code `2`: argumentos o uso incorrecto.
+- exit code `0`: success;
+- exit code `1`: operational failure;
+- exit code `2`: incorrect arguments or usage.
 
-La salida exacta puede variar con el modelo y el prompt. Un resultado exitoso
-debe incluir salida generada y código `0`.
+Exact output varies with the model and prompt. A successful result includes
+generated output and code `0`.
 
-La interfaz `run` también existe y es compatible:
+### `execute` versus `run`
+
+The legacy `run` interface also exists and reaches the same llama.cpp runtime:
 
 ```bash
-castlearq run qwen2.5-coder-7b-instruct --prompt "Reply with exactly B9.34-OK"
+castlearq run qwen2.5-coder-7b-instruct --prompt "Reply with exactly: OK"
 ```
 
-`run` y `execute` no son aliases sintácticos: `run` recibe `--prompt`, mientras
-que `execute` recibe el prompt como argumento.
-
-### `execute` frente a `run`
-
-No son equivalentes en política:
+They are not equivalent in policy:
 
 | | `execute` | `run` |
 |---|---|---|
-| Prompt | posicional | `--prompt` |
-| Evaluación estricta | sí, antes de ejecutar | no |
-| Admission fail-closed | sí | no |
+| Prompt | positional | `--prompt` |
+| Strict evaluation before running | yes | no |
+| Admission | yes | no |
 | Runtime | llama.cpp | llama.cpp |
 
-`execute` evalúa la compatibilidad estricta y se niega a ejecutar cuando la
-admisión lo deniega, mostrando los checks, razones y evidencia. `run` es la
-interfaz heredada: llega al mismo runtime de llama.cpp por el pipeline de
-preparación heredado y **no** aplica la admisión por evaluación estricta.
+`execute` evaluates compatibility strictly and refuses to run when admission
+denies it, showing the conditions, reasons and evidence. `run` is the legacy
+interface: it reaches the same runtime through the legacy preparation path and
+does **not** apply strict evaluation admission.
 
-Usa `execute`. `run` se conserva por compatibilidad.
+Use `execute`. `run` is kept for compatibility.
+
+
+### A real run
+
+The transcript below was captured from a real execution on Linux with
+llama.cpp 0.4.0-dev and a real 4.4 GiB Q4_K_M artifact, using the commands
+above. Nothing in it is hand-written.
+
+`castlearq compatibility qwen2.5-coder-7b-instruct`:
+
+```text
+Compatibility evaluation
+  Model: qwen2.5-coder-7b-instruct
+  Artifact: qwen2.5-coder-7b-instruct-q4_k_m.gguf (Q4_K_M)
+  Runtime: llama.cpp CLI
+  Verdict: INSUFFICIENT_EVIDENCE
+
+Checks:
+  artifact-model identity: PASSED
+    Expected: 'qwen2.5-coder-7b-instruct'
+    Observed: 'qwen2.5-coder-7b-instruct'
+    Evidence (observed): model.identity.model_id = 'qwen2.5-coder-7b-instruct'
+    Evidence (observed): artifact.identifier = 'qwen2.5-coder-7b-instruct'
+  artifact format support: PASSED
+    Expected: 'gguf'
+    Observed: 'gguf'
+    Evidence (observed): artifact.format = 'gguf'
+    Evidence (observed): runtime.supported_formats = 'gguf'
+    Evidence (observed): runtime.unsupported_formats = None
+  model architecture support: PASSED
+    Expected: 'qwen2'
+    Observed: 'qwen2'
+    Evidence (observed): model.architecture = 'qwen2'
+    Evidence (observed): runtime.architecture_knowledge = 'explicit lists'
+  runtime artifact support: UNKNOWN
+    Evidence (observed): runtime.name = 'llama.cpp'
+    Evidence (observed): runtime.supports_artifact = None
+  runtime backend support: UNKNOWN
+    Evidence (observed): context.backend = None
+    Evidence (observed): runtime.supported_backends = 'cpu, cuda, hip'
+    Evidence (observed): runtime.unsupported_backends = None
+```
+
+Read it honestly: three conditions passed with evidence; two are `UNKNOWN`
+because the runtime reports nothing for them. CastleArq reports
+`INSUFFICIENT_EVIDENCE` rather than inventing a pass, and admission still allows
+the run because those two conditions are not blocking.
+
+`castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly: CASTLEARQ_OK"`
+(llama.cpp's own loading banner elided, indicated below):
+
+```text
+Warning: Model memory is an estimate.
+
+[... llama.cpp loading banner and runtime command help elided ...]
+
+> Reply with exactly: CASTLEARQ_OK
+CASTLEARQ_OK
+
+[ Prompt: 258.1 t/s | Generation: 38.0 t/s ]
+```
+
+The command exited `0` and the model produced exactly the requested token
+sequence. The `Warning:` line comes from CastleArq's own memory estimation,
+which is separate from the five-condition verdict — see
+[What the verdict does not cover](#what-the-verdict-does-not-cover).
+
 
 ## Model management
 
-El ciclo básico es:
+The basic cycle is:
 
 ```text
-models → choose MODEL_ID → download → list → execute
+models -> choose MODEL_ID -> download -> list -> execute
 ```
 
-`models` descubre el catálogo, `download` adquiere el artifact explícitamente,
-`list` comprueba el almacenamiento local y `execute` ejecuta un prompt. Repetir
-`execute` no vuelve a descargar el modelo.
+`models` shows the catalog, `download` acquires the artifact explicitly, `list`
+inspects local storage and `execute` runs a prompt. Repeating `execute` does not
+download the model again.
 
-## Troubleshooting
+`models` prints, per candidate, the recommended quantization, an estimated
+memory figure, the selected runtime and backend, the reason, and any warning.
+Those recommendations come from CastleArq's memory estimation and hardware
+assessment, which are **not** the five-condition compatibility verdict.
 
-### `llama` no encontrado
-
-Comprueba:
+To pick a specific variant:
 
 ```bash
-command -v llama
-castlearq runtime
+castlearq download MODEL_ID --quantization QUANTIZATION
+castlearq download MODEL_ID --filename MODEL_FILE.gguf
 ```
 
-Si aparece `NOT_FOUND`, proporciona llama.cpp externamente y vuelve a ejecutar
-`castlearq runtime`. CastleArq no lo instalará automáticamente.
+A download requires network access to the remote source, and CastleArq does not
+assume a remote model stays available forever.
 
-### Runtime `FOUND_UNUSABLE`
-
-CastleArq encontró un path, pero no puede usarlo como launcher. Revisa el path
-devuelto, los permisos, el tipo de archivo y la instalación/build del runtime.
-
-### Runtime `PROBE_ERROR`
-
-CastleArq encontró el launcher pero no pudo validar la interfaz. Lee `Reason`,
-revisa la instalación/build de llama.cpp y vuelve a ejecutar el diagnóstico.
-Esto no demuestra por sí solo una incompatibilidad universal.
-
-### Artifact inexistente
-
-Consulta el catálogo y el ModelStore:
+### Verify local artifacts
 
 ```bash
 castlearq list
-castlearq models
-castlearq download MODEL_ID
 ```
 
-### Artifact inválido o incompleto
+`list` shows locally stored artifacts with their model id, filename,
+quantization, size and verification state. Artifacts are reused by later runs.
 
-Revisa `castlearq list`. No intentes ejecutar un artifact cuyo estado no sea
-utilizable. Si el artifact no está descargado, vuelve a usar `download`; el
-comando existente conserva la semántica de validación y no publica un
-artifact que no cumpla sus verificaciones.
-
-### Incompatibilidad
-
-La ejecución puede bloquearse por modelo, artifact, memoria, quantization o
-capabilities. Revisa `castlearq models`, `castlearq list` y `castlearq runtime`
-antes de elegir otro artifact o prompt.
-
-### Backend unavailable
-
-Consulta las capabilities:
-
-```bash
-castlearq runtime
-```
-
-No asumas que un backend anunciado por el hardware está disponible en el
-runtime. Usa un backend compatible con lo detectado.
-
-### Admission denied
-
-CastleArq bloqueó la ejecución según la evaluación actual. La salida incluye la
-evaluación completa que produjo el bloqueo: el veredicto, cada check con su
-estado, lo esperado, lo observado y la evidencia. No hay una instrucción para
-forzar la ejecución.
-
-```bash
-castlearq compatibility MODEL_ID
-```
-
-muestra esa misma evaluación sin ejecutar nada, y es la forma recomendada de
-entender el motivo antes de intentarlo de nuevo.
-
-Un check `UNKNOWN` no es un fallo: significa que no hay evidencia suficiente y
-no se trata como incompatibilidad.
-
-### Compatibility evaluation error
-
-Si la evaluación no pudo completarse, CastleArq lo dice explícitamente:
+The model store is independent of the checkout:
 
 ```text
-Compatibility evaluation error: GGUFReadError: ...
+$XDG_DATA_HOME/castlearq/models
 ```
 
-Esto **no** es una denegación por política: significa que la evaluación
-falló. La causa indicada (por ejemplo, un artifact GGUF corrupto o ilegible)
-es el problema real, y la ejecución sigue bloqueada. Revisa el artifact con
-`castlearq list` y vuelve a descargarlo si su estado no es utilizable.
-
-### Execution failure
-
-Revisa el error y el stderr de la ejecución, y contrasta:
-
-```bash
-castlearq runtime
-castlearq list
-```
-
-El fallo del proceso no significa automáticamente que falte el runtime o el
-artifact.
-
-### Download failure
-
-Revisa conectividad, la disponibilidad de la fuente remota, el `MODEL_ID`, la
-selección de quantization/filename y vuelve a ejecutar:
-
-```bash
-castlearq download MODEL_ID
-```
-
-### CLI usage error
-
-Consulta:
-
-```bash
-castlearq --help
-```
-
-El exit code `2` indica uso incorrecto, como argumentos faltantes o flags no
-válidos.
-
-## Command reference
-
-| Comando | Qué hace |
-|---|---|
-| `models` | Catálogo con recomendaciones puntuadas según el hardware detectado |
-| `download MODEL_ID` | Descarga explícita de un artifact GGUF |
-| `list` | Artifacts almacenados localmente y su estado |
-| `compatibility MODEL_ID` | Evaluación de compatibilidad **sin ejecutar** |
-| `execute MODEL_ID "PROMPT"` | Ejecuta un prompt (recomendado; con evaluación estricta) |
-| `run MODEL_ID --prompt "T"` | Interfaz heredada; sin evaluación estricta |
-| `chat MODEL_ID` | Sesión de chat interactiva con el modelo |
-| `runtime` | Estado del runtime llama.cpp resuelto |
-| `detect` | Sistema, CPU, memoria y GPU |
-| `diagnose` | Diagnóstico del software de GPU (Vulkan/CUDA/ROCm) |
-| `verify` | **Revisa el diagnóstico de GPU**, no la integridad del artifact |
-| `source huggingface REPO` | Inspecciona una fuente remota |
-| `plan REPO FILENAME` | Inspecciona un artifact remoto concreto |
-| `serve` | API HTTP en `127.0.0.1` que **ejecuta modelos** (ver abajo) |
-
-`detect`, `runtime`, `models`, `list`, `compatibility`, `source` y `plan` son de
-solo lectura: no modifican nada.
-
-`verify` verifica la **remediación del entorno** tras un `diagnose`. No es una
-verificación de integridad del artifact; para eso, consulta `list`, que muestra
-el estado de verificación de cada artifact almacenado.
-
-### `serve` ejecuta modelos
-
-`serve` **no es** un endpoint de consulta o estado. Levanta una API HTTP y
-**ejecuta inferencia real**:
+with the fallback:
 
 ```text
-GET  /health                    -> liveness y versión (esto sí es de solo lectura)
-GET  /v1/models                 -> catálogo
-GET  /v1/artifacts              -> artifacts locales
-POST /v1/run                    -> EJECUTA un prompt (infersencia real)
-POST /v1/chat/sessions          -> abre una sesión de chat viva
-POST /v1/chat/sessions/{id}/turns -> envía un prompt a esa sesión
-GET  /v1/chat/sessions/{id}     -> estado de la sesión
-DELETE /v1/chat/sessions/{id}   -> cierra la sesión
+~/.local/share/castlearq/models
 ```
 
-El servidor escucha en loopback (`127.0.0.1`) por defecto y rechaza hosts que
-no sean loopback. Eso es una propiedad de **exposición de red**.
+`~/.local/share/localai-hub/models` is legacy path compatibility only; it is not
+the recommended path for new installations. You do not need to edit manifests or
+move models by hand.
 
-La **política de ejecución** es otra cosa, y conviene no confundirlas con la
-exposición de red: la ejecución por HTTP **aplica la misma admisión por
-evaluación estricta** que `execute`. La admisión es una propiedad de la
-ejecución, no del comando ni del transporte (decisión arquitectónica ratificada
-en B9.51, implementada en B9.52; ver
-`docs/B9.51-http-admission-contract-decision.md`).
+## How this differs from using llama.cpp directly
 
-Un modelo que la evaluación estricta declara incompatible, o cuya evidencia es
-insuficiente, **no se ejecuta** por HTTP.
+CastleArq **drives** llama.cpp; it does not replace it and does not perform
+inference itself. llama.cpp is the runtime that loads the model and generates
+text. CastleArq manages artifacts, evaluates compatibility, applies admission
+and orchestrates execution against that runtime.
 
-El contrato HTTP completo:
+The difference is what happens *before* the runtime is invoked. Pointing
+`llama-cli` at a model starts generation immediately. CastleArq first reports
+which of five conditions it could verify, what it expected, what it observed, and
+what evidence it has — and then refuses to start generation when the evaluation
+does not admit the model.
 
-| Código | Significado |
+CastleArq makes no claim to be better, faster, safer or more reliable than any
+other tool, and makes no comparison with other local-AI runtimes. What it claims
+is narrower and checkable: it evaluates those five conditions, shows the
+evidence, and does not run what it cannot justify running.
+
+
+## What the verdict does not cover
+
+The compatibility verdict is evidence about **five named conditions** between one
+artifact and one detected runtime. Reading it as anything broader would be a
+misreading, so this is stated explicitly.
+
+The verdict does **not** establish:
+
+- **memory sufficiency.** It is not a RAM/VRAM capacity check. CastleArq's memory
+  estimation is a separate, approximate heuristic reported separately (as a
+  `Warning:` line), and it is labelled as an estimate.
+- **output quality, model quality or semantic correctness** of anything generated.
+- **model behaviour** — the verdict says nothing about what a model will say.
+- **security or safety.** CastleArq is not a sandbox and provides no isolation
+  or hardening. A model that passes admission is not thereby safe to run.
+- **performance.** No speed, throughput or latency claim is made or measured.
+- **absence of crashes or runtime failures.** Admission is a decision made
+  before generation; the runtime may still fail afterwards, and `execute`
+  reports that as an operational failure.
+
+Admission is also not a permission system. CastleArq has no identities, roles or
+accounts; the HTTP `403` status it returns for a refusal means "the evaluation
+did not admit this", not "you are not authorised".
+
+A pass therefore means: *these five conditions were checked and none of them
+demonstrably failed.* It does not mean *this model will run well*.
+
+## HTTP API
+
+```bash
+castlearq serve
+```
+
+`serve` is **not** a status-only endpoint. It starts an HTTP API and performs
+**real inference**:
+
+```text
+GET    /health                       -> liveness and version (this one is read-only)
+GET    /v1/models                    -> catalog
+GET    /v1/artifacts                 -> local artifacts
+POST   /v1/run                       -> RUNS a prompt (real inference)
+POST   /v1/chat/sessions             -> opens a live chat session
+POST   /v1/chat/sessions/{id}/turns  -> sends a prompt to that session
+GET    /v1/chat/sessions/{id}        -> session status
+DELETE /v1/chat/sessions/{id}        -> closes the session
+```
+
+The server binds loopback (`127.0.0.1`) by default and rejects non-loopback
+hosts. That is a property of **network exposure**.
+
+**Execution policy** is a separate matter, and the two should not be confused:
+HTTP execution applies the **same strict evaluation admission** as `execute`.
+Admission is a property of execution, not of the command or the transport. A
+model that strict evaluation does not admit is **not** executed over HTTP.
+
+| Status | Meaning |
 | --- | --- |
-| `200` | ejecución correcta (`model_id`, `output`, `exit_code`, `warnings`) |
-| `400` | petición malformada |
-| `404` | el modelo no está en el catálogo local |
-| `409` | ya hay una ejecución en curso (bloqueo global, sin cola) |
-| `403` | **admisión denegada** por la evaluación de compatibilidad |
-| `422` | fallo de preparación (artifact inválido, sin target ejecutable) |
-| `500` | **error de evaluación** — la evaluación falló; no es una denegación |
-| `503` | runtime no disponible o fallo del runner |
+| `200` | success (`model_id`, `output`, `exit_code`, `warnings`) |
+| `400` | malformed request |
+| `404` | model not in the local catalog |
+| `409` | an execution is already running (global lock, no queue) |
+| `403` | **admission denied** by the compatibility evaluation |
+| `422` | preparation failure (invalid artifact, no executable target) |
+| `500` | **evaluation error** — the evaluation failed; this is not a denial |
+| `503` | runtime unavailable, or the runner failed |
 
-Un rechazo devuelve solo el resumen de la admisión:
+A refusal returns only the admission summary:
 
 ```json
 {
@@ -457,15 +461,177 @@ Un rechazo devuelve solo el resumen de la admisión:
 }
 ```
 
-Nunca se exponen checks, diagnósticos, evidencia, rutas locales ni detalles de
-excepción. Para el detalle completo usa `castlearq compatibility MODEL_ID`.
+Checks, diagnostics, evidence, local paths and exception details are never
+returned. For the full evaluation use `castlearq compatibility MODEL_ID`.
 
-Un `500` significa que la evaluación **lanzó una excepción** (p. ej. un GGUF
-ilegible), no que denegara: por eso no muestra ningún veredicto. La ejecución
-sigue siendo fail-closed en ambos casos.
+A `500` means the evaluation **raised** (for example an unreadable GGUF), not
+that it denied: that is why no verdict is shown. Execution is refused in both
+cases.
 
-`POST /v1/chat/sessions` abre una sesión viva, así que **también** está sujeta
-a esta admisión y al mismo bloqueo global.
+`POST /v1/chat/sessions` opens a live session, so it is subject to the same
+admission and the same global lock.
+
+
+## Limitations
+
+Current, factual limitations of this release:
+
+- **Linux is the exercised baseline.** The code inspects other platforms, but
+  only Linux has been run end to end.
+- **llama.cpp is an external dependency.** CastleArq does not install, build or
+  vendor it. Without a working `llama` launcher, nothing can run.
+- **Models are large.** A 7B Q4_K_M artifact is roughly 4.4 GiB; downloads need
+  network access, time and disk.
+- **The catalog currently contains 3 models.** `castlearq models` recommends from
+  that small catalog, so treat it as a starting point rather than a broad index.
+- **CastleArq does not perform inference itself.** It orchestrates llama.cpp.
+- **Memory figures are estimates.** They are derived from parameter count and
+  quantization, not measured, and are reported with a warning.
+- **No quantization, scheduling, clustering or multi-GPU features.** The backend
+  is selected for the detected hardware; there is no workload scheduler.
+- **One execution at a time.** The HTTP surface serialises execution behind a
+  single lock and answers `409` rather than queueing.
+- **No auth, TLS or persistence.** `serve` is loopback-only by design; chat
+  sessions live in memory only.
+
+## Troubleshooting
+
+### `llama` not found
+
+```bash
+command -v llama
+castlearq runtime
+```
+
+If you see `NOT_FOUND`, provide llama.cpp externally and re-run
+`castlearq runtime`. CastleArq will not install it for you.
+
+### Runtime `FOUND_UNUSABLE`
+
+CastleArq found a path it cannot use as a launcher. Check the reported path,
+permissions, file type, and the runtime install/build.
+
+### Runtime `PROBE_ERROR`
+
+CastleArq found the launcher but could not validate its interface. Read `Reason`,
+check the llama.cpp install/build and re-run the diagnostic. This does not by
+itself demonstrate a universal incompatibility.
+
+### Artifact missing
+
+```bash
+castlearq list
+castlearq models
+castlearq download MODEL_ID
+```
+
+### Artifact invalid or incomplete
+
+Check `castlearq list`. Do not try to run an artifact whose state is not usable.
+If it is not downloaded, use `download` again; the existing command keeps its
+validation semantics and will not publish an artifact that fails its checks.
+
+### Incompatibility
+
+Execution can be blocked by model, artifact, memory, quantization or
+capabilities. Check `castlearq models`, `castlearq list` and `castlearq runtime`
+before choosing a different artifact or prompt.
+
+### Backend unavailable
+
+```bash
+castlearq runtime
+```
+
+Do not assume a backend advertised by the hardware is available in the runtime.
+Use a backend compatible with what was detected.
+
+### Admission denied
+
+CastleArq blocked execution according to the current evaluation. The output
+includes the full evaluation that produced the block: the verdict, each condition
+with its status, what was expected, what was observed, and the evidence. There
+is no instruction to force execution.
+
+```bash
+castlearq compatibility MODEL_ID
+```
+
+shows that same evaluation without running anything, and is the recommended way
+to understand the reason before trying again.
+
+A `UNKNOWN` condition is not a failure: it means there is not enough evidence,
+and it is not treated as an incompatibility.
+
+### Compatibility evaluation error
+
+If the evaluation could not complete, CastleArq says so explicitly:
+
+```text
+Compatibility evaluation error: GGUFReadError: ...
+```
+
+This is **not** a policy denial: it means the evaluation **failed**. The
+reported cause (for example a corrupt or unreadable GGUF) is the real problem,
+and execution remains blocked. Check the artifact with `castlearq list` and
+re-download it if its state is not usable.
+
+### Execution failure
+
+Check the error and the execution's stderr, and compare:
+
+```bash
+castlearq runtime
+castlearq list
+```
+
+A process failure does not automatically mean the runtime or the artifact is
+missing.
+
+### Download failure
+
+Check connectivity, remote source availability, the `MODEL_ID`, the
+quantization/filename selection, and re-run:
+
+```bash
+castlearq download MODEL_ID
+```
+
+### CLI usage error
+
+```bash
+castlearq --help
+```
+
+Exit code `2` indicates incorrect usage, such as missing arguments or invalid
+flags.
+
+
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `models` | Catalog with recommendations scored against the detected hardware |
+| `download MODEL_ID` | Explicitly fetch a GGUF artifact |
+| `list` | Locally stored artifacts and their state |
+| `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
+| `execute MODEL_ID "PROMPT"` | Run a prompt (recommended; strict evaluation applies) |
+| `run MODEL_ID --prompt "T"` | Legacy interface; no strict evaluation |
+| `chat MODEL_ID` | Interactive chat session with the model |
+| `serve` | HTTP API on `127.0.0.1` that **executes models** (see above) |
+| `runtime` | Resolved llama.cpp runtime state |
+| `detect` | System, CPU, memory and GPU |
+| `diagnose` | GPU software diagnosis (Vulkan/CUDA/ROCm) |
+| `verify` | Re-checks the **GPU diagnosis**, not artifact integrity |
+| `source huggingface REPO` | Inspects a remote source |
+| `plan REPO FILENAME` | Inspects one specific remote artifact |
+
+`detect`, `runtime`, `models`, `list`, `compatibility`, `source` and `plan` are
+read-only: they change nothing.
+
+`verify` checks **environment remediation** after a `diagnose`. It is not an
+artifact integrity check; for that, use `list`, which shows the verification
+state of each stored artifact.
 
 ## Chat
 
@@ -473,40 +639,44 @@ a esta admisión y al mismo bloqueo global.
 castlearq chat qwen2.5-coder-7b-instruct
 ```
 
-Abre una sesión interactiva con el modelo ya cargado. Durante la sesión
-responde a `/regen` (regenerar), `/clear` (limpiar historial), `/read <file>`
-y `/glob <patrón>`; `/exit` o `Ctrl+C` cierran la sesión.
+Opens an interactive session with the model already loaded. During the session
+it responds to `/regen` (regenerate), `/clear` (clear history), `/read <file>`
+and `/glob <pattern>`; `/exit` or `Ctrl+C` closes it.
 
-`chat` usa el mismo runtime y el mismo artifact local que `execute`, así que
-un modelo descargado con `download` se reutiliza sin volver a bajarlo. Si
-necesitas comprobar compatibilidad antes de conversar, consulta
+`chat` uses the same runtime and the same local artifact as `execute`, so a
+model downloaded with `download` is reused without downloading it again. To
+check compatibility before starting a conversation, run
 `castlearq compatibility MODEL_ID`.
+
+Opening a chat session starts a model, so it is subject to the same admission as
+`execute`.
 
 ## Architecture
 
-La documentación de arquitectura y los contratos técnicos están en
-[`docs/`](docs/). Incluye decisiones de runtime discovery, capability,
-compatibility, admission, ModelStore y execution. Es material opcional para el
-flujo de usuario.
+Technical architecture, contracts and decision records are in
+[`docs/`](docs/), covering runtime discovery, capability, compatibility,
+admission, the model store and execution. It is optional material for the user
+flow above.
 
 ## Development
 
-Desde un checkout, el mecanismo compatible es:
+From a checkout, the supported mechanism is:
 
 ```bash
 python3 -m app.main --help
 python3 -m app.main --version
 ```
 
-Los tests se ejecutan con pytest:
+Tests run with pytest:
 
 ```bash
 python3 -m pytest
 ```
 
-El desarrollo desde checkout no es necesario para usar el paquete instalado.
+Working from a checkout is not required to use the installed package.
 
 ## License
 
 Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for
 the full text.
+

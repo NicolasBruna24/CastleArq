@@ -5,10 +5,38 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "castlearq"
 version = "0.1.0"
-description = "CastleArq — Local AI Runtime Architecture"
+description = "Check whether a local GGUF model can run on your llama.cpp runtime, see the evidence, and refuse to run what it cannot justify."
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "Nicolás Bruna", email = "brunafuentealba@gmail.com" }]
+
+# B9.54: the PyPI page is the first surface a prospective user reads. It
+# previously carried only the internal phrase "Local AI Runtime Architecture"
+# and no body at all, so a visitor could not learn what they had installed.
+# The long description is the repository README itself -- one source of truth,
+# never a second copy that can drift.
+readme = { file = "README.md", content-type = "text/markdown" }
+
+# B9.53 section 13: every classifier below states something the repository can
+# actually evidence. Development Status is Alpha, not Beta: 0.1.x, a single
+# maintainer and no external users or contributions. Operating System is Linux
+# because that is the only baseline exercised. No Documentation or Bug Tracker
+# URL is declared, because none exists.
+#
+# No License classifier is listed: PEP 639 supersedes license classifiers with
+# the SPDX ``license`` expression above, and setuptools rejects the combination.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [project.urls]
 Homepage = "https://www.nicobrunaf.dev/projects/castlearq/"

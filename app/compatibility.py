@@ -126,9 +126,14 @@ def assess_model(
             CompatibilityStatus.UNKNOWN if runtime is not None else CompatibilityStatus.INCOMPATIBLE,
             0,
             (
-                "No hay evidencia de una combinación runtime/backend compatible."
+                # B9.54: the public runtime surface is English-first (B9.53
+                # section 10). These are user-facing reasons shown by
+                # ``castlearq models`` and carried in ``execute`` warnings;
+                # only the wording changes, never the status, score or
+                # decision taken on this branch.
+                "No evidence of a compatible runtime/backend combination."
                 if runtime is not None
-                else "No hay un runtime compatible disponible.",
+                else "No compatible runtime available.",
             ),
             (),
             None, True, None, runtime, backend,
@@ -139,7 +144,7 @@ def assess_model(
     if selected is None:
         return CompatibilityResult(
             model, CompatibilityStatus.UNKNOWN, 0,
-            ("No hay suficiente información de parámetros o memoria.",), (),
+            ("Not enough information about the model parameters or memory.",), (),
             None, True, None, runtime, backend,
         )
     estimated = estimate_memory_bytes(model, selected, config)
@@ -147,7 +152,7 @@ def assess_model(
     if estimated is None or capacity is None:
         return CompatibilityResult(
             model, CompatibilityStatus.UNKNOWN, 0,
-            ("La memoria del modelo o del hardware es desconocida.",), (),
+            ("Model or hardware memory is unknown.",), (),
             estimated, True, selected, runtime, backend,
         )
     gpu_capacities, ram_capacity = capacity
@@ -158,11 +163,11 @@ def assess_model(
     safe_ram = int(ram_capacity * config.ram_offload_factor / config.safety_margin)
     if safe_gpu is not None and estimated <= safe_gpu:
         status = CompatibilityStatus.COMPATIBLE
-        reason = "La memoria estimada cabe en VRAM con margen de seguridad."
+        reason = "Estimated memory fits in VRAM with a safety margin."
         margin = (safe_gpu - estimated) / max(safe_gpu, 1)
     elif runtime_status and runtime_status.supports_backend("CPU") and safe_ram > 0 and estimated <= safe_ram:
         status = CompatibilityStatus.MARGINAL
-        reason = "Requiere usar RAM como respaldo; puede tener una penalización importante."
+        reason = "Requires falling back to system RAM; performance may be significantly reduced."
         margin = (safe_ram - estimated) / max(safe_ram, 1)
     else:
         status = (
@@ -171,15 +176,15 @@ def assess_model(
             else CompatibilityStatus.INCOMPATIBLE
         )
         reason = (
-            "No hay suficiente evidencia de capacidad de memoria o de offload."
+            "Not enough evidence of memory capacity or offload capability."
             if status == CompatibilityStatus.UNKNOWN
-            else "La memoria estimada supera la capacidad disponible con margen."
+            else "Estimated memory exceeds the available capacity with the safety margin."
         )
         margin = -1
     score = _score(status, selected.quality, margin, backend, model.task)
-    warnings = ("La memoria del modelo es una estimación.",)
+    warnings = ("Model memory is an estimate.",)
     if status == CompatibilityStatus.MARGINAL:
-        warnings += ("El uso de RAM como respaldo no equivale a VRAM.",)
+        warnings += ("Falling back to system RAM is not equivalent to VRAM.",)
     return CompatibilityResult(
         model, status, score, (reason,), warnings, estimated, True,
         selected, runtime, backend,
