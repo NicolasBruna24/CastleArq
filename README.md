@@ -673,7 +673,18 @@ Tests run with pytest:
 python3 -m pytest
 ```
 
-Working from a checkout is not required to use the installed package.
+pytest is not a runtime dependency. It is declared as a pinned development
+extra, which is what CI installs:
+
+```bash
+python3 -m pip install ".[dev]"
+```
+
+The same command runs on every push to `main` and on every pull request, across
+Python 3.10, 3.11, 3.12 and 3.13. A red run is a validation failure: it is
+diagnosed, not worked around. The suite needs no llama.cpp, no models and no
+GPU; tests that open a socket do so on `127.0.0.1` only. Working from a
+checkout is not required to use the installed package.
 
 ## License
 

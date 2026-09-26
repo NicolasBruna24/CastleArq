@@ -38,6 +38,24 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+# B9.57: continuous validation runs the suite from an explicitly declared
+# validator, not from whatever happens to be installed on a maintainer's
+# machine. B9.55 recorded that the only execution evidence CastleArq had was a
+# local run on an undeclared environment; B9.56 ratified that pytest become a
+# declared development dependency so a third party can reproduce the validation.
+#
+# This is a *development* extra only. CastleArq's runtime remains standard
+# library only (see requirements.txt); nothing here changes what `pip install
+# castlearq` pulls in, and no lint, coverage or test plugin is declared.
+#
+# The pin is exact on purpose: a validation contract whose validator floats is
+# not reproducible. pytest 9.1.1 declares requires-python >=3.10, so this single
+# pin covers the whole declared support matrix.
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+
 [project.urls]
 Homepage = "https://www.nicobrunaf.dev/projects/castlearq/"
 Repository = "https://github.com/NicolasBruna24/CastleArq"

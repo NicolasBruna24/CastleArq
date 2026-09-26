@@ -1,0 +1,84 @@
+name: ci
+
+# CastleArq continuous validation (B9.56, Option B -- Basic CI).
+#
+# WHAT THIS IS
+#   The automated form of the validation contract B9.55 ratified as Option C
+#   and B9.56 superseded as Option B. Before this workflow existed, the only
+#   execution evidence in the project was one local run on the maintainer's
+#   machine, on Python 3.14.4 -- an interpreter the project does not claim.
+#   This workflow exists to make the *declared* support range (3.10-3.13)
+#   evidence rather than an assertion.
+#
+# WHAT THIS IS NOT
+#   * It is not a release gate. It does not build, publish, deploy or upload
+#     anything, and it has no `needs:` relationship with release.yml. Release
+#     transport (B9.44: tag -> manifest -> assets -> SHA-256 gate -> PyPI) is a
+#     separate contract owned by .github/workflows/release.yml, which this
+#     workflow neither reads nor modifies. CI-as-release-gate was explicitly
+#     deferred by B9.56 to future release/distribution work.
+#   * It does not prove the product works. A green matrix does not establish
+#     GPU compatibility, llama.cpp compatibility, model compatibility, runtime
+#     performance or hardware sufficiency. Those are answered at runtime by
+#     CastleArq's own admission engine on real evidence, not here on mocks.
+#   * It does not test anything else. There is no lint step: B9.56 deferred
+#     lint/static analysis to its own block, and adding a second gate before
+#     this one is trusted would double the failure surface.
+#
+# ENVIRONMENT BOUNDARY
+#   The suite is self-contained: no llama.cpp, no GGUF or model downloads, no
+#   GPU/Vulkan, no external model registries, no real inference. Network is
+#   needed only to resolve dependencies from PyPI during install. Tests that
+#   bind 127.0.0.1 (tests/test_chat_sessions.py) stay on loopback and are left
+#   unchanged.
+#
+# FAILURE SEMANTICS
+#   A red run is a required validation failure. B9.55's authority rule is
+#   unchanged: validation failure > maintainer intent. A failing declared
+#   matrix entry is evidence to be diagnosed, never a version to be dropped.
+#   Do not "fix" a red matrix by removing an interpreter, skipping tests or
+#   adding xfail.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Deny by default; this job needs nothing but read access to check out.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast: false so one broken interpreter does not hide the state of
+      # the others. A partial matrix is still evidence about a declared version.
+      fail-fast: false
+      matrix:
+        # Exactly the declared range (pyproject.toml classifiers). 3.14 is
+        # deliberately absent: it is neither claimed nor in scope here.
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install CastleArq and its declared development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+
+      - name: Show the resolved validator
+        run: python -m pytest --version
+
+      - name: Run the full test suite
+        # Repository root is required: pyproject.toml sets
+        # [tool.pytest.ini_options] pythonpath = ["."], so the suite must be
+        # collected from the checkout root for `app` to be importable.
+        run: python -m pytest
