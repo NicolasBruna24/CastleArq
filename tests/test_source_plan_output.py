@@ -14,8 +14,10 @@
 # limitations under the License.
 
 import io
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 from app.main import print_plan, print_source
@@ -121,8 +123,12 @@ class PrintPlanTests(unittest.TestCase):
 
 class VocabularyCoherenceTests(unittest.TestCase):
     def test_source_model_id_is_exactly_accepted_by_resolver(self):
-        from app.resolver import ModelArtifactResolver
         from app.model_store import ModelStore
+        from app.resolver import (
+            ModelArtifactResolutionError,
+            ModelArtifactResolver,
+            ResolvedModelArtifact,
+        )
 
         artifacts = [_artifact(state=ArtifactState.VERIFIED)]
         with patch("app.main.HuggingFaceSource") as source:
@@ -132,7 +138,43 @@ class VocabularyCoherenceTests(unittest.TestCase):
                 print_source("huggingface", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
         shown = output.getvalue()
         catalog_ids = {model.model_id for model in get_catalog()}
-        for model_id in catalog_ids:
-            if f"Model: {model_id}" in shown:
-                resolver = ModelArtifactResolver(ModelStore())
-                resolver.resolve(model_id)  # must not raise
+        # Every model id the source output claims is catalog vocabulary.
+        claimed = {
+            model_id
+            for model_id in catalog_ids
+            if f"Model: {model_id}" in shown
+        }
+        self.assertTrue(claimed, f"source output claimed no catalog model: {shown!r}")
+
+        # B9.57.1: this test used a bare ModelStore(), which resolves to the
+        # real default store under the user's HOME. It therefore passed only
+        # where a previous session had left an artifact in
+        # ~/.local/share/localai-hub/models, and failed on any clean machine
+        # (see GitHub Actions run 36207675354). The store the resolver reads is
+        # now owned by the test, and the artifact it needs is created here.
+        #
+        # The property under test is preserved and made explicit: the logical
+        # model id printed by the source command is exactly the identity the
+        # resolver accepts, and the repository id is not. That is a stronger
+        # statement than "no exception" -- it pins which id the resolver
+        # returns, and it still asserts the negative direction.
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory) / "models")
+            for model_id in claimed:
+                spec = _artifact(model_id=model_id, state=ArtifactState.VERIFIED)
+                manifest = store.save_manifest(spec)
+                # The resolver only accepts an artifact that is present on
+                # disk (app/resolver.py:91-109); a manifest alone resolves to
+                # NOT_DOWNLOADED. One byte is enough -- no model, no download.
+                manifest.parent.joinpath(spec.filename).write_bytes(b"model")
+            resolver = ModelArtifactResolver(store)
+            for model_id in claimed:
+                with self.subTest(model_id=model_id):
+                    resolved = resolver.resolve(model_id)
+                    self.assertIsInstance(resolved, ResolvedModelArtifact)
+                    self.assertEqual(resolved.artifact.model_id, model_id)
+            # The repository id must never be accepted as a model id.
+            with self.assertRaisesRegex(
+                ModelArtifactResolutionError, "not found"
+            ):
+                resolver.resolve("Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
