@@ -27,6 +27,26 @@ from app.execution import ExecutionResult, ExecutionTarget
 from app.main import PreparationError, _prepare
 from app.models import ArtifactSpec, ArtifactState, ModelSpec
 from app.resolver import ResolvedModelArtifact
+from app.runtimes import PromptInputMode, RuntimeCapability
+
+
+def _invocable_capability() -> RuntimeCapability:
+    """An available runtime, expressed with the production capability type.
+
+    It exists only to satisfy the ``capability.invocable`` precondition of
+    ``chat_model``. It performs no probing and encodes no host state, so the
+    test result does not depend on whether llama.cpp is installed on PATH.
+    """
+    return RuntimeCapability(
+        name="llama.cpp CLI",
+        executable_path="/usr/bin/llama",
+        version="0.0.0-test",
+        supported_formats=("GGUF",),
+        supported_backends=("Vulkan", "CPU"),
+        prompt_input_modes=(PromptInputMode.ARGUMENT,),
+        supports_one_shot=True,
+        available=True,
+    )
 
 
 def _compatible(model):
@@ -182,6 +202,8 @@ class SharedPreparationTests(unittest.TestCase):
             user="hi", assistant="Hello!", chunks=("Hello!",), metrics=None
         )
         with patch("app.main.ModelArtifactResolver") as resolver, patch(
+            "app.main.detect_llama_capability", return_value=_invocable_capability()
+        ), patch(
             "app.main._prepare", return_value=preparation
         ) as prepare, patch("app.main.start_chat_session", return_value=session):
             resolver.return_value.resolve.return_value = self.resolved
