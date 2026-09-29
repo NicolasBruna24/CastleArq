@@ -30,7 +30,7 @@ from .run_service import (
     prepare as _prepare,
 )
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
-from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact
+from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact, PreflightErrorCode
 from . import gpu_diagnosis
 from .gpu_diagnosis import (
     DiagnosisResult,
@@ -108,6 +108,8 @@ from .compatibility_report import (
     evaluation_report,
     format_evaluation_report,
 )
+from .compatibility_domain import CheckStatus
+from .validation_report import format_validation_report
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -1203,6 +1205,155 @@ def compatibility_command(
     ) else 1
 
 
+# P1.3: the P1.2 contract is already implemented inside
+# `ArtifactExecutionPreflight.validate()` and `ModelStore.inspect_manifest()`.
+# This command only *names* the evidence those two already produced. It
+# re-implements no check of its own: no symlink logic, no path validation, no
+# `.part` handling, no hashing and no size comparison.
+#
+#   SHA-256 declared + matches -> integrity PASSED
+#   SHA-256 declared + differs -> integrity FAILED  (CHECKSUM_MISMATCH)
+#   SHA-256 absent            -> integrity UNKNOWN  (NOT a failure, exit 0)
+#   size_bytes absent         -> size UNKNOWN       (NOT a failure, exit 0)
+#
+# `UNKNOWN` is `CheckStatus.UNKNOWN` -- "insufficient evidence to decide" --
+# the same vocabulary and the same rule the compatibility surface already uses
+# ("UNKNOWN is never silently converted into a failure", README).
+_PREFLIGHT_DIMENSION = {
+    PreflightErrorCode.MISSING_ARTIFACT: "safety",
+    PreflightErrorCode.PARTIAL_ARTIFACT: "safety",
+    PreflightErrorCode.INCONSISTENT_ARTIFACT: "safety",
+    PreflightErrorCode.UNSAFE_ARTIFACT: "safety",
+    PreflightErrorCode.INVALID_ARTIFACT: "safety",
+    PreflightErrorCode.SIZE_MISMATCH: "size",
+    PreflightErrorCode.CHECKSUM_MISMATCH: "integrity",
+}
+
+
+def validate_command(
+    model_id: str | None,
+    *,
+    quantization: str | None = None,
+    filename: str | None = None,
+    out=None,
+    err=None,
+    resolver: ModelArtifactResolver | None = None,
+    preflight: ArtifactExecutionPreflight | None = None,
+    store: ModelStore | None = None,
+) -> int:
+    """Report what can be proven about one stored artifact (P1.3).
+
+    Read-only Product Caller over the existing resolver and the existing
+    execution preflight. It answers "what can I prove right now, and what
+    evidence do I not have" without changing execution policy, artifact state
+    or admission, and without writing anything.
+
+    Exit codes follow the existing CLI convention: ``0`` when the validation
+    operation succeeded, ``1`` when a check or the resolution actually failed,
+    ``2`` on usage error.
+
+    A missing SHA-256 is reported as ``UNKNOWN`` and exits ``0``: absence of
+    evidence is not a failure, and this command makes no checksum policy.
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not model_id or not model_id.strip():
+        print("Usage: python3 -m app.main validate <model-id>", file=err)
+        return 2
+
+    resolver = resolver or ModelArtifactResolver()
+    store = store if store is not None else resolver.model_store
+    preflight = preflight or ArtifactExecutionPreflight(store)
+
+    try:
+        resolved = resolver.resolve(
+            model_id, quantization=quantization, filename=filename
+        )
+    except (ModelArtifactResolutionError, ValueError) as error:
+        print(f"Validation error: {error}", file=err)
+        return 1
+
+    artifact = resolved.artifact
+
+    # `ArtifactState` is context only, never the validation verdict. It is
+    # derived fresh and is not persisted, per B9.41.
+    try:
+        state = store.inspect_manifest(
+            store._artifact_directory(artifact) / "manifest.json"
+        ).state
+    except (OSError, ValueError, KeyError, TypeError, UnsafePathError):
+        state = None
+
+    safety = size = integrity = CheckStatus.UNKNOWN
+
+    try:
+        executable = preflight.validate(artifact)
+    except ArtifactPreflightError as error:
+        safety = CheckStatus.PASSED
+        failed = _PREFLIGHT_DIMENSION.get(error.code, "safety")
+        if failed == "size":
+            size = CheckStatus.FAILED
+        elif failed == "integrity":
+            integrity = CheckStatus.FAILED
+        else:
+            safety = CheckStatus.FAILED
+        print(
+            format_validation_report(
+                model_id=artifact.model_id,
+                filename=artifact.filename,
+                safety=safety,
+                size=size,
+                integrity=integrity,
+                state=state,
+                failure=f"{error.code.value}: {error.message}",
+            ),
+            file=out,
+        )
+        return 1
+    except UnsafePathError as error:
+        # The inspector raises this for an unsafe path before the codes above
+        # apply. It is a filesystem-safety refusal, not a checksum decision.
+        print(
+            format_validation_report(
+                model_id=artifact.model_id,
+                filename=artifact.filename,
+                safety=CheckStatus.FAILED,
+                size=size,
+                integrity=integrity,
+                state=state,
+                failure=str(error),
+            ),
+            file=out,
+        )
+        return 1
+
+    # Preflight returned an ExecutableArtifact. Both flags are `bool`, so a
+    # `False` is disambiguated with the declaration itself: `size_verified` /
+    # `checksum_verified` are False both when nothing was declared and when a
+    # check did not run. A declared-and-wrong value never reaches here -- it
+    # raised above.
+    safety = CheckStatus.PASSED
+    size = CheckStatus.PASSED if executable.size_verified else CheckStatus.UNKNOWN
+    integrity = (
+        CheckStatus.PASSED if executable.checksum_verified else CheckStatus.UNKNOWN
+    )
+
+    print(
+        format_validation_report(
+            model_id=artifact.model_id,
+            filename=artifact.filename,
+            safety=safety,
+            size=size,
+            integrity=integrity,
+            state=state,
+        ),
+        file=out,
+    )
+    # `UNKNOWN` is not a failure: the operation succeeded and the artifact is
+    # exactly as usable as it was before this command ran.
+    return 0
+
+
 USAGE_FLOW = """\
 usage flow:
   1. discover models:      castlearq models
@@ -1227,7 +1378,11 @@ read-only inspection:
   detect  system, CPU, memory and GPU
   runtime resolved llama.cpp runtime state
   models  scored model recommendations
-  list    locally stored artifacts
+  list    locally stored artifacts and their derived state
+  validate <model-id>
+          validate one stored artifact: reports safety, declared size and
+          cryptographic integrity separately. Read-only; an absent SHA-256 is
+          reported as UNKNOWN, never as a failure
   compatibility <model-id>
           strict compatibility evaluation, without running inference
   source huggingface <repository>   inspect a remote source
@@ -1255,6 +1410,7 @@ examples:
   castlearq models
   castlearq download qwen2.5-coder-7b-instruct
   castlearq compatibility qwen2.5-coder-7b-instruct
+  castlearq validate qwen2.5-coder-7b-instruct
   castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly OK"
   castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"
   castlearq diagnose
@@ -1355,13 +1511,14 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "download", "run", "execute", "chat", "serve"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "run", "execute", "chat", "serve"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
         help=(
             "command-specific value: model-id for download/run/chat/execute/"
-            "compatibility; source provider for source; repository for plan"
+            "compatibility/validate; source provider for source; "
+            "repository for plan"
         ),
     )
     parser.add_argument(
@@ -1403,6 +1560,7 @@ def main() -> int:
         "source": (),
         "plan": (),
         "compatibility": ("quantization", "filename"),
+        "validate": ("quantization", "filename"),
         "download": ("quantization", "filename"),
         "run": ("prompt", "quantization", "filename"),
         "execute": ("quantization", "filename"),
@@ -1443,6 +1601,14 @@ def main() -> int:
         if args.repository is not None:
             parser.error("compatibility accepts exactly one model-id")
         return compatibility_command(
+            args.provider,
+            quantization=args.quantization,
+            filename=args.filename,
+        )
+    elif args.command == "validate":
+        if args.repository is not None:
+            parser.error("validate accepts exactly one model-id")
+        return validate_command(
             args.provider,
             quantization=args.quantization,
             filename=args.filename,

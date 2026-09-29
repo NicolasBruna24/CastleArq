@@ -351,6 +351,42 @@ castlearq list
 `list` shows locally stored artifacts with their model id, filename,
 quantization, size and verification state. Artifacts are reused by later runs.
 
+To validate one stored artifact explicitly, use `validate`:
+
+```bash
+castlearq validate MODEL_ID
+```
+
+`validate` reports three **independent** dimensions, each `PASSED`, `FAILED`
+or `UNKNOWN`:
+
+| Dimension | What it proves |
+|---|---|
+| `safety` | the artifact exists, is a regular non-symlink file at its declared path, is complete, and can be opened without following a link |
+| `size` | the artifact matches `size_bytes` when the manifest declares one |
+| `integrity` | the artifact matches the declared SHA-256 when the manifest declares one |
+
+An artifact without a declared SHA-256 reports `integrity: UNKNOWN`:
+
+```text
+qwen2.5-coder-7b-instruct / qwen2.5-coder-7b-instruct-Q4_K_M.gguf
+  size: UNKNOWN
+    no size is declared in the manifest;
+  integrity: UNKNOWN
+    no SHA-256 is declared in the manifest;
+    no content comparison was performed
+Artifact state: DOWNLOADED
+```
+
+`UNKNOWN` means **insufficient evidence to decide**. It is never reported as a
+pass and never as a failure: CastleArq did not compare the contents against
+anything, and it says so. An artifact with no declared SHA-256 is still
+executable, exactly as before.
+
+`validate` is a read-only inspection: it changes nothing, never modifies or
+re-derives the artifact, and adds `--quantization` / `--filename` to select
+which artifact to validate.
+
 The model store is independent of the checkout:
 
 ```text
@@ -614,6 +650,7 @@ flags.
 | `models` | Catalog with recommendations scored against the detected hardware |
 | `download MODEL_ID` | Explicitly fetch a GGUF artifact |
 | `list` | Locally stored artifacts and their state |
+| `validate MODEL_ID` | Validates one stored artifact: filesystem, size, integrity |
 | `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
 | `execute MODEL_ID "PROMPT"` | Run a prompt (recommended; strict evaluation applies) |
 | `run MODEL_ID --prompt "T"` | Legacy interface; no strict evaluation |
@@ -630,8 +667,9 @@ flags.
 read-only: they change nothing.
 
 `verify` checks **environment remediation** after a `diagnose`. It is not an
-artifact integrity check; for that, use `list`, which shows the verification
-state of each stored artifact.
+artifact integrity check; for that, use `validate`, which reports what can be
+proven about one stored artifact and which evidence is missing. `list` shows
+the derived state of every stored artifact.
 
 ## Chat
 
