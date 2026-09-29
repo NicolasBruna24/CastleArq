@@ -37,6 +37,33 @@ def _flat(path: Path) -> str:
     return " ".join(_read(path).split())
 
 
+def _project_version() -> str:
+    """The declared version, read from ``pyproject.toml``.
+
+    That file already declares the version carried by the wheel, the sdist and
+    the published distribution, so the README is checked against it instead of
+    against a literal that would need rewriting at every release.
+    """
+    return str(tomllib.loads(_read(PYPROJECT))["project"]["version"])
+
+
+def _version_note() -> str:
+    """The README's version note, whitespace-normalised.
+
+    It is the first blockquote in the document, so it is read as one
+    contiguous run of quoted lines rather than as the whole file: a claim
+    about which version is published is only meaningful in the note that
+    makes it.
+    """
+    block: list[str] = []
+    for line in _read(README).splitlines():
+        if line.startswith(">"):
+            block.append(line.lstrip("> "))
+        elif block:
+            break
+    return " ".join(" ".join(block).split())
+
+
 def _help_text() -> str:
     """Render ``castlearq --help`` exactly as a user would see it."""
     stdout = io.StringIO()
@@ -103,14 +130,39 @@ class PublicClaimTests(unittest.TestCase):
         self.assertIn("It is not a consumer application.", flat)
         self.assertIn("exercised baseline", flat)
 
-    def test_readme_discloses_the_published_version(self):
-        """B9.53 section 17: do not imply v0.1.0 already has this surface."""
-        flat = _flat(README)
-        self.assertIn("The published PyPI release is `0.1.0`", flat)
-        # Compared without the leading sentence so the blockquote marker
-        # inserted when the line is wrapped cannot affect the match.
-        self.assertIn("current `main` branch", flat)
-        self.assertIn("ahead of that release", flat)
+    def test_readme_presents_the_declared_version_as_published(self):
+        """The README must present the version ``pyproject.toml`` declares.
+
+        B9.53 section 17 originally required the opposite framing: the note
+        had to say the published release was ``0.1.0`` while ``main`` was
+        "ahead of that release". That was true while ``0.2.0`` was unreleased
+        and became false the moment ``v0.2.0`` was published, leaving the
+        shipped PyPI page asserting a version that was not installed.
+
+        The guarantee is kept, the literal is not. The expected version is
+        derived from the project metadata, so this test needs no edit at the
+        next release, and the note is read as a whole because the claim only
+        means anything where the version is actually stated.
+        """
+        note = _version_note()
+        self.assertIn("**Version note.**", note)
+        self.assertIn(
+            f"The published release is `{_project_version()}`", note,
+        )
+
+    def test_readme_version_note_does_not_describe_an_unreleased_state(self):
+        """B9.53 section 17, restated: no pre-release framing, ever.
+
+        The defect above was not that a version number was written down. It
+        was that the note described a *relationship* between the branch and
+        the release -- "unreleased", "ahead of that release" -- which is true
+        for exactly one point in a release cycle and silently false for the
+        rest. Rejecting that framing catches the whole class of drift at every
+        future release; rejecting a version string would only catch this one.
+        """
+        note = _version_note()
+        for pre_release in ("unreleased", "ahead of that release"):
+            self.assertNotIn(pre_release, note.lower())
 
     def test_readme_demonstration_is_a_real_transcript(self):
         """B9.53 section 16: real evidence, with any elision declared."""

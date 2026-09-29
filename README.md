@@ -9,9 +9,9 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The published PyPI release is `0.1.0`. This README describes
-> the current `main` branch, which contains the unreleased `0.2.0` work and is
-> ahead of that release.
+> **Version note.** The published release is `0.2.0` (`pip install castlearq`).
+> This README describes that release. It adds the `validate` command and
+> requires **Python 3.11 or newer**.
 
 ## What problem does it solve?
 
@@ -131,7 +131,7 @@ availability and detected capabilities.
 | `UNKNOWN` | not enough evidence | read `reason` and re-run the diagnostic |
 
 `llama` is the official launcher. `llama-cli`, `llama-server` and `llama.app` do
-not automatically stand in for `llama` in CastleArq 0.1.x.
+not automatically stand in for `llama` in CastleArq 0.2.x.
 
 ## Quick start
 
