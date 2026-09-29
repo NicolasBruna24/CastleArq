@@ -77,6 +77,128 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _relative_imports(path: Path) -> set[str]:
+    """Package-relative modules imported by ``path``.
+
+    Relative imports are resolved against the module's own package, so
+    ``from .api import X`` inside ``app/execute_model.py`` is reported as
+    ``app.api``. Absolute imports are reported verbatim. Only real import
+    statements are considered: names appearing in docstrings, comments or
+    string literals are deliberately ignored, because a module is allowed to
+    *describe* another module without depending on it.
+    """
+    return {module for module, _ in _relative_import_names(path)}
+
+
+def _package_parts(path: Path) -> tuple[str, ...]:
+    """The dotted package the module lives in, derived from its path.
+
+    ``app/downloads/downloader.py`` belongs to package ``app.downloads``;
+    ``app/execute_compatibility.py`` belongs to ``app``. The file name is
+    dropped, because a module is a member of its package, not the package.
+    """
+    return tuple(path.parent.parts)
+
+
+def _resolve_relative(base: str, level: int, package: tuple[str, ...]) -> str:
+    """Resolve a relative ``from ... import ...`` target.
+
+    ``level`` counts the leading dots: ``level == 1`` is the module's own
+    package, ``level == 2`` its parent, and so on. Truncating the package parts
+    from the right is what makes ``from ..model_store import X`` inside
+    ``app/downloads/`` resolve to ``app.model_store`` rather than to a name
+    built from the leaf directory alone. A level that would walk past the
+    package root is clamped to the root, because that is the only anchor
+    available from the file path alone.
+    """
+    keep = max(len(package) - (level - 1), 0)
+    prefix = ".".join(package[:keep])
+    if not base:
+        return prefix
+    return f"{prefix}.{base}" if prefix else base
+
+
+def _relative_import_names(path: Path) -> set[tuple[str, str]]:
+    """``(module, imported_name)`` pairs for every import in ``path``.
+
+    Relative imports are resolved against the importing module's package, so
+    ``from .api import X`` inside ``app/execute_model.py`` is reported as
+    ``app.api`` and ``from ..model_store import Y`` inside
+    ``app/downloads/downloader.py`` is reported as ``app.model_store``.
+    Absolute imports are reported verbatim.
+
+    Only real import statements are considered: names appearing in docstrings,
+    comments or string literals are deliberately ignored, because a module is
+    allowed to *describe* another module without depending on it.
+
+    The imported symbol is kept alongside the module, because the ratified
+    entry points are identified by what ``app/api.py`` binds and from where,
+    not merely by whether a name is spelled somewhere in the file.
+    """
+    tree = ast.parse(_read(path))
+    package = _package_parts(path)
+    pairs: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                pairs.add((alias.name, alias.asname or alias.name.split(".")[0]))
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            resolved = _resolve_relative(base, node.level, package) if node.level else base
+            for alias in node.names:
+                pairs.add((resolved, alias.asname or alias.name))
+    return pairs
+
+
+def _http_transport_modules() -> frozenset[str]:
+    """Standard-library modules that carry the HTTP request/response boundary.
+
+    This set exists for one contract sentence. B9.51 §5.5 closes with "The
+    only new code permitted is transport-level: ordering, lock scope, and the
+    two response projections", so *transport* here means the HTTP
+    request/response layer and nothing else.
+
+    Each member is included because it is that layer:
+
+    * ``http`` / ``http.server`` -- the HTTP protocol and the server the
+      ``serve`` command starts;
+    * ``socketserver`` -- the accept/serve loop the handler runs on;
+    * ``socket`` -- the raw connection primitive underneath it.
+
+    Two categories are deliberately **excluded**, because they are not the
+    request/response boundary and conflating them would forbid legitimate work:
+
+    * ``threading`` / ``asyncio`` -- concurrency. B9.51 §5.5 *permits* lock
+      scope as transport-level new code, so treating concurrency as the
+      transport would contradict the contract it is meant to encode.
+    * ``urllib`` / ``urllib.request`` -- outbound URL access. Fetching a model
+      over the network is the downloader's purpose, so forbidding it in the
+      infrastructure layer would forbid the product.
+
+    Network egress is therefore constrained by layering (nothing below the
+    transport may import the HTTP surface), not by a flat module blacklist.
+    """
+    return frozenset(
+        {
+            "http",
+            "http.server",
+            "socketserver",
+            "socket",
+        }
+    )
+
+
+def _forbidden_upward_modules() -> tuple[str, ...]:
+    """Modules the transport owns; nothing below it may import them.
+
+    Kept separate from :func:`_http_transport_modules` on purpose. The first
+    names the stdlib boundary, the second names the application boundary, and
+    the layering rule holds in both directions of ownership without depending
+    on which stdlib module happens to implement the transport.
+    """
+    return ("app.api", "app.main")
+
+
 def _cli_choices() -> set[str]:
     """The command names the CLI actually accepts."""
     tree = ast.parse(_read(MAIN_PY))
@@ -341,42 +463,93 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         self.assertIn("network exposure", readme)
         self.assertIn("**Execution policy**", readme)
 
-    def test_evaluation_core_is_untouched_by_this_block(self):
-        """B9.50 must not have modified the evaluation engine."""
-        import subprocess
+    #: B9.50 §3 and B9.51 §9: the decision blocks were scoped to the public
+    #: surface. That scope is a dependency-direction property, and it is
+    #: asserted on the code rather than on repository history: the evaluation
+    #: core must not depend on the HTTP transport, and the transport must be
+    #: the only layer that owns it.
+    EVALUATION_CORE_MODULES = (
+        "app/evaluate_compatibility.py",
+        "app/evaluation_policy.py",
+        "app/evaluation_pipeline.py",
+        "app/compatibility_domain.py",
+        "app/initial_knowledge.py",
+    )
 
-        for module in (
-            "app/evaluate_compatibility.py",
-            "app/evaluation_policy.py",
-            "app/evaluation_pipeline.py",
-            "app/compatibility_domain.py",
-            "app/initial_knowledge.py",
-        ):
-            result = subprocess.run(
-                ["git", "diff", "--name-only", "--", module],
-                capture_output=True,
-                text=True,
-                check=False,
+    def test_evaluation_core_does_not_depend_on_the_transport_layer(self):
+        """The evaluation core must stay independent of the HTTP surface.
+
+        B9.50 must not have modified the evaluation engine, and B9.51 §9
+        required the decision block not to redesign it. Those are statements
+        about committed history and cannot be re-verified from the current
+        tree. What survives them, and is the property that still has force,
+        is the dependency direction: the evaluation core is reached *by* the
+        transport, it never reaches *out* to it. A later block that made the
+        engine depend on ``http`` or on ``app.api`` would invert the layering
+        this suite exists to protect, and this test fails on that change.
+
+        Concurrency is deliberately not forbidden here: ``threading`` is not
+        part of the HTTP boundary (see :func:`_http_transport_modules`), and an
+        evaluation module that takes a lock is not violating this contract.
+        """
+        transport = _http_transport_modules()
+        upward = _forbidden_upward_modules()
+        for module in self.EVALUATION_CORE_MODULES:
+            imports = _relative_imports(Path(module))
+            leaked = sorted(
+                name
+                for name in imports
+                if name in transport or name.startswith(upward)
             )
             self.assertEqual(
-                result.stdout.strip(),
-                "",
-                f"B9.50 must not modify {module}",
+                leaked,
+                [],
+                f"{module} must not depend on the HTTP transport layer; "
+                f"the HTTP surface adapts the evaluation core, not the "
+                f"other way round",
             )
 
-    def test_model_store_is_untouched_by_this_block(self):
-        import subprocess
+    def test_model_store_is_independent_of_the_transport_layer(self):
+        """The store is an infrastructure port; it owns no HTTP transport.
 
-        for module in ("app/model_store.py", "app/downloads/downloader.py"):
-            result = subprocess.run(
-                ["git", "diff", "--name-only", "--", module],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(
-                result.stdout.strip(), "", f"B9.50 must not modify {module}"
-            )
+        B9.50 also scoped itself away from the model store and the downloader.
+        The durable property behind that scoping is that the store is reached
+        by the download and evaluation layers but never reaches into the HTTP
+        surface. This is asserted on the current imports, so it holds
+        regardless of how clean the working tree happens to be when the suite
+        runs.
+
+        The two modules are held to different rules on purpose. The store is a
+        local filesystem port: it must import no HTTP transport at all. The
+        downloader performs network I/O by design -- it fetches model files --
+        so it is held only to the layering rule. Forbidding ``urllib.request``
+        there would forbid the product, not protect the architecture.
+        """
+        transport = _http_transport_modules()
+        upward = _forbidden_upward_modules()
+        store = _relative_imports(Path("app/model_store.py"))
+        self.assertEqual(
+            sorted(
+                name
+                for name in store
+                if name in transport or name.startswith(upward)
+            ),
+            [],
+            "app/model_store.py must not depend on the HTTP transport; it is a "
+            "local filesystem port used by the evaluation and download layers",
+        )
+        downloader = _relative_imports(Path("app/downloads/downloader.py"))
+        self.assertEqual(
+            sorted(
+                name
+                for name in downloader
+                if name.startswith(upward)
+            ),
+            [],
+            "app/downloads/downloader.py must not depend on the HTTP surface; "
+            "the download surface is adapted by the API, not the reverse. Its "
+            "outbound network I/O is its purpose and is not constrained here.",
+        )
 
 
 class HttpAdmissionContractTests(unittest.TestCase):
@@ -453,29 +626,114 @@ class HttpAdmissionContractTests(unittest.TestCase):
         self.assertIn("DECISION RATIFIED", text)
         self.assertIn("COMPLETED IN B9.52", text)
 
-    def test_evaluation_core_is_untouched_by_this_block(self):
-        """B9.51 §9: a decision block must not redesign the engine."""
-        import subprocess
+    ADMISSION_CORE_MODULES = (
+        "app/evaluate_compatibility.py",
+        "app/evaluation_policy.py",
+        "app/evaluation_pipeline.py",
+        "app/compatibility_domain.py",
+        "app/initial_knowledge.py",
+        "app/execute_model.py",
+        "app/run_service.py",
+    )
 
-        for module in (
-            "app/evaluate_compatibility.py",
-            "app/evaluation_policy.py",
-            "app/evaluation_pipeline.py",
-            "app/compatibility_domain.py",
-            "app/initial_knowledge.py",
-            "app/execute_model.py",
-            "app/run_service.py",
-        ):
-            result = subprocess.run(
-                ["git", "diff", "--name-only", "--", module],
-                capture_output=True,
-                text=True,
-                check=False,
+    def test_admission_core_does_not_depend_on_the_transport_layer(self):
+        """B9.51 §9, restated as a property that still has force.
+
+        The decision block had to be implementable without redesigning the
+        engine, and the implementation had to be able to detect if it had
+        done so. Both halves are still checkable from the current tree, and
+        this is the second one: the modules the HTTP gate consults must not
+        have acquired a dependency on the transport, the run lock, or the
+        request handler. If a future block made ``execute_model`` import
+        ``app.api`` -- for instance to read a request flag -- the layering
+        this suite pins would invert, and this test fails.
+        """
+        transport = _http_transport_modules()
+        upward = _forbidden_upward_modules()
+        for module in self.ADMISSION_CORE_MODULES:
+            imports = _relative_imports(Path(module))
+            leaked = sorted(
+                name
+                for name in imports
+                if name in transport or name.startswith(upward)
             )
             self.assertEqual(
-                result.stdout.strip(),
-                "",
-                f"B9.51 must not modify {module}",
+                leaked,
+                [],
+                f"{module} must not depend on the HTTP transport layer; the "
+                f"HTTP gate is applied to the admission core, never the reverse",
+            )
+
+    def test_admission_is_consulted_through_the_ratified_entry_point(self):
+        """B9.51 §5.5: the API must reuse the ratified admission symbols.
+
+        §5.5 is a *reuse* constraint, and reuse is not the same as name
+        presence. A local ``def to_admission(...)`` inside ``app/api.py`` would
+        spell the right name and violate the contract outright, so this test
+        distinguishes the two explicitly:
+
+        * each of the four symbols §5.5 names must be **imported** by
+          ``app/api.py`` from the module that owns it -- ``app.evaluate_compatibility``
+          for the evaluation and admission conversion, ``app.execute_model`` for
+          the use case and its admission type;
+        * and none of them may be **defined** in ``app/api.py`` itself.
+
+        All four symbols are checked because §5.5 names all four. Where one is
+        reached indirectly rather than by a direct import, that would be a real
+        change to how the API consumes admission and would need the contract
+        revisited -- so requiring the import is the faithful reading, not an
+        invented obligation.
+
+        The "no equivalent second admission implementation" clause is enforced
+        at its minimum honest strength: the six concrete names §5.5 enumerates,
+        plus the check above, which is what makes an arbitrary re-implementation
+        under a different name detectable. A universal clone detector is not
+        attempted; that would be disproportionate to the contract.
+        """
+        tree = ast.parse(_read(API_PY))
+        defined: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Assign):
+                defined.update(
+                    target.id for target in node.targets
+                    if isinstance(target, ast.Name)
+                )
+        imports = _relative_import_names(Path(API_PY))
+        owners = {
+            "evaluate_model_compatibility": "app.evaluate_compatibility",
+            "to_admission": "app.evaluate_compatibility",
+            "EvaluationAdmission": "app.execute_model",
+            "execute_model": "app.execute_model",
+        }
+        for symbol, owner in owners.items():
+            self.assertIn(
+                (owner, symbol),
+                imports,
+                f"app/api.py must import {symbol} from {owner}: B9.51 §5.5 "
+                f"requires reusing the ratified implementation, and a local "
+                f"definition would be a second admission implementation",
+            )
+            self.assertNotIn(
+                symbol,
+                defined,
+                f"app/api.py defines {symbol} itself; it must reuse the "
+                f"ratified one from {owner} instead of forking it",
+            )
+        for banned in (
+            "HttpEvaluationService",
+            "HttpAdmissionManager",
+            "ApiExecutionManager",
+            "ExecutionPolicyV2",
+            "ServePolicyEngine",
+            "CompatibilityManager",
+        ):
+            self.assertNotIn(
+                banned,
+                defined,
+                f"app/api.py defines {banned}: a second admission "
+                f"implementation would fork the ratified contract",
             )
 
 
