@@ -10,7 +10,8 @@ manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
 > **Version note.** The published PyPI release is `0.1.0`. This README describes
-> the current `main` branch, which is ahead of that release.
+> the current `main` branch, which contains the unreleased `0.2.0` work and is
+> ahead of that release.
 
 ## What problem does it solve?
 
@@ -83,7 +84,7 @@ castlearq --version
 ```
 
 A previously built wheel or sdist can also be installed, for example
-`pip install dist/castlearq-0.1.0-py3-none-any.whl`. Installation needs neither
+`pip install dist/castlearq-0.2.0-py3-none-any.whl`. Installation needs neither
 `PYTHONPATH` nor the source tree afterwards, and the package contains no models.
 
 ## Requirements
