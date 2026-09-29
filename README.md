@@ -28,6 +28,8 @@ cannot justify running.
 runtime       -> inspect the llama.cpp runtime that is actually installed
 models        -> catalog of candidate models for this machine
 download      -> fetch a GGUF artifact (the model file) and store it locally
+list          -> locally stored artifacts and their derived state
+validate      -> validate one stored artifact: filesystem, size, integrity
 compatibility -> evaluate five conditions and print the evidence
 execute       -> refuse or run, according to that evaluation
 ```
@@ -142,15 +144,24 @@ castlearq models
 # 3. Fetch one explicitly (multi-GB download)
 castlearq download qwen2.5-coder-7b-instruct
 
-# 4. Check it can run here, and see the evidence
+# 4. See what is stored and in what state
+castlearq list
+
+# 5. Validate that stored artifact: filesystem, size, integrity
+castlearq validate qwen2.5-coder-7b-instruct
+
+# 6. Check it can run here, and see the evidence
 castlearq compatibility qwen2.5-coder-7b-instruct
 
-# 5. Run a prompt
+# 7. Run a prompt
 castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly: OK"
 ```
 
-`compatibility` is a normal step in this flow, not optional troubleshooting: it
-is the same evaluation `execute` uses to decide whether to run.
+`list` shows each stored artifact and its derived state; `validate` re-checks one
+artifact on demand and reports what it can and cannot prove. Both are read-only
+and neither changes what may run. `compatibility` is a normal step in this flow,
+not optional troubleshooting: it is the same evaluation `execute` uses to decide
+whether to run.
 
 ## Check compatibility before running anything
 
@@ -399,9 +410,11 @@ with the fallback:
 ~/.local/share/castlearq/models
 ```
 
-`~/.local/share/localai-hub/models` is legacy path compatibility only; it is not
-the recommended path for new installations. You do not need to edit manifests or
-move models by hand.
+`~/.local/share/localai-hub/models` is the path used by the predecessor local
+installation. CastleArq only falls back to it when the `castlearq` directory does
+not exist and the legacy one does, so artifacts already downloaded with the
+predecessor remain usable without being moved by hand. New installations use the
+`castlearq` path shown above; you do not need to edit manifests or move models.
 
 ## How this differs from using llama.cpp directly
 
