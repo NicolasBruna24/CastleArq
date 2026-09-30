@@ -32,6 +32,7 @@ from .run_service import (
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
 from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact, PreflightErrorCode
 from . import gpu_diagnosis
+from . import json_output
 from .gpu_diagnosis import (
     DiagnosisResult,
     DiagnosisStatus,
@@ -86,7 +87,7 @@ from .downloads import (
     DownloadResultStatus,
     Downloader,
 )
-from .models import ArtifactSpec, ModelSpec
+from .models import ArtifactSpec, ArtifactState, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runtimes import (
     RuntimeCapability,
@@ -584,6 +585,138 @@ def _format_size(size_bytes: int | None) -> str:
     return f"{size_bytes / (1024 * 1024 * 1024):.1f} GiB"
 
 
+# B9.76.3: the commands that accept ``--json`` in this block. The option is
+# deliberately not global: every other command keeps argparse's behaviour of
+# rejecting it, so the JSON surface grows one MUST command at a time.
+_JSON_COMMANDS = ("compatibility", "validate", "list", "store")
+
+
+def _emit_json_envelope(
+    command: str,
+    exit_code: int,
+    payload: dict,
+    *,
+    error: dict | None = None,
+    out=None,
+) -> int:
+    """Print exactly one ``castlearq.cli`` envelope and return ``exit_code``.
+
+    The command built the payload and decided the exit code; the shared
+    ``app.json_output`` layer owns the envelope and the serialization. This
+    helper never invents data and never derives an exit code: the code it is
+    given is the code the process returns.
+    """
+    out = out if out is not None else sys.stdout
+    envelope = json_output.CliEnvelope(
+        command=command,
+        exit_code=exit_code,
+        payload=payload,
+        error=error,
+    )
+    print(json_output.dumps(envelope), file=out)
+    return exit_code
+
+
+def _json_quantization(value: str) -> dict:
+    """Represent a quantization string as an explicit observation.
+
+    ``ArtifactSpec.quantization`` defaults to the ``"Unknown"`` sentinel, so
+    an unobserved quantization becomes the ratified unknown structure and is
+    never fabricated from a filename; a real value stays a known observation.
+    """
+    if value == "Unknown":
+        return json_output.unknown("not_observed")
+    return json_output.known(value)
+
+
+def _json_artifact(artifact: ArtifactSpec | None) -> dict | None:
+    """Project the artifact identity already present on ``ArtifactSpec``.
+
+    Only existing fields are exposed. The declared integrity digest
+    (``sha256``) and the computed content identity (``content_id``) stay two
+    separate keys: neither is ever presented as the other.
+    """
+    if artifact is None:
+        return None
+    return {
+        "model_id": artifact.model_id,
+        "filename": artifact.filename,
+        "quantization": _json_quantization(artifact.quantization),
+        "size_bytes": artifact.size_bytes,
+        "sha256": artifact.sha256,
+        "content_id": artifact.content_id,
+    }
+
+
+def _json_validation_payload(
+    *,
+    artifact: ArtifactSpec,
+    safety: CheckStatus,
+    size: CheckStatus,
+    integrity: CheckStatus,
+    state: ArtifactState | None,
+    problem: str | None = None,
+) -> dict:
+    """Build the ``validate --json`` payload from evidence already derived.
+
+    The three P1.2 dimensions are reported as check statuses (enums through
+    the shared serializer). The declared size and the declared SHA-256 are
+    separate properties: an absent declaration stays explicitly UNKNOWN with
+    its architecture-backed reason instead of collapsing into ``null``, and
+    a present declaration stays a known value even when a different check
+    failed before it could run.
+    """
+    declared_size = (
+        json_output.unknown("no_size_declared")
+        if artifact.size_bytes is None
+        else json_output.known(artifact.size_bytes)
+    )
+    declared_sha256 = (
+        json_output.unknown("no_checksum_declared")
+        if artifact.sha256 is None
+        else json_output.known(artifact.sha256)
+    )
+    return {
+        "artifact": _json_artifact(artifact),
+        "state": state,
+        "checks": {
+            "safety": safety,
+            "size": size,
+            "integrity": integrity,
+        },
+        "declared_size": declared_size,
+        "declared_sha256": declared_sha256,
+        "problem": problem,
+    }
+
+
+def _group_local_artifacts(
+    entries: list[StoredArtifact],
+) -> tuple[list[tuple[str, list[StoredArtifact]]], list[StoredArtifact]]:
+    """Group stored artifacts by model and order them as ``list`` shows them.
+
+    Shared by the human and the JSON paths so the two surfaces can never
+    drift in selection or ordering: models sorted by id, artifacts sorted by
+    filename, invalid manifests last, sorted by manifest path.
+    """
+    grouped: dict[str, list[StoredArtifact]] = {}
+    invalid_entries: list[StoredArtifact] = []
+    for entry in entries:
+        if entry.artifact is None:
+            invalid_entries.append(entry)
+            continue
+        grouped.setdefault(entry.artifact.model_id, []).append(entry)
+    ordered = [
+        (
+            model_id,
+            sorted(grouped[model_id], key=lambda e: e.artifact.filename),  # type: ignore[union-attr]
+        )
+        for model_id in sorted(grouped.keys())
+    ]
+    invalid_entries.sort(key=lambda e: str(e.manifest_path))
+    return ordered, invalid_entries
+
+
 def print_local_models(model_store: ModelStore | None = None) -> None:
     """List the artifacts of the model store selected for this invocation.
 
@@ -600,20 +733,12 @@ def print_local_models(model_store: ModelStore | None = None) -> None:
         print("No local model artifacts found.")
         return
 
-    # Group valid artifacts by logical model_id
-    grouped: dict[str, list[StoredArtifact]] = {}
-    invalid_entries: list[StoredArtifact] = []
+    # Group valid artifacts by logical model_id; ordering shared with the
+    # B9.76.3 JSON path so both surfaces show exactly the same artifacts.
+    ordered, invalid_entries = _group_local_artifacts(entries)
 
-    for entry in entries:
-        if entry.artifact is None:
-            invalid_entries.append(entry)
-            continue
-        grouped.setdefault(entry.artifact.model_id, []).append(entry)
-
-    for model_id in sorted(grouped.keys()):
+    for model_id, artifacts in ordered:
         print(f"\n{model_id}")
-        # Sort artifacts deterministically by filename
-        artifacts = sorted(grouped[model_id], key=lambda e: e.artifact.filename)  # type: ignore[union-attr]
         for entry in artifacts:
             artifact = entry.artifact
             assert artifact is not None
@@ -628,8 +753,50 @@ def print_local_models(model_store: ModelStore | None = None) -> None:
 
     if invalid_entries:
         print("\nInvalid artifacts:")
-        for entry in sorted(invalid_entries, key=lambda e: str(e.manifest_path)):
+        for entry in invalid_entries:
             print(f"  - {entry.manifest_path} ({entry.message or 'invalid manifest'})")
+
+
+def list_command(
+    model_store: ModelStore | None = None,
+    *,
+    out=None,
+) -> int:
+    """Emit the ``list --json`` document (B9.76.3).
+
+    Read-only: the same store selection, the same artifacts and the same
+    ordering as :func:`print_local_models`, only the representation changes.
+    Exit ``0`` exactly like the human path, which returns ``None`` (success).
+    """
+    out = out if out is not None else sys.stdout
+    store = model_store or ModelStore()
+    ordered, invalid_entries = _group_local_artifacts(store.list_artifacts())
+    artifacts: list[dict] = []
+    for model_id, entries in ordered:
+        for entry in entries:
+            artifact = entry.artifact
+            assert artifact is not None
+            artifacts.append(
+                {
+                    "model_id": model_id,
+                    "filename": artifact.filename,
+                    "quantization": _json_quantization(artifact.quantization),
+                    "size_bytes": artifact.size_bytes,
+                    "status": entry.state,
+                    "problem": entry.message,
+                }
+            )
+    payload = {
+        "artifacts": artifacts,
+        "invalid_artifacts": [
+            {
+                "path": str(entry.manifest_path),
+                "problem": entry.message or "invalid manifest",
+            }
+            for entry in invalid_entries
+        ],
+    }
+    return _emit_json_envelope("list", 0, payload, out=out)
 
 
 def import_command(
@@ -1234,6 +1401,40 @@ def execute_command(
     return 1
 
 
+def _compatibility_evaluation_payload(result) -> dict:
+    """Project one strict evaluation into the ``compatibility --json`` payload.
+
+    Mirrors ``evaluate_model_compatibility()`` without adding anything: the
+    application status, the strict verdict, the checks with their evidence
+    and the model/artifact identity already on the result. The admission
+    projection is deliberately NOT computed here -- the command adds it as a
+    separate sibling payload key, so a strict INSUFFICIENT_EVIDENCE and a
+    permitting admission remain observable at the same time. Enums pass
+    through the shared serializer (``.value``, never their uppercase name).
+    """
+
+    def items(value) -> tuple:
+        # Same defensive rule as app.compatibility_report: only real
+        # collections are projected, a stand-in degrades to "nothing to show".
+        return tuple(value) if isinstance(value, (tuple, list)) else ()
+
+    evaluation = result.evaluation
+    strict = evaluation.result if evaluation is not None else None
+    return {
+        "status": result.status,
+        "verdict": strict.status if strict is not None else None,
+        "model_id": result.model_id,
+        "runtime": result.runtime,
+        "imported": result.imported,
+        "blocking_outcome": result.blocking_outcome,
+        "artifact": _json_artifact(result.artifact),
+        "checks": items(getattr(strict, "checks", ())) if strict else (),
+        "conditions": items(getattr(strict, "conditions", ())) if strict else (),
+        "warnings": items(getattr(strict, "warnings", ())) if strict else (),
+        "notes": items(getattr(strict, "notes", ())) if strict else (),
+    }
+
+
 def compatibility_command(
     model_id: str | None,
     *,
@@ -1242,6 +1443,7 @@ def compatibility_command(
     out=None,
     err=None,
     model_store: ModelStore | None = None,
+    as_json: bool = False,
 ) -> int:
     """Report the existing strict compatibility evaluation (B9.48).
 
@@ -1270,6 +1472,17 @@ def compatibility_command(
             "Usage: python3 -m app.main compatibility <model-id>",
             file=err,
         )
+        if as_json:
+            return _emit_json_envelope(
+                "compatibility",
+                2,
+                {},
+                error=json_output.error(
+                    "usage_error",
+                    "Usage: python3 -m app.main compatibility <model-id>",
+                ),
+                out=out,
+            )
         return 2
 
     try:
@@ -1287,20 +1500,40 @@ def compatibility_command(
     ) as error:
         # Same P0-2 distinction as `execute`: a raised error is reported as an
         # evaluation error, never as a compatibility verdict.
-        print(
-            f"Compatibility evaluation error: {type(error).__name__}: {error}",
-            file=err,
-        )
+        message = f"{type(error).__name__}: {error}"
+        print(f"Compatibility evaluation error: {message}", file=err)
+        if as_json:
+            # A raised evaluation is the operational failure it always was;
+            # the envelope structures it, the exit code stays exactly 1.
+            return _emit_json_envelope(
+                "compatibility",
+                1,
+                {},
+                error=json_output.error("evaluation_error", message),
+                out=out,
+            )
         return 1
 
-    print(format_evaluation_report(result), file=out)
     # Reuse the existing fail-closed projection for the exit code. This does
     # not change policy; it only reports what `execute` would decide.
     admission = to_admission(result)
-    return 0 if admission.status == "evaluated" and admission.verdict in (
+    exit_code = 0 if admission.status == "evaluated" and admission.verdict in (
         "compatible",
         "compatible_with_conditions",
     ) else 1
+    if as_json:
+        # A denial is a payload, never an `error`: only the operational
+        # failure above gets the envelope's error object.
+        payload = {
+            "evaluation": _compatibility_evaluation_payload(result),
+            "admission": {
+                "status": admission.status,
+                "verdict": admission.verdict,
+            },
+        }
+        return _emit_json_envelope("compatibility", exit_code, payload, out=out)
+    print(format_evaluation_report(result), file=out)
+    return exit_code
 
 
 # P1.3: the P1.2 contract is already implemented inside
@@ -1338,6 +1571,7 @@ def validate_command(
     resolver: ModelArtifactResolver | None = None,
     preflight: ArtifactExecutionPreflight | None = None,
     store: ModelStore | None = None,
+    as_json: bool = False,
 ) -> int:
     """Report what can be proven about one stored artifact (P1.3).
 
@@ -1361,6 +1595,17 @@ def validate_command(
     err = err if err is not None else sys.stderr
     if not model_id or not model_id.strip():
         print("Usage: python3 -m app.main validate <model-id>", file=err)
+        if as_json:
+            return _emit_json_envelope(
+                "validate",
+                2,
+                {},
+                error=json_output.error(
+                    "usage_error",
+                    "Usage: python3 -m app.main validate <model-id>",
+                ),
+                out=out,
+            )
         return 2
 
     resolver = resolver or ModelArtifactResolver(store)
@@ -1373,6 +1618,14 @@ def validate_command(
         )
     except (ModelArtifactResolutionError, ValueError) as error:
         print(f"Validation error: {error}", file=err)
+        if as_json:
+            return _emit_json_envelope(
+                "validate",
+                1,
+                {},
+                error=json_output.error("validation_error", str(error)),
+                out=out,
+            )
         return 1
 
     artifact = resolved.artifact
@@ -1399,6 +1652,22 @@ def validate_command(
             integrity = CheckStatus.FAILED
         else:
             safety = CheckStatus.FAILED
+        if as_json:
+            # A failed check is the validation result, not an operational
+            # error: it stays in the payload with the existing problem text.
+            return _emit_json_envelope(
+                "validate",
+                1,
+                _json_validation_payload(
+                    artifact=artifact,
+                    safety=safety,
+                    size=size,
+                    integrity=integrity,
+                    state=state,
+                    problem=f"{error.code.value}: {error.message}",
+                ),
+                out=out,
+            )
         print(
             format_validation_report(
                 model_id=artifact.model_id,
@@ -1415,6 +1684,20 @@ def validate_command(
     except UnsafePathError as error:
         # The inspector raises this for an unsafe path before the codes above
         # apply. It is a filesystem-safety refusal, not a checksum decision.
+        if as_json:
+            return _emit_json_envelope(
+                "validate",
+                1,
+                _json_validation_payload(
+                    artifact=artifact,
+                    safety=CheckStatus.FAILED,
+                    size=size,
+                    integrity=integrity,
+                    state=state,
+                    problem=str(error),
+                ),
+                out=out,
+            )
         print(
             format_validation_report(
                 model_id=artifact.model_id,
@@ -1440,6 +1723,21 @@ def validate_command(
         CheckStatus.PASSED if executable.checksum_verified else CheckStatus.UNKNOWN
     )
 
+    if as_json:
+        # `UNKNOWN` is not a failure: exit 0, and the payload carries the
+        # architecture-backed reasons instead of an "Unknown" datum.
+        return _emit_json_envelope(
+            "validate",
+            0,
+            _json_validation_payload(
+                artifact=artifact,
+                safety=safety,
+                size=size,
+                integrity=integrity,
+                state=state,
+            ),
+            out=out,
+        )
     print(
         format_validation_report(
             model_id=artifact.model_id,
@@ -1613,6 +1911,7 @@ def store_command(
     *,
     model_store_path: str | None = None,
     out=None,
+    as_json: bool = False,
 ) -> int:
     """Report which model store CastleArq uses for this invocation (B9.74).
 
@@ -1625,6 +1924,17 @@ def store_command(
     """
     out = out if out is not None else sys.stdout
     resolution = resolve_model_store(model_store_path)
+    if as_json:
+        # The five ratified B9.74 sources, reported exactly as resolution
+        # named them; the resolution policy itself is untouched.
+        payload = {
+            "path": str(resolution.path),
+            "source": resolution.source,
+            "exists": resolution.path.exists(),
+            "legacy_detected": resolution.legacy_detected,
+            "legacy_used": resolution.legacy_used,
+        }
+        return _emit_json_envelope("store", 0, payload, out=out)
     print("Store", file=out)
     print(f"Path: {resolution.path}", file=out)
     print(f"Source: {resolution.source}", file=out)
@@ -1723,6 +2033,15 @@ def main() -> int:
             "resolution alone"
         ),
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=(
+            "print exactly one castlearq.cli JSON document on stdout instead "
+            "of human output (available for compatibility, validate, list and "
+            "store)"
+        ),
+    )
     args = parser.parse_args()
     if args.command is None:
         parser.error("a command is required")
@@ -1767,6 +2086,14 @@ def main() -> int:
     for flag in ("host", "port"):
         if getattr(args, flag) is not None and args.command != "serve":
             parser.error(f"--{flag} is not valid for command '{args.command}'")
+    # B9.76.3: --json exists only for the four MUST commands of the first
+    # JSON surface. Everything else keeps argparse's behaviour: stderr + exit
+    # 2, never JSON.
+    if args.json and args.command not in _JSON_COMMANDS:
+        parser.error(f"--json is not valid for command '{args.command}'")
+    # Forwarded only when set, so the human-mode dispatch calls keep exactly
+    # the signature they had before the JSON surface existed.
+    json_kwargs = {"as_json": True} if args.json else {}
     if args.model_store is not None:
         if not args.model_store.strip():
             parser.error("--model-store requires a non-empty path")
@@ -1811,6 +2138,8 @@ def main() -> int:
     elif args.command == "models":
         print_models()
     elif args.command == "list":
+        if args.json:
+            return list_command(model_store, out=sys.stdout)
         print_local_models(model_store)
     elif args.command == "runtime":
         return print_runtime_diagnostics()
@@ -1820,7 +2149,9 @@ def main() -> int:
         return print_plan(args.provider, args.repository, model_store=model_store)
     elif args.command == "store":
         return store_command(
-            model_store_path=args.model_store, out=sys.stdout
+            model_store_path=args.model_store,
+            out=sys.stdout,
+            **json_kwargs,
         )
     elif args.command == "compatibility":
         if args.repository is not None:
@@ -1830,6 +2161,7 @@ def main() -> int:
             quantization=args.quantization,
             filename=args.filename,
             model_store=model_store,
+            **json_kwargs,
         )
     elif args.command == "validate":
         if args.repository is not None:
@@ -1839,6 +2171,7 @@ def main() -> int:
             quantization=args.quantization,
             filename=args.filename,
             store=model_store,
+            **json_kwargs,
         )
     elif args.command == "download":
         if args.repository is not None:
