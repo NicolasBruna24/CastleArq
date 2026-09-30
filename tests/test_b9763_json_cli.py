@@ -782,7 +782,7 @@ class JsonFlagSurfaceTests(unittest.TestCase):
         "run",
         "download",
         "source",
-        "import",
+        # ``import`` joined this surface in B9.76.4.
         "serve",
         "chat",
     )
@@ -809,12 +809,16 @@ class JsonFlagSurfaceTests(unittest.TestCase):
         self.assertIn("--json", out)
         self.assertIn("compatibility, validate, list and", out)
 
-    def test_import_json_stays_reserved_for_the_next_block(self):
-        # B9.76.4 owns `import --json`; B9.76.3 must not wire it.
+    def test_import_json_reservation_is_released_in_b9764(self):
+        # B9.76.3 deliberately left ``import --json`` unwired; B9.76.4 wires
+        # it. The flag itself is accepted now, so what used to be an argparse
+        # rejection is the command's own usage envelope (exit 2, unchanged).
         code, out, err = run_cli("import", "--json")
         self.assertEqual(code, 2)
-        self.assertEqual(out, "")
-        self.assertIn("--json is not valid for command 'import'", err)
+        self.assertNotIn("--json is not valid", err)
+        document = one_json_document(out)
+        assert_envelope(self, document, command="import", exit_code=2)
+        self.assertEqual(document["error"]["kind"], "usage_error")
 
 
 class LayerBoundaryTests(unittest.TestCase):

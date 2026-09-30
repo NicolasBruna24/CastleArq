@@ -588,7 +588,13 @@ def _format_size(size_bytes: int | None) -> str:
 # B9.76.3: the commands that accept ``--json`` in this block. The option is
 # deliberately not global: every other command keeps argparse's behaviour of
 # rejecting it, so the JSON surface grows one MUST command at a time.
-_JSON_COMMANDS = ("compatibility", "validate", "list", "store")
+_JSON_COMMANDS = (
+    "compatibility",
+    "validate",
+    "list",
+    "store",
+    "import",
+)
 
 
 def _emit_json_envelope(
@@ -597,6 +603,7 @@ def _emit_json_envelope(
     payload: dict,
     *,
     error: dict | None = None,
+    warnings: tuple[str, ...] = (),
     out=None,
 ) -> int:
     """Print exactly one ``castlearq.cli`` envelope and return ``exit_code``.
@@ -612,6 +619,7 @@ def _emit_json_envelope(
         exit_code=exit_code,
         payload=payload,
         error=error,
+        warnings=warnings,
     )
     print(json_output.dumps(envelope), file=out)
     return exit_code
@@ -799,11 +807,66 @@ def list_command(
     return _emit_json_envelope("list", 0, payload, out=out)
 
 
+def _json_import_payload(result) -> dict:
+    """Project one import result into the ``import --json`` payload.
+
+    Mirrors what the human report already states, and adds nothing: the
+    observed GGUF evidence, the managed location, the computed content
+    identity, and the three properties an imported artifact provably does
+    NOT have.
+
+    Two separations are load-bearing and are preserved verbatim (B9.67):
+
+    * ``content_id`` is the *computed* identity of the bytes that were
+      imported. It is never an integrity declaration: the importer
+      deliberately leaves ``ArtifactSpec.sha256`` unset, so ``integrity``
+      stays UNKNOWN (``not_declared``) even though a content identity
+      exists. The digest is never copied into ``sha256``.
+    * The sanitized label is addressing and presentation, not a logical
+      identity. Nothing read here establishes which model the file is, so
+      ``logical_identity`` stays UNKNOWN (``no_catalog_evidence``) and no
+      model id is ever synthesized from the label, the filename, the
+      architecture or the content id.
+    """
+    artifact = result.artifact
+    return {
+        "status": result.status.value,
+        "label": result.sanitized_label,
+        "content_id": result.content_id,
+        "format": (
+            json_output.known(artifact.format)
+            if artifact is not None
+            else json_output.unknown("not_observed")
+        ),
+        "architecture": (
+            json_output.known(result.architecture)
+            if result.architecture
+            else json_output.unknown("not_observed")
+        ),
+        "storage": {
+            "path": (
+                str(result.destination)
+                if result.destination is not None
+                else None
+            ),
+            "filename": result.filename,
+        },
+        "logical_identity": json_output.unknown("no_catalog_evidence"),
+        "integrity": (
+            json_output.known(artifact.sha256)
+            if artifact is not None and artifact.sha256 is not None
+            else json_output.unknown("not_declared")
+        ),
+        "memory_estimate": json_output.unknown("not_observed"),
+    }
+
+
 def import_command(
     path: str | None,
     *,
     label: str | None = None,
     model_store: ModelStore | None = None,
+    as_json: bool = False,
 ) -> int:
     """Import a local GGUF file into the managed model store (B9.67).
 
@@ -818,7 +881,20 @@ def import_command(
     available, and the user runs it later through the existing commands.
     """
     if not path:
-        print("Usage: python3 -m app.main import <path-to-gguf> [--label LABEL]")
+        usage = (
+            "Usage: python3 -m app.main import <path-to-gguf> [--label LABEL]"
+        )
+        if as_json:
+            # The human usage line goes to stdout, which JSON mode must keep
+            # pure, so it moves to stderr next to the structured envelope.
+            print(usage, file=sys.stderr)
+            return _emit_json_envelope(
+                "import",
+                2,
+                {},
+                error=json_output.error("usage_error", usage),
+            )
+        print(usage)
         return 2
     # `LocalArtifactImporter` inspects the path itself. Expanding `~` here is
     # shell convenience, not validation: no sanitizer is duplicated. The store
@@ -830,12 +906,33 @@ def import_command(
     result = importer.import_artifact(Path(path).expanduser(), label=label)
 
     if result.status is ImportStatus.FAILED:
+        if as_json:
+            # A failed import is a domain outcome with an existing reason, not
+            # a crash: exit 1 stays, the reason becomes the envelope error and
+            # the store is still untouched.
+            return _emit_json_envelope(
+                "import",
+                1,
+                {},
+                error=json_output.error(
+                    "import_error", result.error or "unknown failure"
+                ),
+                warnings=result.warnings,
+            )
         print("CastleArq - Local artifact import")
         print("==========================")
         print("  Status: FAILED")
         print(f"  Reason: {result.error or 'unknown failure'}")
         print("  Nothing was imported; the model store is unchanged.")
         return 1
+
+    if as_json:
+        return _emit_json_envelope(
+            "import",
+            0,
+            _json_import_payload(result),
+            warnings=result.warnings,
+        )
 
     reused = result.status is ImportStatus.REUSED
     print("CastleArq - Local artifact import")
@@ -2037,9 +2134,9 @@ def main() -> int:
         "--json",
         action="store_true",
         help=(
-            "print exactly one castlearq.cli JSON document on stdout instead "
-            "of human output (available for compatibility, validate, list and "
-            "store)"
+            "print exactly one castlearq.cli JSON document on stdout "
+            "instead of human output (available for compatibility, "
+            "validate, list and store, and for import)"
         ),
     )
     args = parser.parse_args()
@@ -2186,7 +2283,10 @@ def main() -> int:
         if args.repository is not None:
             parser.error("import accepts exactly one path")
         return import_command(
-            args.provider, label=args.label, model_store=model_store
+            args.provider,
+            label=args.label,
+            model_store=model_store,
+            **json_kwargs,
         )
     elif args.command == "run":
         if args.repository is not None:
