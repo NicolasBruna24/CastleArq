@@ -63,7 +63,9 @@ The same admission policy applies to every surface that runs a model: the
 Throughout this document:
 
 - **model** — the logical model you want to use;
-- **`MODEL_ID`** — the canonical identifier the CLI accepts;
+- **`MODEL_ID`** — the canonical identifier the CLI accepts. For an artifact
+  brought in with `import`, that value is the label `import` reports and `list`
+  shows; the model's logical identity can remain `UNKNOWN`;
 - **artifact** — the concrete model file (GGUF) stored locally;
 - **quantization** — the chosen size/precision variant of that file;
 - **runtime** — the llama.cpp installation that loads and runs the model.
@@ -135,6 +137,39 @@ not automatically stand in for `llama` in CastleArq 0.2.x.
 
 ## Quick start
 
+There are two routes, depending on whether you already have a model file. Both
+end in the same commands; they differ only in where the artifact comes from.
+
+### Route A: you already have a local GGUF
+
+```bash
+# 1. Check the runtime CastleArq will drive
+castlearq runtime
+
+# 2. Import the file you already have; it reports the label to use next
+castlearq import ./my-model.gguf
+
+# 3. See what is stored and in what state
+castlearq list
+
+# 4. Validate that stored artifact: filesystem, size, integrity
+castlearq validate <LABEL>
+
+# 5. Check it can run here, and see the evidence
+castlearq compatibility <LABEL>
+
+# 6. Run a prompt
+castlearq execute <LABEL> "Reply with exactly: OK"
+```
+
+`import` runs nothing: it copies the file into the model store and prints the
+**label** you use as `<LABEL>` in the commands after it. The label is the
+operational identifier of the artifact, not a statement about which model the
+file is; a local file carries no evidence of that, so its logical identity may
+stay `UNKNOWN`.
+
+### Route B: you need to get a model from the catalog
+
 ```bash
 # 1. Check the runtime CastleArq will drive
 castlearq runtime
@@ -157,6 +192,11 @@ castlearq compatibility qwen2.5-coder-7b-instruct
 # 7. Run a prompt
 castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly: OK"
 ```
+
+From here on, `MODEL_ID` means whatever identifier `list` shows for the
+artifact you want to work with: a catalog model id after `download`, or the
+label after `import`. For an imported artifact, that label is only the
+operational handle — the model's logical identity can remain `UNKNOWN`.
 
 `list` shows each stored artifact and its derived state; `validate` re-checks one
 artifact on demand and reports what it can and cannot prove. Both are read-only
@@ -329,14 +369,33 @@ which is separate from the five-condition verdict — see
 
 ## Model management
 
-The basic cycle is:
+Artifacts reach CastleArq from one of two sources, and both lead to the same
+place:
+
+```text
+catalog:     models -> download MODEL_ID -> list -> execute
+local file:  import PATH -> list -> execute
+```
+
+`models` shows the catalog and its per-machine recommendations; it is about
+candidates, not about what you have. `list` shows the managed artifacts
+available for use, whether they arrived through `download` or through `import`.
+An imported GGUF therefore does **not** appear in `models`: `models` is the
+catalog, `list` is your store, and CastleArq keeps them apart.
+
+For a downloaded artifact, the model id is the identifier later commands take.
+For an imported one, that identifier is the **label** reported by `import` and
+shown by `list`. The label is an operational handle, not a claim about the
+model's logical identity, which a local file provides no evidence for and which
+may stay `UNKNOWN`.
+
+The catalog cycle is:
 
 ```text
 models -> choose MODEL_ID -> download -> list -> execute
 ```
 
-`models` shows the catalog, `download` acquires the artifact explicitly, `list`
-inspects local storage and `execute` runs a prompt. Repeating `execute` does not
+`download` acquires the artifact explicitly, and repeating `execute` does not
 download the model again.
 
 `models` prints, per candidate, the recommended quantization, an estimated
@@ -362,6 +421,8 @@ castlearq list
 
 `list` shows locally stored artifacts with their model id, filename,
 quantization, size and verification state. Artifacts are reused by later runs.
+An artifact brought in with `import` appears here under its label, which is the
+value to pass to the commands below in its place.
 
 To validate one stored artifact explicitly, use `validate`:
 

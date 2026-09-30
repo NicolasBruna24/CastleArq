@@ -1411,13 +1411,23 @@ USAGE_FLOW = """\
 usage flow:
   1. discover models:      castlearq models
   2. download a model:     castlearq download <model-id>
-  3. list local artifacts: castlearq list
-  4. check compatibility:  castlearq compatibility <model-id>
-  5. run a single prompt:  castlearq execute <model-id> "<prompt>"
-  6. start a chat session: castlearq chat <model-id>
-  7. diagnose GPU software: castlearq diagnose
-  8. inspect llama runtime:  castlearq runtime
-  9. re-check remediation:   castlearq verify
+  3. import a local GGUF:  castlearq import <path>
+  4. list local artifacts: castlearq list
+  5. check compatibility:  castlearq compatibility <model-id>
+  6. run a single prompt:  castlearq execute <model-id> "<prompt>"
+  7. start a chat session: castlearq chat <model-id>
+  8. diagnose GPU software: castlearq diagnose
+  9. inspect llama runtime:  castlearq runtime
+  10. re-check remediation:  castlearq verify
+
+artifacts:
+  artifacts come either from the catalog (models, download) or from a GGUF
+  file you already have (import). Importing one is a single step: it copies
+  the file into the model store and reports the label to use afterwards.
+  `models` lists catalog and recommended models; `list` lists the managed
+  artifacts available for use, including imported ones. A label is the
+  operational identifier for later commands, not a claim about the model's
+  logical identity, which may remain UNKNOWN.
 
 execution:
   execute is the recommended command. It evaluates strict compatibility
