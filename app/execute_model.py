@@ -156,6 +156,17 @@ def _legacy_compatibility(
         backends,
         model,
         config=CompatibilityConfig(),
+        # B9.66: an absent memory estimate is tolerated only for a locally
+        # imported artifact, and only as MARGINAL. The discriminator is
+        # ``model.id is None``, which the B9.66 contract makes equivalent to
+        # "imported": a catalog model always carries an explicit id, while an
+        # imported one deliberately keeps logical identity UNKNOWN and so
+        # leaves ``ModelSpec.id`` as None. Every catalog model therefore keeps
+        # the previous, blocking behaviour. Admission policy uses the explicit
+        # ``ResolvedModelArtifact.imported`` flag instead; the two express the
+        # same fact about the artifact. A known capacity overflow is still
+        # INCOMPATIBLE and still blocks here.
+        allow_unknown_memory=model.id is None,
     )
 
 
@@ -284,6 +295,17 @@ def execute_model(
         raise ExecutePreparationError(str(error)) from error
     model: ModelSpec = resolved.model
     artifact: ArtifactSpec = resolved.artifact
+
+    # B9.67: an imported artifact must carry a verified managed path before
+    # anything else happens. Resolution already proved the file is inside the
+    # store, is a regular file and is not a symlink; this refuses to continue
+    # if that proof is ever absent. There is no fallback to the original
+    # import source, to a path rebuilt from the label, or to any user-supplied
+    # path: an import without a managed location simply does not execute.
+    if resolved.imported and resolved.path is None:
+        raise ExecutePreparationError(
+            "Imported artifact has no verified managed path in the model store"
+        )
 
     # 2. Fresh capability, detected per invocation (never cached).
     capability = _invocable_capability(_fresh_capability(deps))

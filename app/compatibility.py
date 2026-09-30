@@ -116,7 +116,23 @@ def assess_model(
     model: ModelSpec,
     quantization: Quantization | None = None,
     config: CompatibilityConfig = CompatibilityConfig(),
+    *,
+    allow_unknown_memory: bool = False,
 ) -> CompatibilityResult:
+    """Evaluate one model against the detected runtime and hardware.
+
+    ``allow_unknown_memory`` is a B9.66 opt-in used only for imported
+    artifacts. When the memory estimate cannot be computed (it is
+    ``parameter_count_b``-driven and an imported artifact has none), an
+    otherwise-admissible artifact is reported as MARGINAL with an explicit
+    warning instead of UNKNOWN. It never reports COMPATIBLE: no memory
+    sufficiency is claimed. The default preserves the previous behaviour
+    exactly, so catalog evaluation is unaffected.
+
+    ``capacity is None`` still blocks even when the flag is set -- a machine
+    with no detectable memory is an environment problem, not an absence of
+    model metadata. A *known* overflow remains INCOMPATIBLE regardless.
+    """
     runtime_status = _choose_runtime(model, runtimes)
     runtime = runtime_status.name if runtime_status else None
     backend = _choose_backend(model, backends, runtime_status)
@@ -150,6 +166,27 @@ def assess_model(
     estimated = estimate_memory_bytes(model, selected, config)
     capacity = _capacity_bytes(hardware)
     if estimated is None or capacity is None:
+        # B9.66: for an imported artifact there is no catalog
+        # ``parameter_count_b``, so the estimate is simply not computable.
+        # That is an ABSENCE of a figure, not a demonstrated capacity
+        # problem, and it is reported as MARGINAL with an explicit warning.
+        # It is deliberately never COMPATIBLE: admitting here does not claim
+        # the model fits. ``capacity is None`` still blocks, because a machine
+        # with no detectable memory is an environment failure rather than
+        # missing model metadata.
+        if allow_unknown_memory and estimated is None and capacity is not None:
+            return CompatibilityResult(
+                model, CompatibilityStatus.MARGINAL, 0,
+                ("Memory requirement is not estimated for an imported "
+                 "artifact; no memory sufficiency was established.",),
+                (
+                    "Model memory is an estimate.",
+                    "No memory estimate is available for this imported "
+                    "artifact; execution proceeds without a memory "
+                    "sufficiency check.",
+                ),
+                None, True, selected, runtime, backend,
+            )
         return CompatibilityResult(
             model, CompatibilityStatus.UNKNOWN, 0,
             ("Model or hardware memory is unknown.",), (),

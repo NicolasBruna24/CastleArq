@@ -136,6 +136,36 @@ class ModelStore:
         finally:
             os.close(root_fd)
 
+    def find_by_content_id(self, content_id: str) -> StoredArtifact | None:
+        """Return the managed artifact whose content digest is ``content_id``.
+
+        B9.67: this is how the importer recognises content it already manages,
+        so the same bytes are never stored twice under two filenames or
+        labels. The lookup is by *content*, never by filename or label, so it
+        finds an identical artifact regardless of how it was named on arrival.
+
+        Only fully published artifacts are reported. A `.part` left by an
+        interrupted import is not a stored artifact and is never reused as if
+        it were complete, so an interrupted import stays recoverable and can
+        never be mistaken for a successful one.
+        """
+        for stored in self.list_artifacts():
+            artifact = stored.artifact
+            if artifact is None or artifact.content_id != content_id:
+                continue
+            if stored.state in {ArtifactState.DOWNLOADED, ArtifactState.VERIFIED}:
+                return stored
+        return None
+
+    def artifact_directory(self, artifact: ArtifactSpec) -> Path:
+        """The managed directory for ``artifact`` (``<label>/<artifact_id>``).
+
+        B9.67: public so the importer publishes into exactly the same layout
+        the manifest writer uses, instead of inventing a second store root or
+        a parallel addressing scheme.
+        """
+        return self._artifact_directory(artifact)
+
     def _write_manifest(self, artifact: ArtifactSpec, directory_fd: int) -> Path:
         manifest_path = self._artifact_directory(artifact) / "manifest.json"
         for name in ("manifest.json", "manifest.json.part"):
@@ -155,6 +185,11 @@ class ModelStore:
             "download_url": artifact.download_url,
             "size_bytes": artifact.size_bytes,
             "sha256": artifact.sha256,
+            # B9.67: content identity for imported artifacts. Absent (``None``)
+            # for every catalog/downloaded artifact, whose ``artifact_id``
+            # remains provenance-derived, so existing manifests keep their
+            # existing identity and no store has to be migrated.
+            "content_id": artifact.content_id,
             # B9.41: `state` and `verified` are deliberately NOT persisted —
             # the local artifact state is derived by `inspect_manifest()` from
             # manifest expectations plus filesystem facts, never read back
@@ -309,9 +344,23 @@ class ModelStore:
         return self._safe_component(filename)
 
 
+def _optional_str(payload: dict[str, object], key: str) -> str | None:
+    """Read an optional non-empty string field, or ``None`` when absent."""
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"Invalid manifest field: {key}")
+    return value
+
+
 def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
-    required = ("model_id", "source", "repository", "filename")
-    for key in required:
+    # B9.67: `source` and `repository` were both mandatory. An imported local
+    # artifact has no honest provenance, and fabricating a repository to fill
+    # them is forbidden. They are therefore optional, but still type-validated
+    # when present, so every manifest written before this change keeps loading
+    # with exactly the same behaviour.
+    for key in ("model_id", "filename"):
         if not isinstance(payload.get(key), str) or not payload[key]:
             raise ValueError(f"Invalid manifest field: {key}")
     # Legacy manifests (pre-B9.41) persisted `state`; new manifests never do.
@@ -333,8 +382,8 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         raise ValueError("Invalid manifest sha256")
     return ArtifactSpec(
         model_id=str(payload["model_id"]),
-        source=str(payload["source"]),
-        repository=str(payload["repository"]),
+        source=_optional_str(payload, "source"),
+        repository=_optional_str(payload, "repository"),
         filename=str(payload["filename"]),
         format=str(payload.get("format", "Unknown")),
         quantization=str(payload.get("quantization", "Unknown")),
@@ -342,6 +391,7 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         size_bytes=size,
         sha256=sha256,
         state=state,
+        content_id=_optional_str(payload, "content_id"),
     )
 
 

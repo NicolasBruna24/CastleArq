@@ -110,6 +110,8 @@ from .compatibility_report import (
 )
 from .compatibility_domain import CheckStatus
 from .validation_report import format_validation_report
+from .importing import ImportStatus, LocalArtifactImporter
+from pathlib import Path
 
 
 def _catalog_model_ids() -> frozenset[str]:
@@ -610,6 +612,57 @@ def print_local_models(model_store: ModelStore | None = None) -> None:
         print("\nInvalid artifacts:")
         for entry in sorted(invalid_entries, key=lambda e: str(e.manifest_path)):
             print(f"  - {entry.manifest_path} ({entry.message or 'invalid manifest'})")
+
+
+def import_command(path: str | None, *, label: str | None = None) -> int:
+    """Import a local GGUF file into the managed model store (B9.67).
+
+    This is a presentation layer only. Every decision -- source validation,
+    GGUF validation, content digest, label sanitization, duplicate detection,
+    atomic publication and manifest registration -- belongs to
+    ``LocalArtifactImporter``. The CLI deliberately computes no hash, copies
+    no file and builds no ``ArtifactSpec``, so there is exactly one place
+    where import policy can live.
+
+    Nothing is resolved or executed here: importing makes an artifact
+    available, and the user runs it later through the existing commands.
+    """
+    if not path:
+        print("Usage: python3 -m app.main import <path-to-gguf> [--label LABEL]")
+        return 2
+    # `LocalArtifactImporter` inspects the path itself. Expanding `~` here is
+    # shell convenience, not validation: no sanitizer is duplicated.
+    importer = LocalArtifactImporter(ModelStore())
+    result = importer.import_artifact(Path(path).expanduser(), label=label)
+
+    if result.status is ImportStatus.FAILED:
+        print("CastleArq - Local artifact import")
+        print("==========================")
+        print("  Status: FAILED")
+        print(f"  Reason: {result.error or 'unknown failure'}")
+        print("  Nothing was imported; the model store is unchanged.")
+        return 1
+
+    reused = result.status is ImportStatus.REUSED
+    print("CastleArq - Local artifact import")
+    print("==========================")
+    print(f"  Status: {result.status.value.upper()}")
+    if reused:
+        print("  The model store already managed this exact content; the")
+        print("  existing copy was kept and no second copy was created.")
+    print(f"  Label: {result.sanitized_label}")
+    # The content digest is the artifact's *physical* identity. It is shown
+    # apart from the logical identity below so the two are never confused.
+    print(f"  Content ID: {result.content_id}")
+    print(f"  Format: {result.artifact.format if result.artifact else 'Unknown'}")
+    print(f"  Architecture: {result.architecture or 'Unknown'}")
+    print(f"  Storage: {result.destination}")
+    print("  Logical identity: UNKNOWN")
+    print("  Integrity declaration: UNKNOWN")
+    print("  Memory estimate: UNKNOWN")
+    for warning in result.warnings:
+        print(f"  Warning: {warning}")
+    return 0
 
 
 def print_source(provider: str | None, repository: str | None) -> int:
@@ -1511,7 +1564,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "run", "execute", "chat", "serve"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -1547,6 +1600,13 @@ def main() -> int:
         "--filename",
         help="exact artifact filename to select for download, execute, compatibility, run or chat",
     )
+    parser.add_argument(
+        "--label",
+        help=(
+            "presentation/storage label for import; sanitized by the model "
+            "store and never used as a logical model identity"
+        ),
+    )
     args = parser.parse_args()
     if args.command is None:
         parser.error("a command is required")
@@ -1562,12 +1622,13 @@ def main() -> int:
         "compatibility": ("quantization", "filename"),
         "validate": ("quantization", "filename"),
         "download": ("quantization", "filename"),
+        "import": ("label",),
         "run": ("prompt", "quantization", "filename"),
         "execute": ("quantization", "filename"),
         "chat": ("quantization", "filename"),
         "serve": (),
     }
-    for flag in ("prompt", "quantization", "filename"):
+    for flag in ("prompt", "quantization", "filename", "label"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     for flag in ("host", "port"):
@@ -1621,6 +1682,10 @@ def main() -> int:
             quantization=args.quantization,
             filename=args.filename,
         )
+    elif args.command == "import":
+        if args.repository is not None:
+            parser.error("import accepts exactly one path")
+        return import_command(args.provider, label=args.label)
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")

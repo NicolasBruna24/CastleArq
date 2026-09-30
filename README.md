@@ -663,6 +663,7 @@ flags.
 |---|---|
 | `models` | Catalog with recommendations scored against the detected hardware |
 | `download MODEL_ID` | Explicitly fetch a GGUF artifact |
+| `import PATH` | Imports a **local** GGUF file into the model store |
 | `list` | Locally stored artifacts and their state |
 | `validate MODEL_ID` | Validates one stored artifact: filesystem, size, integrity |
 | `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
@@ -676,6 +677,15 @@ flags.
 | `verify` | Re-checks the **GPU diagnosis**, not artifact integrity |
 | `source huggingface REPO` | Inspects a remote source |
 | `plan REPO FILENAME` | Inspects one specific remote artifact |
+
+`import PATH` copies a local GGUF file into the model store. It reports the
+artifact's **content ID** (the SHA-256 CastleArq computed, which is the file's
+physical identity) separately from its **logical identity**, which stays
+UNKNOWN: a local file carries no evidence of which model it is, of who
+published it, or of its integrity declaration. Only `general.architecture` is
+read, as physical GGUF evidence. Use `--label NAME` to choose the storage and
+presentation label; the store sanitizes it, and it is never used as a model id.
+Importing does not run anything: run the artifact later with `execute`.
 
 `detect`, `runtime`, `models`, `list`, `compatibility`, `source` and `plan` are
 read-only: they change nothing.

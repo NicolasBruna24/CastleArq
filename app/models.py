@@ -38,8 +38,8 @@ class ArtifactState(str, Enum):
 @dataclass(frozen=True)
 class ArtifactSpec:
     model_id: str
-    source: str
-    repository: str
+    source: str | None
+    repository: str | None
     filename: str
     format: str = "Unknown"
     quantization: str = "Unknown"
@@ -47,11 +47,31 @@ class ArtifactSpec:
     size_bytes: int | None = None
     sha256: str | None = None
     state: ArtifactState = ArtifactState.NOT_DOWNLOADED
+    # B9.67: the physical identity of an imported artifact is the SHA-256 of
+    # its *content*, so `artifact_id` is the digest CastleArq computed rather
+    # than a digest of provenance fields. It is `None` for every catalog or
+    # downloaded artifact, which keeps their existing provenance-derived
+    # identity exactly unchanged and leaves existing stores valid, so no
+    # artifact is migrated.
+    #
+    # This is NOT `sha256`. `sha256` is an integrity *declaration* to be
+    # verified against the file; `content_id` is the identity CastleArq
+    # computed. Storing the computed digest in `sha256` would make
+    # `inspect_manifest` compare a digest against itself and report
+    # VERIFIED, manufacturing a verification that never happened.
+    content_id: str | None = None
 
     @property
     def artifact_id(self) -> str:
+        if self.content_id is not None:
+            return self.content_id
         value = "|".join(
-            (self.source, self.repository, self.filename, self.quantization)
+            (
+                self.source or "",
+                self.repository or "",
+                self.filename,
+                self.quantization,
+            )
         )
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
 

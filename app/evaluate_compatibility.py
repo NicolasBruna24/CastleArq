@@ -75,12 +75,41 @@ class EvaluateModelCompatibilityResult:
     integration: IntegrationResult | None
     status: str
     blocking_outcome: str | None
+    # B9.66: propagated from ``ResolvedModelArtifact.imported``. The strict
+    # compatibility result is NOT altered by this flag -- an imported artifact
+    # whose logical identity is unknown still evaluates to
+    # INSUFFICIENT_EVIDENCE. Only the admission projection that follows is
+    # scoped by it.
+    imported: bool = False
 
 
 _NON_BLOCKING_E2E_UNKNOWNS = frozenset({
     "runtime artifact support",
     "runtime backend support",
 })
+
+#: B9.66: an imported artifact has no catalog model, so "artifact-model
+#: identity" is UNKNOWN by construction rather than by uncertainty -- there is
+#: no prior claim for it to contradict. The check is still evaluated and still
+#: reported as UNKNOWN; it is never promoted to PASSED, and INCOMPATIBLE
+#: remains blocking for imported artifacts exactly as for catalog ones.
+_IMPORT_NON_BLOCKING_UNKNOWNS = frozenset({
+    "artifact-model identity",
+})
+
+
+def _non_blocking_unknowns(imported: bool) -> frozenset[str]:
+    """Return the UNKNOWN check names that may coexist with admission.
+
+    For every artifact CastleArq already tolerates runtime-side evidence gaps.
+    An imported artifact additionally tolerates the catalog-identity gap, which
+    is the one condition that cannot be established at all for a file the
+    catalog never described. ``imported=False`` returns the original set
+    unchanged, so catalog admission policy is bit-for-bit identical.
+    """
+    if imported:
+        return _NON_BLOCKING_E2E_UNKNOWNS | _IMPORT_NON_BLOCKING_UNKNOWNS
+    return _NON_BLOCKING_E2E_UNKNOWNS
 
 
 def to_admission(
@@ -116,7 +145,9 @@ def to_admission(
         if (
             not failed
             and unknown_names
-            and unknown_names <= _NON_BLOCKING_E2E_UNKNOWNS
+            and unknown_names <= _non_blocking_unknowns(
+                getattr(result, "imported", False)
+            )
         ):
             verdict = "compatible"
     return EvaluationAdmission(
@@ -254,4 +285,5 @@ def evaluate_model_compatibility(
         integration=integration,
         status="evaluated",
         blocking_outcome=None,
+        imported=resolved.imported,
     )
