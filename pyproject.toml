@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "castlearq"
-version = "0.3.0"
+version = "0.4.0"
 description = "Check whether a local GGUF model can run on your llama.cpp runtime, see the evidence, and refuse to run what it cannot justify."
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -18,10 +18,10 @@ authors = [{ name = "Nicolás Bruna", email = "brunafuentealba@gmail.com" }]
 readme = { file = "README.md", content-type = "text/markdown" }
 
 # B9.53 section 13: every classifier below states something the repository can
-# actually evidence. Development Status is Alpha, not Beta: 0.1.x, a single
-# maintainer and no external users or contributions. Operating System is Linux
-# because that is the only baseline exercised. No Documentation or Bug Tracker
-# URL is declared, because none exists.
+# actually evidence. Development Status is Alpha, not Beta: a 0.x series with a
+# single maintainer and no external users or contributions. Operating System is
+# Linux because that is the only baseline exercised. No Documentation or Bug
+# Tracker URL is declared, because none exists.
 #
 # No License classifier is listed: PEP 639 supersedes license classifiers with
 # the SPDX ``license`` expression above, and setuptools rejects the combination.
