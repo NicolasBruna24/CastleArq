@@ -195,15 +195,33 @@ class RuntimeJsonTests(_ShouldCase):
             if runtime[key]["status"] == "unknown":
                 self.assertEqual(runtime[key], UNKNOWN_NOT_OBSERVED)
         capability = payload["capability"]
-        if isinstance(capability, dict):
-            self.assertIn("supported_formats", capability)
-            self.assertIn("supported_backends", capability)
+        # Both shapes are JSON objects, so the type tells them apart from
+        # nothing: an observed capability carries the capability fields, while
+        # an unprobed one is the ratified UNKNOWN structure. The observation
+        # status is the discriminator, never the JSON type.
+        if capability.get("status") == "unknown":
+            self.assertEqual(capability, UNKNOWN_NOT_OBSERVED)
+        else:
+            for key in (
+                "name",
+                "supported_formats",
+                "supported_backends",
+                "prompt_input_modes",
+            ):
+                self.assertIn(key, capability)
+            self.assertIsInstance(capability["supported_formats"], list)
+            self.assertIsInstance(capability["supported_backends"], list)
+            self.assertIsInstance(capability["prompt_input_modes"], list)
 
     def test_runtime_capability_absent_is_unknown_not_null(self):
         _, out, _ = run_cli("runtime", "--json")
         capability = one_json_document(out)["payload"]["capability"]
-        if not isinstance(capability, dict):
+        # Same discriminator as above: the UNKNOWN structure IS a dict, so a
+        # missing capability must be recognised as such, not skipped.
+        if capability.get("status") == "unknown":
             self.assertEqual(capability, UNKNOWN_NOT_OBSERVED)
+        else:
+            self.assertIn("supported_formats", capability)
 
 
 class PlanJsonTests(_ShouldCase):

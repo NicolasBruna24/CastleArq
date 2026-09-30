@@ -800,6 +800,73 @@ artifact integrity check; for that, use `validate`, which reports what can be
 proven about one stored artifact and which evidence is missing. `list` shows
 the derived state of every stored artifact.
 
+Nine of these commands also accept `--json` for machine-readable output; see
+[Machine-readable CLI output](#machine-readable-cli-output).
+
+## Machine-readable CLI output
+
+Nine commands also accept `--json`, which prints **exactly one JSON document on
+stdout** instead of the human report:
+
+```text
+compatibility   validate   list   store   import
+models          runtime    detect plan
+```
+
+Everything else is unchanged: the **exit codes are the same** in both modes,
+warnings and notices (such as the legacy-store notice) go to **stderr**, and
+argparse errors stay plain `stderr` + exit `2` with no JSON at all. The
+document is always this envelope:
+
+```json
+{
+  "schema": "castlearq.cli",
+  "schema_version": 1,
+  "command": "compatibility",
+  "exit_code": 0,
+  "payload": {},
+  "warnings": [],
+  "error": null
+}
+```
+
+`exit_code` is the code the process really returns, `warnings` is a list of
+strings, and `error` is either `null` or a `{"kind", "message"}` object. A
+`--json` run and a human run of the same command always agree on the exit code.
+
+Two rules keep this output unambiguous for scripts:
+
+- **UNKNOWN is explicit, never a string.** A property that is relevant but was
+  not observed is reported as
+  `{"value": null, "status": "unknown", "reason": "not_observed"}` (other
+  ratified reasons are `no_checksum_declared`, `no_size_declared`,
+  `no_catalog_evidence` and `not_declared`). UNKNOWN is never `FAILED`, never a
+  bare `null` that hides its status, and never the literal `"Unknown"`.
+- **Identity and integrity stay separate.** `import` reports `content_id`, the
+  SHA-256 CastleArq **computed** for the bytes it copied. That is the file's
+  physical identity, not an integrity *declaration*: the imported artifact
+  declares no checksum, so its `integrity` stays UNKNOWN
+  (`reason: "not_declared"`). Its `logical_identity` stays UNKNOWN too
+  (`reason: "no_catalog_evidence"`) — the label is addressing and presentation,
+  never a model id.
+
+In `compatibility --json` the strict evaluation and the admission projection
+are two separate objects (`payload.evaluation` and `payload.admission`). An
+evaluation that is INSUFFICIENT_EVIDENCE while admission still permits
+execution is observable as exactly that, and is reported truthfully in both
+modes. An operational failure is `error.kind = "evaluation_error"` with exit
+`1`; an admission denial is **not** an error, it stays in the payload.
+
+`models` reports its catalog assessment under `legacy_compatibility`, which is
+the historical, hardware-scored domain and not the strict evaluation domain.
+`plan` reports the download planner's own statuses (`ready`,
+`already_downloaded`, `blocked`, `unknown`); an UNKNOWN plan is a plan status,
+not an error.
+
+The commands `diagnose`, `verify`, `execute`, `run`, `download` and `source`
+do **not** accept `--json` and reject it with exit `2`; `serve` and `chat` are
+outside this contract by nature.
+
 ## Chat
 
 ```bash
