@@ -148,7 +148,72 @@ def _format_mib(value: float | None) -> str:
     return f"{value * 1024:.0f} MiB" if value is not None else "Unknown"
 
 
-def print_detection() -> None:
+def _json_detect_payload(hardware, runtimes, backends, runtime, backend) -> dict:
+    """Project the existing ``detect`` result; recompute nothing.
+
+    Hardware detection keeps its own vocabulary: an empty GPU list means
+    "no GPU was detected" (a definite observation, so it stays ``[]``), and
+    a GPU property that exists in the model but was not observed on this
+    machine (PCI id, VRAM, driver) uses the UNKNOWN structure. This payload
+    is hardware detection, NOT the runtime capability model of
+    ``runtime --json``, and not a compatibility evaluation.
+    """
+    # ``recommend()`` returns this display sentinel when nothing was
+    # available; JSON reports the definite absence as null, never UNKNOWN.
+    recommended_runtime = None if runtime == "None detected" else runtime
+    recommended_backend = None if backend == "None detected" else backend
+    return {
+        "system": {
+            "operating_system": _json_observed_text(hardware.operating_system),
+            "architecture": _json_observed_text(hardware.architecture),
+        },
+        "cpu": {
+            "model": _json_observed_text(hardware.cpu.model),
+            "architecture": _json_observed_text(hardware.cpu.architecture),
+            "cores": _json_observed(hardware.cpu.cores),
+        },
+        "memory": {
+            "total_bytes": _json_observed(hardware.memory.total_bytes),
+        },
+        "gpus": [
+            {
+                "name": _json_observed_text(gpu.name),
+                "vendor": _json_observed_text(gpu.vendor),
+                "pci_id": _json_observed(gpu.pci_id),
+                "device_id": _json_observed(gpu.device_id),
+                "driver": _json_observed_text(gpu.driver),
+                "vram_bytes": _json_observed(gpu.vram_bytes),
+                "vram_available_bytes": _json_observed(
+                    gpu.vram_available_bytes
+                ),
+                "sources": dict(gpu.sources),
+                "backends": list(gpu.backends),
+            }
+            for gpu in hardware.gpus
+        ],
+        "runtimes": [
+            {
+                "name": item.name,
+                "label": item.label,
+                "installed": item.installed,
+                "available": item.available,
+                "gpu_backend_detected": item.gpu_backend_detected,
+                "supported_backends": list(item.supported_backends),
+            }
+            for item in runtimes
+        ],
+        "backends": [
+            {"name": item.name, "available": item.available}
+            for item in backends
+        ],
+        "recommendation": {
+            "runtime": recommended_runtime,
+            "backend": recommended_backend,
+        },
+    }
+
+
+def print_detection(*, as_json: bool = False) -> None:
     hardware = detect_hardware()
     runtimes = detect_runtimes()
     detected_gpu_backends = {
@@ -156,6 +221,14 @@ def print_detection() -> None:
     }
     backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
     runtime, backend = recommend(runtimes, backends)
+
+    if as_json:
+        _emit_json_envelope(
+            "detect",
+            0,
+            _json_detect_payload(hardware, runtimes, backends, runtime, backend),
+        )
+        return
 
     print("CastleArq")
     print("==========================")
@@ -521,7 +594,60 @@ def _download_status(model_id: str) -> str:
     return "not available yet"
 
 
-def print_models() -> None:
+def _json_models_payload(hardware, results) -> dict:
+    """Project the existing ``models`` result; recompute nothing.
+
+    The catalog assessment belongs to the LEGACY compatibility domain
+    (``app.compatibility``: compatible / marginal / incompatible / unknown),
+    which is NOT the strict B9.3 evaluation vocabulary. It is therefore
+    reported under its own ``legacy_compatibility`` name so the two can
+    never be read as the same thing, and its enum travels as ``.value``.
+
+    A ``None`` here always means "not determined" for the memory estimate
+    and the recommended quantization, so both use the UNKNOWN structure; a
+    missing recommended runtime/backend is a definite "none recommended"
+    and stays ``null``.
+    """
+    known_vram = [
+        gpu.vram_available_bytes if gpu.vram_available_bytes is not None
+        else gpu.vram_bytes
+        for gpu in hardware.gpus
+        if gpu.vram_available_bytes is not None or gpu.vram_bytes is not None
+    ]
+    models = []
+    for result in results:
+        quantization = result.recommended_quantization
+        models.append({
+            "model_id": result.model.model_id,
+            "name": result.model.name,
+            # Availability comes from the same downloadable locator the
+            # `download` gate uses, so the two can never disagree.
+            "download": _download_status(result.model.model_id),
+            "legacy_compatibility": {
+                "status": result.status.value,
+                "score": result.score,
+                "reasons": list(result.reasons),
+                "warnings": list(result.warnings),
+            },
+            "memory": _json_observed(result.estimated_memory_bytes),
+            "memory_is_estimate": result.memory_is_estimate,
+            "quantization": _json_observed(
+                quantization.name if quantization is not None else None
+            ),
+            "runtime": result.recommended_runtime,
+            "backend": result.recommended_backend,
+        })
+    return {
+        "hardware": {
+            "ram_bytes": _json_observed(hardware.memory.total_bytes),
+            "gpu_count": len(hardware.gpus),
+            "vram_bytes_per_gpu": known_vram if known_vram else None,
+        },
+        "models": models,
+    }
+
+
+def print_models(*, as_json: bool = False) -> None:
     hardware = detect_hardware()
     runtimes = detect_runtimes()
     detected_gpu_backends = {
@@ -531,6 +657,14 @@ def print_models() -> None:
     results = recommend_models(
         hardware, runtimes, backends, get_catalog(), config=load_config()
     )
+    if as_json:
+        # Same detection, same catalog, same recommendations: only the
+        # representation changes. The per-model warnings stay in the payload,
+        # where they belong to that model's assessment.
+        _emit_json_envelope(
+            "models", 0, _json_models_payload(hardware, results)
+        )
+        return
     print("CastleArq - Model recommendations")
     print("==========================")
     if not results:
@@ -594,6 +728,11 @@ _JSON_COMMANDS = (
     "list",
     "store",
     "import",
+    # B9.76.5: the SHOULD surface. Same envelope, four different domains.
+    "models",
+    "runtime",
+    "detect",
+    "plan",
 )
 
 
@@ -633,6 +772,35 @@ def _json_quantization(value: str) -> dict:
     never fabricated from a filename; a real value stays a known observation.
     """
     if value == "Unknown":
+        return json_output.unknown("not_observed")
+    return json_output.known(value)
+
+
+def _json_observed(value) -> dict:
+    """Represent an optional observed value without inventing a sentinel.
+
+    ``None`` here means "this property exists in the domain model but was
+    not observed on this machine" (an absent runtime version, an unprobed
+    capability). It is reported as the ratified UNKNOWN structure, never as
+    the string ``"Unknown"`` and never as a bare ``null``. A ``None`` that
+    means "definitely absent" (no GPU detected, no runtime recommended) is
+    NOT routed here: it stays ``null``.
+    """
+    if value is None:
+        return json_output.unknown("not_observed")
+    return json_output.known(value)
+
+
+def _json_observed_text(value) -> dict:
+    """Represent a text field whose domain default is the ``"Unknown"`` sentinel.
+
+    ``CPUInfo.model``/``architecture``, ``GPUInfo.name``/``vendor``/``driver``
+    and the snapshot's system strings all default to the literal ``"Unknown"``
+    when the detector could not read them. That sentinel is a display value,
+    not data: it becomes the ratified UNKNOWN structure here, so no
+    ``"Unknown"`` datum ever reaches the JSON surface.
+    """
+    if value is None or value == "Unknown":
         return json_output.unknown("not_observed")
     return json_output.known(value)
 
@@ -994,21 +1162,74 @@ def print_source(provider: str | None, repository: str | None) -> int:
     return 0
 
 
+def _json_plan_payload(artifact, plan) -> dict:
+    """Project the existing ``plan`` result; the planner is untouched.
+
+    A ``None`` destination, required size or available disk space means the
+    offline planner could not determine it -- the human report says
+    ``Unknown`` -- so each becomes the ratified UNKNOWN structure. A BLOCKED
+    plan is a plan *status*, not an operational error: it stays in the
+    payload with a null error, and UNKNOWN is never turned into a failure.
+    """
+    return {
+        "artifact": {
+            "model_id": artifact.model_id,
+            "source": artifact.source,
+            "repository": artifact.repository,
+            "filename": artifact.filename,
+            "format": artifact.format,
+            "quantization": _json_quantization(artifact.quantization),
+            "download_url": artifact.download_url,
+        },
+        "plan": {
+            "status": plan.status.value,
+            "destination": _json_observed(
+                str(plan.destination) if plan.destination is not None else None
+            ),
+            "required_bytes": _json_observed(plan.required_bytes),
+            "available_bytes": _json_observed(plan.available_bytes),
+            "existing": plan.existing,
+            "reasons": list(plan.reasons),
+        },
+    }
+
+
 def print_plan(
     repository: str | None,
     filename: str | None,
     model_store: ModelStore | None = None,
+    *,
+    as_json: bool = False,
 ) -> int:
     if not repository or not filename:
-        print("Usage: python3 -m app.main plan <repository> <filename>")
+        usage = "Usage: python3 -m app.main plan <repository> <filename>"
+        if as_json:
+            print(usage, file=sys.stderr)
+            return _emit_json_envelope(
+                "plan", 2, {}, error=json_output.error("usage_error", usage)
+            )
+        print(usage)
         return 2
     model_id = logical_model_id("huggingface", repository)
     if model_id is None:
-        print(f"Plan error: repository is not mapped to a catalog model: {repository}")
+        message = (
+            f"repository is not mapped to a catalog model: {repository}"
+        )
+        if as_json:
+            # The reason travels in the envelope; stdout stays a single
+            # document, so the human line is not printed in this mode.
+            return _emit_json_envelope(
+                "plan", 1, {}, error=json_output.error("plan_error", message)
+            )
+        print(f"Plan error: {message}")
         return 1
     try:
         download_url = _download_url(repository, filename)
     except SourceError as error:
+        if as_json:
+            return _emit_json_envelope(
+                "plan", 1, {}, error=json_output.error("plan_error", str(error))
+            )
         print(f"Plan error: {error}")
         return 1
     artifact = ArtifactSpec(
@@ -1021,6 +1242,12 @@ def print_plan(
         download_url=download_url,
     )
     plan = DownloadPlanner(model_store=model_store).plan(artifact)
+    if as_json:
+        return _emit_json_envelope(
+            "plan",
+            0 if plan.status != DownloadPlanStatus.BLOCKED else 1,
+            _json_plan_payload(artifact, plan),
+        )
     print("CastleArq - Offline download plan")
     print("==========================")
     print(f"  Model: {artifact.model_id}")
@@ -1936,11 +2163,61 @@ examples:
 
 
 """
-def print_runtime_diagnostics(out=None) -> int:
+def _json_runtime_payload(resolved) -> dict:
+    """Project the already-resolved llama.cpp runtime state.
+
+    ``RuntimeCapability`` keeps its own model, and this payload never borrows
+    the hardware vocabulary of ``detect --json`` nor a compatibility
+    vocabulary. Properties that exist in the runtime model but were not
+    observed (an absent version, an unprobed capability) use the UNKNOWN
+    structure; ``availability`` travels as its enum ``.value``.
+    """
+    identity = resolved.identity
+    capability = resolved.capability
+    payload = {
+        "runtime": {
+            "canonical_id": identity.canonical_id,
+            "executable_name": _json_observed(identity.executable_name),
+            "executable_path": _json_observed(identity.executable_path),
+            "version": _json_observed(identity.version),
+            "build_identifier": _json_observed(identity.build_identifier),
+            "availability": identity.availability.value,
+            "reason": identity.reason,
+        },
+        "capability": (
+            _json_observed(None)
+            if capability is None
+            else {
+                "name": capability.name,
+                "executable_path": _json_observed(capability.executable_path),
+                "version": _json_observed(capability.version),
+                "available": capability.available,
+                "reason": capability.reason,
+                "supports_one_shot": capability.supports_one_shot,
+                "supported_formats": list(capability.supported_formats),
+                "supported_backends": list(capability.supported_backends),
+                "prompt_input_modes": [
+                    mode.value for mode in capability.prompt_input_modes
+                ],
+                "compatibility_names": list(capability.compatibility_names),
+            }
+        ),
+    }
+    return payload
+
+
+def print_runtime_diagnostics(out=None, *, as_json: bool = False) -> int:
     """Present the resolved official llama.cpp runtime state."""
     out = out if out is not None else sys.stdout
     resolved = resolve_llama_runtime()
     identity = resolved.identity
+    if as_json:
+        return _emit_json_envelope(
+            "runtime",
+            0 if identity.availability is RuntimeAvailability.AVAILABLE else 1,
+            _json_runtime_payload(resolved),
+            out=out,
+        )
     print("Runtime: llama.cpp", file=out)
     print("Launcher: llama", file=out)
     if identity.executable_path is not None:
@@ -2136,7 +2413,8 @@ def main() -> int:
         help=(
             "print exactly one castlearq.cli JSON document on stdout "
             "instead of human output (available for compatibility, "
-            "validate, list and store, and for import)"
+            "validate, list and store, for import, and for the SHOULD "
+            "commands models, runtime, detect and plan)"
         ),
     )
     args = parser.parse_args()
@@ -2227,23 +2505,28 @@ def main() -> int:
             model_store = ModelStore(resolution.path)
 
     if args.command == "detect":
-        print_detection()
+        print_detection(as_json=args.json)
     elif args.command == "diagnose":
         return print_gpu_diagnosis()
     elif args.command == "verify":
         return print_remediation_verification()
     elif args.command == "models":
-        print_models()
+        print_models(as_json=args.json)
     elif args.command == "list":
         if args.json:
             return list_command(model_store, out=sys.stdout)
         print_local_models(model_store)
     elif args.command == "runtime":
-        return print_runtime_diagnostics()
+        return print_runtime_diagnostics(as_json=args.json)
     elif args.command == "source":
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
-        return print_plan(args.provider, args.repository, model_store=model_store)
+        return print_plan(
+            args.provider,
+            args.repository,
+            model_store=model_store,
+            **json_kwargs,
+        )
     elif args.command == "store":
         return store_command(
             model_store_path=args.model_store,

@@ -415,7 +415,18 @@ class IdentitySeparationTests(_ImportCase):
         self.assertEqual(payload["memory_estimate"]["status"], "unknown")
 
     def test_json_flag_is_still_rejected_for_every_other_command(self):
-        for command in ("models", "runtime", "plan", "detect", "execute", "serve"):
+        # The four SHOULD commands joined the surface in B9.76.5; the DEFER
+        # commands (and serve/chat) keep rejecting it.
+        for command in (
+            "diagnose",
+            "verify",
+            "execute",
+            "run",
+            "download",
+            "source",
+            "serve",
+            "chat",
+        ):
             with self.subTest(command=command):
                 code, out, err = run_cli(command, "--json")
                 self.assertEqual(code, 2)

@@ -772,17 +772,14 @@ class JsonFlagSurfaceTests(unittest.TestCase):
     """``--json`` belongs to the four MUST commands and nowhere else."""
 
     NOT_WIRED = (
-        "models",
-        "runtime",
-        "detect",
-        "plan",
         "diagnose",
         "verify",
         "execute",
         "run",
         "download",
         "source",
-        # ``import`` joined this surface in B9.76.4.
+        # ``import`` joined this surface in B9.76.4 and the four SHOULD
+        # commands in B9.76.5.
         "serve",
         "chat",
     )
