@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import model_domain as md
+from castlearq import model_domain as md
 
 
 def _identity(**overrides):

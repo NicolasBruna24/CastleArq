@@ -20,8 +20,8 @@ Transport: ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``
 
 Architecture: HTTP is a thin transport over the existing application/core
 layer. This module never calls the CLI and never executes shell commands.
-It reuses the catalog (``app.model_catalog``), the identity mapping
-(``app.model_identity``) and the local artifact store (``app.model_store``)
+It reuses the catalog (``castlearq.model_catalog``), the identity mapping
+(``castlearq.model_identity``) and the local artifact store (``castlearq.model_store``)
 directly, and maps their results into explicit API DTOs.
 
 Block 1 endpoints (read-only):
@@ -33,7 +33,7 @@ Block 1 endpoints (read-only):
 Block 2 endpoint:
 
 - ``POST /v1/run``     -> one-shot execution through the SAME use case as the
-  CLI ``execute`` command (``app.execute_model.execute_model``), preceded by
+  CLI ``execute`` command (``castlearq.execute_model.execute_model``), preceded by
   the strict compatibility evaluation and its admission gate
   (``evaluate_model_compatibility`` -> ``to_admission``), exactly as ratified
   in ``docs/B9.51-http-admission-contract-decision.md`` (B9.52). One global
@@ -48,7 +48,7 @@ Block 2 endpoint:
 Block 3.1 endpoints (chat session lifecycle):
 
 - ``POST /v1/chat/sessions``          -> open a session through the shared
-  chat pipeline (``app.run_service.open_chat_session``); HTTP 201. Opening a
+  chat pipeline (``castlearq.run_service.open_chat_session``); HTTP 201. Opening a
   session starts a model, so B9.52 applies the same admission contract and
   takes the same ``run_lock`` (released as soon as the launch completes, never
   held for the session's lifetime).
@@ -61,7 +61,7 @@ Block 3.2 endpoint (turns, per-session concurrency):
 
 - ``POST /v1/chat/sessions/{id}/turns`` -> one prompt on a live session,
   submitted through the session's own ``send()`` (the existing state machine
-  in ``app.chat`` decides what a session accepts); HTTP 200 with
+  in ``castlearq.chat`` decides what a session accepts); HTTP 200 with
   ``session_id``, ``response`` and ``turn_count``.
 
   Exclusion is strictly per session: every registered session owns one turn
@@ -236,7 +236,7 @@ class APIConfigurationError(Exception):
 # ---------------------------------------------------------------------------
 
 
-# Version resolution is implemented in app.version and shared with the CLI.
+# Version resolution is implemented in castlearq.version and shared with the CLI.
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ class ModelDTO:
     """API-safe projection of one catalog :class:`ModelSpec`.
 
     Contains only static catalog metadata and the downloadability predicate
-    from ``app.model_identity``. No paths, argv, environment or runtime
+    from ``castlearq.model_identity``. No paths, argv, environment or runtime
     objects are exposed.
     """
 
@@ -663,7 +663,7 @@ class _ChatSessionRegistry:
         ``session.close()`` is only ever invoked on sessions that are already
         unreachable by :meth:`begin_turn`. Preserve this order: closing a
         session that is still registered would race the session's own state
-        machine in ``app.chat`` (``send()`` may set ``READY`` after
+        machine in ``castlearq.chat`` (``send()`` may set ``READY`` after
         ``close()`` set ``CLOSED``), so a future ``cancel``/force-delete must
         unregister first and close afterwards.
         """
@@ -771,7 +771,7 @@ def _admission_denied_body(
 #: model reaches us as a *blocked evaluation* whose ``blocking_outcome`` is the
 #: resolver's own message -- it is not an admission decision, it is the
 #: resource not existing, so it must be answered before the gate is consulted.
-#: This is the same marker ``app.run_service`` already matches on, reused here
+#: This is the same marker ``castlearq.run_service`` already matches on, reused here
 #: rather than a second notion of "not found".
 _MODEL_NOT_FOUND_PREFIX = "Model not found in the local catalog:"
 
@@ -1400,7 +1400,7 @@ def _make_handler(
                 except ChatSessionClosedError:
                     # Block 3.4: the message must match the session's
                     # observable state (GET reports ``status``), without
-                    # inventing new states or codes. ``app.chat`` raises this
+                    # inventing new states or codes. ``castlearq.chat`` raises this
                     # exception for both CLOSED and FAILED sessions; the
                     # exception text itself is never echoed to the client.
                     if getattr(entry.session.state, "value", None) == "failed":

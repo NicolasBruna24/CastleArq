@@ -80,5 +80,5 @@ jobs:
       - name: Run the full test suite
         # Repository root is required: pyproject.toml sets
         # [tool.pytest.ini_options] pythonpath = ["."], so the suite must be
-        # collected from the checkout root for `app` to be importable.
+        # collected from the checkout root for `castlearq` to be importable.
         run: python -m pytest

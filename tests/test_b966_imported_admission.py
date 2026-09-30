@@ -12,23 +12,23 @@ promote an UNKNOWN check to PASSED.
 
 import unittest
 
-from app.compatibility import (
+from castlearq.compatibility import (
     CompatibilityConfig,
     CompatibilityStatus,
     assess_model,
 )
-from app.compatibility_domain import CheckStatus, CompatibilityCheck
-from app.compatibility_domain import CompatibilityResult as StrictCompatibilityResult
-from app.compatibility_domain import CompatibilityStatus as StrictCompatibilityStatus
-from app.evaluate_compatibility import (
+from castlearq.compatibility_domain import CheckStatus, CompatibilityCheck
+from castlearq.compatibility_domain import CompatibilityResult as StrictCompatibilityResult
+from castlearq.compatibility_domain import CompatibilityStatus as StrictCompatibilityStatus
+from castlearq.evaluate_compatibility import (
     _NON_BLOCKING_E2E_UNKNOWNS,
     _non_blocking_unknowns,
     EvaluateModelCompatibilityResult,
     to_admission,
 )
-from app.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
-from app.models import ModelSpec
-from app.runtimes import BackendStatus, RuntimeStatus
+from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.models import ModelSpec
+from castlearq.runtimes import BackendStatus, RuntimeStatus
 
 
 def _hardware(*, ram_bytes=32 * 1024**3, vram=16 * 1024**3):
@@ -238,13 +238,13 @@ class LegacyGateDiscriminatorTests(unittest.TestCase):
         self.assertIsNotNone(CATALOG.id)
 
     def test_every_catalog_entry_carries_an_explicit_id(self):
-        from app.model_catalog import get_catalog
+        from castlearq.model_catalog import get_catalog
         for spec in get_catalog():
             self.assertIsNotNone(spec.id, spec.model_id)
 
     def test_execute_model_passes_flag_from_id_is_none(self):
         import inspect
-        from app import execute_model as em
+        from castlearq import execute_model as em
         source = inspect.getsource(em._legacy_compatibility)
         self.assertIn("allow_unknown_memory=model.id is None", source)
         self.assertIn("B9.66", source)

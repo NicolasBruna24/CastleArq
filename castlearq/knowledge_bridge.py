@@ -15,7 +15,7 @@
 """B9.7: pure bridge from the B9.5 knowledge base to the B9.3 evaluator.
 
 Projects existing declarative knowledge (B9.5 ``KnowledgeRegistry``) into the
-supplied ``RuntimeKnowledge`` input of B9.3 (``app/compatibility_evaluator.py``).
+supplied ``RuntimeKnowledge`` input of B9.3 (``castlearq/compatibility_evaluator.py``).
 The bridge transports knowledge; it never invents it, never resolves aliases,
 never applies similarity or scope overlap, never ranks sources and never
 performs I/O (B9.4 §20 contract, implemented without modifying B9.3/B9.5).

@@ -16,7 +16,7 @@
 
 ``tests/test_execute_model.py`` proves the use case with doubles; this module
 proves the composition point itself: ``compose_execute_model_dependencies`` in
-``app/application_wiring.py`` binds REAL infrastructure and the resulting
+``castlearq/application_wiring.py`` binds REAL infrastructure and the resulting
 ``ExecuteModelDependencies`` drives the REAL ``execute_model`` end to end —
 real store, real catalog, real resolver, real legacy gate, real preflight,
 real selector and the real ``LlamaCppRunner``. Nothing runs a model, downloads
@@ -45,23 +45,23 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import application_wiring as wiring
-from app import execute_model as em
-from app.execution import (
+from castlearq import application_wiring as wiring
+from castlearq import execute_model as em
+from castlearq.execution import (
     ArtifactExecutionPreflight,
     ExecutionErrorCode,
     ExecutionResult,
 )
-from app.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
-from app.model_catalog import get_catalog
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState, ModelSpec
-from app.runner import LlamaCppRunner, ModelRunner
-from app.runtimes import BackendStatus, PromptInputMode, RuntimeCapability
-from app.selection import RuntimeBackendSelector
+from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.model_catalog import get_catalog
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.runner import LlamaCppRunner, ModelRunner
+from castlearq.runtimes import BackendStatus, PromptInputMode, RuntimeCapability
+from castlearq.selection import RuntimeBackendSelector
 
 # Files allowed to name the Execute composition function. Every other file in
-# ``app/`` must stay unaware of it: B9.22 established the composition
+# ``castlearq/`` must stay unaware of it: B9.22 established the composition
 # boundary; B9.23 authorized ``main.py`` as the first Product Caller; other
 # Application/Infrastructure modules must not consume the composition root.
 #
@@ -266,8 +266,8 @@ class CapabilityIdentityTests(unittest.TestCase):
 class ApplicationBoundaryTests(unittest.TestCase):
     """W7: structural checks on the direction of every dependency."""
 
-    SOURCE = Path("app/execute_model.py").read_text(encoding="utf-8")
-    WIRING_SOURCE = Path("app/application_wiring.py").read_text(encoding="utf-8")
+    SOURCE = Path("castlearq/execute_model.py").read_text(encoding="utf-8")
+    WIRING_SOURCE = Path("castlearq/application_wiring.py").read_text(encoding="utf-8")
 
     @staticmethod
     def _imported_modules(source: str) -> set[str]:
@@ -275,11 +275,11 @@ class ApplicationBoundaryTests(unittest.TestCase):
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.ImportFrom) and node.module:
                 modules.add(node.module)
-                modules.add("app." + node.module)
+                modules.add("castlearq." + node.module)
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     modules.add(alias.name)
-                    modules.add("app." + alias.name)
+                    modules.add("castlearq." + alias.name)
         return modules
 
     def test_use_case_imports_stay_the_b9_20_baseline(self):
@@ -288,14 +288,14 @@ class ApplicationBoundaryTests(unittest.TestCase):
         # still knows no infrastructure concretion.
         modules = self._imported_modules(self.SOURCE)
         for banned in (
-            "app.application_wiring",
+            "castlearq.application_wiring",
             "application_wiring",
             "subprocess",
-            "app.run_service",
-            "app.main",
-            "app.api",
-            "app.cli",
-            "app.execution_service",
+            "castlearq.run_service",
+            "castlearq.main",
+            "castlearq.api",
+            "castlearq.cli",
+            "castlearq.execution_service",
         ):
             self.assertNotIn(banned, modules)
         self.assertNotIn("LlamaCppRunner", self.SOURCE)
@@ -303,13 +303,13 @@ class ApplicationBoundaryTests(unittest.TestCase):
     def test_composition_root_imports_the_use_case_and_real_collaborators(self):
         modules = self._imported_modules(self.WIRING_SOURCE)
         for required in (
-            "app.execute_model",
-            "app.model_store",
-            "app.model_catalog",
-            "app.execution",
-            "app.selection",
-            "app.runner",
-            "app.runtimes",
+            "castlearq.execute_model",
+            "castlearq.model_store",
+            "castlearq.model_catalog",
+            "castlearq.execution",
+            "castlearq.selection",
+            "castlearq.runner",
+            "castlearq.runtimes",
         ):
             self.assertIn(required, modules)
 
@@ -318,11 +318,18 @@ class ApplicationBoundaryTests(unittest.TestCase):
         # Product Caller) may name it; Application/Infrastructure must not.
         offenders = [
             str(path)
-            for path in sorted(Path("app").rglob("*.py"))
+            for path in sorted(Path("castlearq").rglob("*.py"))
             if path.name not in _COMPOSITION_ENTRY_POINTS
             and "compose_execute_model_dependencies"
             in path.read_text(encoding="utf-8")
         ]
+        # B9.77: an rglob over a directory that does not resolve yields no
+        # paths, so ``offenders == []`` would hold while scanning nothing.
+        self.assertTrue(
+            list(Path("castlearq").rglob("*.py")),
+            "Path('castlearq').rglob('*.py') resolved no production modules; "
+            "run the suite from the repository root.",
+        )
         self.assertEqual(offenders, [])
 
 

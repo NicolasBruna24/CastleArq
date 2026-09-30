@@ -46,8 +46,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import main as cli
-from app.model_store import (
+from castlearq import main as cli
+from castlearq.model_store import (
     STORE_SOURCE_CLI,
     STORE_SOURCE_CONFIG,
     STORE_SOURCE_DEFAULT,
@@ -413,7 +413,7 @@ class SelectionPolicyTests(unittest.TestCase):
 
 def _artifact():
     """One declared artifact, for the two-store independence check."""
-    from app.models import ArtifactSpec
+    from castlearq.models import ArtifactSpec
 
     return ArtifactSpec(
         model_id="qwen/coder",

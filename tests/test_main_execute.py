@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""B9.24 tests for the ``execute`` Product Caller (``app/main.py``).
+"""B9.24 tests for the ``execute`` Product Caller (``castlearq/main.py``).
 
 Observable behavior of the thin caller only: registration, usage exit 2
 before composition, one composition per invocation, argument forwarding through
@@ -32,21 +32,21 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
-from app.evaluate_compatibility import EvaluateCompatibilityDependencies
-from app.execute_model import ExecuteAdmissionDeniedError, ExecutePreparationError
-from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
+from castlearq.evaluate_compatibility import EvaluateCompatibilityDependencies
+from castlearq.execute_model import ExecuteAdmissionDeniedError, ExecutePreparationError
+from castlearq.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
 
-USAGE = "Usage: python3 -m app.main execute <model-id> <prompt>"
+USAGE = "Usage: python3 -m castlearq.main execute <model-id> <prompt>"
 
 
 def _execute_command_node():
     tree = ast.parse(
-        Path("app/main.py").read_text(encoding="utf-8"), filename="app/main.py"
+        Path("castlearq/main.py").read_text(encoding="utf-8"), filename="castlearq/main.py"
     )
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == "execute_command":
             return node
-    raise AssertionError("execute_command not found in app/main.py")
+    raise AssertionError("execute_command not found in castlearq/main.py")
 
 
 def _referenced_names(node):
@@ -61,7 +61,7 @@ def _referenced_names(node):
 
 def _run_cli(*argv):
     """Run ``main()`` with injected argv/streams; return (code, out, err)."""
-    from app.main import main
+    from castlearq.main import main
 
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(sys, "argv", ["castlearq", *argv]), patch.object(
@@ -79,7 +79,7 @@ def _invoke(model_id, prompt, *, result=None, error=None, **forward):
 
     Returns ``(code, out, err, compose_mock, execute_mock, evaluate_mock)``.
     """
-    from app.main import execute_command
+    from castlearq.main import execute_command
     if result is None:
         result = _success_result()
 
@@ -98,11 +98,11 @@ def _invoke(model_id, prompt, *, result=None, error=None, **forward):
     deps = object()
     out, err = io.StringIO(), io.StringIO()
     with patch(
-        "app.main.compose_execute_model_dependencies", return_value=deps
+        "castlearq.main.compose_execute_model_dependencies", return_value=deps
     ) as compose, patch(
-        "app.main.evaluate_model_compatibility", return_value=evaluation_result
+        "castlearq.main.evaluate_model_compatibility", return_value=evaluation_result
     ) as evaluate, patch(
-        "app.main.execute_model", return_value=result, side_effect=error
+        "castlearq.main.execute_model", return_value=result, side_effect=error
     ) as execute:
         code = execute_command(model_id, prompt, out=out, err=err, **forward)
     return code, out.getvalue(), err.getvalue(), compose, execute, evaluate
@@ -131,7 +131,7 @@ class RegistrationTests(unittest.TestCase):
         self.assertIn("run,execute,chat", out)
 
     def test_execute_dispatch_reaches_execute_command(self):
-        with patch("app.main.execute_command", return_value=0) as caller:
+        with patch("castlearq.main.execute_command", return_value=0) as caller:
             code, _, _ = _run_cli("execute", "m1", "hello")
         self.assertEqual(code, 0)
         caller.assert_called_once_with(
@@ -143,7 +143,7 @@ class UsageValidationTests(unittest.TestCase):
     """T2/T3: model_id and prompt are required, before any composition."""
 
     def test_missing_model_id_exits_two_without_composition(self):  # T2
-        with patch("app.main.compose_execute_model_dependencies") as compose:
+        with patch("castlearq.main.compose_execute_model_dependencies") as compose:
             code, out, err = _run_cli("execute")
         self.assertEqual(code, 2)
         self.assertIn(USAGE, err)
@@ -156,7 +156,7 @@ class UsageValidationTests(unittest.TestCase):
         compose.assert_not_called()
 
     def test_missing_prompt_exits_two_without_composition(self):  # T3
-        with patch("app.main.compose_execute_model_dependencies") as compose:
+        with patch("castlearq.main.compose_execute_model_dependencies") as compose:
             code, _, err = _run_cli("execute", "m1")
         self.assertEqual(code, 2)
         self.assertIn(USAGE, err)
@@ -189,11 +189,11 @@ class ApplicationCallTests(unittest.TestCase):
 
     def _through_cli(self, *argv):
         with patch(
-            "app.main.compose_execute_model_dependencies"
+            "castlearq.main.compose_execute_model_dependencies"
         ) as compose, patch(
-            "app.main.execute_model", return_value=_success_result()
+            "castlearq.main.execute_model", return_value=_success_result()
         ) as execute:
-            from app.main import main
+            from castlearq.main import main
 
             stdout, stderr = io.StringIO(), io.StringIO()
             with patch.object(sys, "argv", ["castlearq", *argv]), patch.object(
@@ -217,13 +217,13 @@ class ApplicationCallTests(unittest.TestCase):
         self.assertEqual(execute.call_args.kwargs["filename"], "a.gguf")
 
     def test_composition_runs_once_per_invocation(self):  # T6
-        from app.main import main
+        from castlearq.main import main
 
         counts = []
         with patch(
-            "app.main.compose_execute_model_dependencies"
+            "castlearq.main.compose_execute_model_dependencies"
         ) as compose, patch(
-            "app.main.execute_model", return_value=_success_result()
+            "castlearq.main.execute_model", return_value=_success_result()
         ):
             for _ in range(2):
                 with patch.object(
@@ -255,11 +255,11 @@ class ApplicationCallTests(unittest.TestCase):
 
     def test_dependencies_are_the_composed_value(self):  # T8
         with patch(
-            "app.main.compose_execute_model_dependencies"
+            "castlearq.main.compose_execute_model_dependencies"
         ) as compose, patch(
-            "app.main.execute_model", return_value=_success_result()
+            "castlearq.main.execute_model", return_value=_success_result()
         ) as execute:
-            from app.main import execute_command
+            from castlearq.main import execute_command
 
             code = execute_command(
                 "m1", "hi", out=io.StringIO(), err=io.StringIO()
@@ -320,15 +320,15 @@ class PreparationErrorProjectionTests(unittest.TestCase):
         self.assertIn("Warning: marginal", err)
 
     def test_evaluation_failure_projects_denial_and_calls_execute(self):
-        from app.main import execute_command
+        from castlearq.main import execute_command
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.compose_execute_model_dependencies", return_value=object()
+            "castlearq.main.compose_execute_model_dependencies", return_value=object()
         ), patch(
-            "app.main.evaluate_model_compatibility", side_effect=RuntimeError
+            "castlearq.main.evaluate_model_compatibility", side_effect=RuntimeError
         ) as evaluate, patch(
-            "app.main.execute_model", side_effect=ExecuteAdmissionDeniedError(
+            "castlearq.main.execute_model", side_effect=ExecuteAdmissionDeniedError(
                 "Execution denied by evaluation admission; deny-by-default applies"
             )
         ) as execute:
@@ -371,11 +371,11 @@ class PreparationErrorProjectionTests(unittest.TestCase):
 class StructuralBoundaryTests(unittest.TestCase):
     """§12: main.py introduces no infrastructure for the new flow."""
 
-    SOURCE = Path("app/main.py").read_text(encoding="utf-8")
+    SOURCE = Path("castlearq/main.py").read_text(encoding="utf-8")
 
     @classmethod
     def setUpClass(cls):
-        cls.tree = ast.parse(cls.SOURCE, filename="app/main.py")
+        cls.tree = ast.parse(cls.SOURCE, filename="castlearq/main.py")
         cls.execute_command = next(
             node
             for node in cls.tree.body

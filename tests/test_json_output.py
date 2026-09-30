@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from app import json_output as jo
-from app.compatibility_domain import CheckStatus, CompatibilityStatus
+from castlearq import json_output as jo
+from castlearq.compatibility_domain import CheckStatus, CompatibilityStatus
 
 
 class EnvelopeTests(unittest.TestCase):

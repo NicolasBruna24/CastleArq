@@ -20,11 +20,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.importing import ImportStatus, LocalArtifactImporter
-from app.model_catalog import get_catalog
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState
-from app.resolver import ModelArtifactResolutionError, ModelArtifactResolver
+from castlearq.importing import ImportStatus, LocalArtifactImporter
+from castlearq.model_catalog import get_catalog
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.resolver import ModelArtifactResolutionError, ModelArtifactResolver
 
 
 def _gguf(architecture="qwen2") -> bytes:
@@ -333,7 +333,7 @@ class IdentitySeparationTests(_ResolverCase):
 
     def test_evaluate_result_module_is_untouched_by_stage_two(self):
         """Stage 2 must not change admission; imported is still propagatable."""
-        import app.evaluate_compatibility as module
+        import castlearq.evaluate_compatibility as module
         import inspect as inspect_module
         source = inspect_module.getsource(module)
         self.assertIn("imported", source)

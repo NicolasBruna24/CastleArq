@@ -16,7 +16,7 @@
 """Tests for Block 3.1 chat session lifecycle and Block 3.2 chat turns.
 
 3.2 additions: ``POST /v1/chat/sessions/{id}/turns``. Session doubles below
-implement the same public contract the real ``app.chat`` session exposes
+implement the same public contract the real ``castlearq.chat`` session exposes
 (``send()`` appends a completed ``ChatTurn``, ``close()`` is idempotent), so
 no runtime is executed and no model is needed.
 """
@@ -29,9 +29,9 @@ import unittest
 import uuid
 from types import SimpleNamespace
 from unittest import mock
-from app import api as api_module
-from app.api import MAX_CHAT_SESSIONS, MAX_REQUEST_BODY_BYTES, _ChatSessionRegistry, build_server, parse_chat_session_request, parse_chat_turn_request, parse_session_id
-from app.chat import ChatProcessError, ChatSessionClosedError, ChatSessionError, ChatTurn
+from castlearq import api as api_module
+from castlearq.api import MAX_CHAT_SESSIONS, MAX_REQUEST_BODY_BYTES, _ChatSessionRegistry, build_server, parse_chat_session_request, parse_chat_turn_request, parse_session_id
+from castlearq.chat import ChatProcessError, ChatSessionClosedError, ChatSessionError, ChatTurn
 import socket
 
 
@@ -89,13 +89,13 @@ def wait_for_slot_release(entry, timeout: float = 5.0) -> bool:
 class TurnSession:
     """Session double honouring the real ``LlamaCppChatSession`` contract.
 
-    Mirrors the parts of ``app.chat`` the HTTP layer depends on:
+    Mirrors the parts of ``castlearq.chat`` the HTTP layer depends on:
 
     - ``send()`` refuses a ``CLOSED``/``FAILED`` session with
       ``ChatSessionClosedError`` *before* generating anything, which is what
       makes a dead session answer 409 instead of re-running the runtime;
     - a generation that fails with a ``ChatSessionError`` (dead process,
-      timeout) leaves the session ``FAILED``, exactly like ``app.chat``;
+      timeout) leaves the session ``FAILED``, exactly like ``castlearq.chat``;
     - a completed ``ChatTurn`` is appended only after a successful generation
       and the session goes back to ``READY``;
     - ``close()`` is idempotent, switches the session to ``CLOSED`` and opens
@@ -148,7 +148,7 @@ class TurnSession:
             if isinstance(outcome, Exception):
                 if isinstance(outcome, ChatSessionError) and not isinstance(
                         outcome, ChatSessionClosedError):
-                    # app.chat leaves the session FAILED on process errors and
+                    # castlearq.chat leaves the session FAILED on process errors and
                     # timeouts (but not on the pre-generation closed error).
                     self.state.value = "failed"
                 raise outcome
@@ -222,7 +222,7 @@ class AdmissionDefault(unittest.TestCase):
     def setUp(self):
         if self.admit:
             patcher = mock.patch(
-                "app.api.evaluate_model_compatibility",
+                "castlearq.api.evaluate_model_compatibility",
                 side_effect=_admitting_evaluation,
             )
             patcher.start()
@@ -266,7 +266,7 @@ class ServerHarness:
         self.stop()
         return False
 
-from app.run_service import ChatLaunchFailedError, ChatSessionOpened, ModelNotFoundError, RunPreparationFailedError
+from castlearq.run_service import ChatLaunchFailedError, ChatSessionOpened, ModelNotFoundError, RunPreparationFailedError
 HOST = "127.0.0.1"
 
 class ParseTests(unittest.TestCase):
@@ -303,7 +303,7 @@ class ParseTests(unittest.TestCase):
 class PostTests(AdmissionDefault):
     def test_create_201(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened("my-model")):
+                "castlearq.api.open_chat_session", return_value=_opened("my-model")):
             status, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "my-model"})
         self.assertEqual(status, 201)
         payload = json.loads(raw.decode())
@@ -313,7 +313,7 @@ class PostTests(AdmissionDefault):
 
     def test_distinct_ids(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=[_opened("m"), _opened("m")]):
             _, _, r1 = h.post_json("/v1/chat/sessions", {"model_id": "m"})
             _, _, r2 = h.post_json("/v1/chat/sessions", {"model_id": "m"})
@@ -321,20 +321,20 @@ class PostTests(AdmissionDefault):
 
     def test_404(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", side_effect=ModelNotFoundError("nope")):
+                "castlearq.api.open_chat_session", side_effect=ModelNotFoundError("nope")):
             status, _, _ = h.post_json("/v1/chat/sessions", {"model_id": "ghost"})
         self.assertEqual(status, 404)
 
     def test_422(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=RunPreparationFailedError("bad")):
             status, _, _ = h.post_json("/v1/chat/sessions", {"model_id": "m"})
         self.assertEqual(status, 422)
 
     def test_503_no_leak(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=ChatLaunchFailedError("/tmp/secret boom")):
             status, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
         self.assertEqual(status, 503)
@@ -342,14 +342,14 @@ class PostTests(AdmissionDefault):
 
     def test_500_no_leak(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", side_effect=RuntimeError("boom")):
+                "castlearq.api.open_chat_session", side_effect=RuntimeError("boom")):
             status, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
         self.assertEqual(status, 500)
         self.assertNotIn("boom", raw.decode())
 
     def test_bad_requests_400(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened()) as fac:
+                "castlearq.api.open_chat_session", return_value=_opened()) as fac:
             status, _, _ = h.post_json("/v1/chat/sessions", None, raw_body=b"{bad")
             self.assertEqual(status, 400)
             for raw_body in (b"[]", b'"x"'):
@@ -370,14 +370,14 @@ class PostTests(AdmissionDefault):
     def test_413(self):
         big = b'{"model_id": "' + b"x" * (MAX_REQUEST_BODY_BYTES + 1) + b'"}'
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened()) as fac:
+                "castlearq.api.open_chat_session", return_value=_opened()) as fac:
             status, _, _ = h.post_json("/v1/chat/sessions", None, raw_body=big)
         self.assertEqual(status, 413)
         fac.assert_not_called()
 
     def test_dangerous_fields_400(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened()) as fac:
+                "castlearq.api.open_chat_session", return_value=_opened()) as fac:
             for field in ("path", "argv", "env", "command", "executable",
                           "artifact_path", "runtime", "backend"):
                 status, _, _ = h.post_json(
@@ -388,7 +388,7 @@ class PostTests(AdmissionDefault):
     def test_max_sessions_409(self):
         sessions = [_opened() for _ in range(MAX_CHAT_SESSIONS)]
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", side_effect=sessions) as fac:
+                "castlearq.api.open_chat_session", side_effect=sessions) as fac:
             codes = []
             last = b""
             for _ in range(MAX_CHAT_SESSIONS + 1):
@@ -403,7 +403,7 @@ class PostTests(AdmissionDefault):
     def test_failed_open_registers_nothing(self):
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=ChatLaunchFailedError("no runtime")):
             status, _, _ = h.post_json("/v1/chat/sessions", {"model_id": "m"})
         self.assertEqual(status, 503)
@@ -418,7 +418,7 @@ class GetDeleteTests(AdmissionDefault):
 
     def test_get_200(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened("my-model")):
+                "castlearq.api.open_chat_session", return_value=_opened("my-model")):
             sid = self._create(h)
             status, _, raw = h.request("GET", f"/v1/chat/sessions/{sid}")
         self.assertEqual(status, 200)
@@ -442,7 +442,7 @@ class GetDeleteTests(AdmissionDefault):
         session = FakeSession()
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 return_value=ChatSessionOpened(session=session, model_id="m")):
             _, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
             sid = json.loads(raw.decode())["session_id"]
@@ -465,7 +465,7 @@ class GetDeleteTests(AdmissionDefault):
 
     def test_double_delete(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened("m")):
+                "castlearq.api.open_chat_session", return_value=_opened("m")):
             _, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
             sid = json.loads(raw.decode())["session_id"]
             first, _, _ = h.request("DELETE", f"/v1/chat/sessions/{sid}")
@@ -499,11 +499,11 @@ class ShutdownTests(AdmissionDefault):
 class RegressionTests(AdmissionDefault):
     def test_no_shellout_no_cli(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened("m")
+                "castlearq.api.open_chat_session", return_value=_opened("m")
              ), mock.patch("subprocess.Popen") as popen_mock, mock.patch(
                 "subprocess.run") as run_mock, mock.patch(
-                "app.main.run_model") as rm, mock.patch(
-                "app.main.chat_model") as cm:
+                "castlearq.main.run_model") as rm, mock.patch(
+                "castlearq.main.chat_model") as cm:
             _, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
             sid = json.loads(raw.decode())["session_id"]
             h.request("GET", f"/v1/chat/sessions/{sid}")
@@ -528,7 +528,7 @@ class RegressionTests(AdmissionDefault):
     def test_only_the_turns_subpath_is_routed(self):
         """Block 3.2 wires ``.../turns``; other POST shapes keep Block 1 405."""
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session", return_value=_opened("m")):
+                "castlearq.api.open_chat_session", return_value=_opened("m")):
             _, _, raw = h.post_json("/v1/chat/sessions", {"model_id": "m"})
             sid = json.loads(raw.decode())["session_id"]
             bare, _, _ = h.post_json(f"/v1/chat/sessions/{sid}", {"prompt": "hi"})
@@ -613,7 +613,7 @@ class ChatTurnHttpTests(AdmissionDefault):
 
     def _create(self, harness, session):
         with mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 return_value=ChatSessionOpened(session=session, model_id="m")):
             status, _, raw = harness.post_json(
                 "/v1/chat/sessions", {"model_id": "m"})
@@ -685,7 +685,7 @@ class ChatTurnHttpTests(AdmissionDefault):
            busy and reaches ``send()`` again;
         5. the failed turn is not counted;
         6. the session is left ``FAILED`` (visible through ``GET``), which is
-           what ``app.chat`` does on a process error;
+           what ``castlearq.chat`` does on a process error;
         7. the second turn never re-runs generation on the failed session and
            answers 409, the existing contract for a session that can no longer
            accept turns;
@@ -1138,7 +1138,7 @@ class LifecycleHardeningTests(AdmissionDefault):
 
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session", side_effect=factory):
+                "castlearq.api.open_chat_session", side_effect=factory):
             registry.close_all()
             status, _, raw = self._post_create(h)
         self.assertEqual(status, 503)
@@ -1150,7 +1150,7 @@ class LifecycleHardeningTests(AdmissionDefault):
         session = FakeSession()
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 return_value=ChatSessionOpened(session=session, model_id="m")):
             _, _, raw = self._post_create(h)
             sid = json.loads(raw.decode())["session_id"]
@@ -1224,7 +1224,7 @@ class LifecycleHardeningTests(AdmissionDefault):
             return ChatSessionOpened(session=session, model_id="m")
 
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session", side_effect=factory):
+                "castlearq.api.open_chat_session", side_effect=factory):
             outcome = {}
 
             def create():
@@ -1252,7 +1252,7 @@ class LifecycleHardeningTests(AdmissionDefault):
         registry = _ChatSessionRegistry()
         launches = []
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=lambda *a, **k: launches.append(1)):
             registry.close_all()
             first = self._post_create(h)
@@ -1286,7 +1286,7 @@ class LifecycleHardeningTests(AdmissionDefault):
 
         outcomes = {}
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session", side_effect=factory):
+                "castlearq.api.open_chat_session", side_effect=factory):
             def create(i):
                 outcomes[i] = self._post_create(h)
 
@@ -1311,7 +1311,7 @@ class LifecycleHardeningTests(AdmissionDefault):
         session = FakeSession()
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 return_value=ChatSessionOpened(session=session, model_id="m")):
             status, _, raw = self._post_create(h)
             self.assertEqual(status, 201)
@@ -1327,7 +1327,7 @@ class LifecycleHardeningTests(AdmissionDefault):
         registry = _ChatSessionRegistry(max_sessions=2)
         opened = [_opened("m") for _ in range(4)]
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session", side_effect=list(opened)):
+                "castlearq.api.open_chat_session", side_effect=list(opened)):
             barrier = threading.Barrier(4)
             outcomes = {}
 
@@ -1353,7 +1353,7 @@ class LifecycleHardeningTests(AdmissionDefault):
 
     def test_fifth_session_concurrent_is_409(self):
         with ServerHarness() as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=[_opened("m") for _ in range(6)]):
             for _ in range(MAX_CHAT_SESSIONS):
                 status, _, _ = self._post_create(h)
@@ -1374,7 +1374,7 @@ class LifecycleHardeningTests(AdmissionDefault):
         first = FakeSession()
         registry = _ChatSessionRegistry()
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "app.api.open_chat_session",
+                "castlearq.api.open_chat_session",
                 side_effect=[ChatSessionOpened(session=first, model_id="m"),
                              ChatSessionOpened(
                                  session=FakeSession(), model_id="m")]):
@@ -1404,7 +1404,7 @@ class LifecycleHardeningTests(AdmissionDefault):
 
 class ServiceTests(unittest.TestCase):
     def test_open_ok(self):
-        from app import run_service as rs
+        from castlearq import run_service as rs
         resolved = SimpleNamespace(
             model=SimpleNamespace(model_id="logical-id"), artifact=SimpleNamespace())
         prep = SimpleNamespace(
@@ -1422,7 +1422,7 @@ class ServiceTests(unittest.TestCase):
             "logical-id", quantization=None, filename=None)
 
     def test_open_maps_404_422(self):
-        from app import run_service as rs
+        from castlearq import run_service as rs
         mk = rs.ChatDependencies(model_store=mock.Mock(), models=(), capability=object())
         with mock.patch.object(rs, "ModelArtifactResolver") as rc:
             rc.return_value.resolve.side_effect = rs.ModelArtifactResolutionError(
@@ -1442,8 +1442,8 @@ class ServiceTests(unittest.TestCase):
                 rs.open_chat_session("x", dependencies=mk)
 
     def test_open_maps_launch(self):
-        from app import run_service as rs
-        from app.chat import ChatLaunchError
+        from castlearq import run_service as rs
+        from castlearq.chat import ChatLaunchError
         mk = rs.ChatDependencies(
             model_store=mock.Mock(), models=(), capability=object(),
             session_factory=lambda *a: (_ for _ in ()).throw(
@@ -1556,7 +1556,7 @@ class OversizedBodyDrainTests(AdmissionDefault):
         self.assertEqual(session.prompts, [])
 
     def _create(self, h, session):
-        with mock.patch("app.api.open_chat_session",
+        with mock.patch("castlearq.api.open_chat_session",
                         return_value=_opened("my-model")):
             status, _, raw = h.post_json(
                 "/v1/chat/sessions", {"model_id": "my-model"})

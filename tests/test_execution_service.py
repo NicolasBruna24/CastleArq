@@ -18,19 +18,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import (
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import (
     ArtifactPreflightError,
     ExecutableArtifact,
     ExecutionErrorCode,
     ExecutionRequest,
     ExecutionResult,
 )
-from app.execution_service import ModelExecutionService
-from app.models import ArtifactSpec, ModelSpec
-from app.runtimes import PromptInputMode, RuntimeCapability
-from app.selection import RuntimeSelection, RuntimeSelectionError
-from app.execution import ExecutionTarget
+from castlearq.execution_service import ModelExecutionService
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.selection import RuntimeSelection, RuntimeSelectionError
+from castlearq.execution import ExecutionTarget
 
 
 def artifact() -> ArtifactSpec:
@@ -138,7 +138,7 @@ class ModelExecutionServiceTests(unittest.TestCase):
 
     def test_preflight_failure_stops_before_selection_and_runner(self):
         self.preflight.validate.side_effect = ArtifactPreflightError(
-            __import__("app.execution", fromlist=["PreflightErrorCode"]).PreflightErrorCode.MISSING_ARTIFACT,
+            __import__("castlearq.execution", fromlist=["PreflightErrorCode"]).PreflightErrorCode.MISSING_ARTIFACT,
             "missing",
         )
         result = self.service.execute(self.model_spec, self.spec, self.request)
@@ -148,7 +148,7 @@ class ModelExecutionServiceTests(unittest.TestCase):
 
     def test_selection_failure_stops_before_runner(self):
         self.selector.select.side_effect = RuntimeSelectionError(
-            __import__("app.selection", fromlist=["SelectionErrorCode"]).SelectionErrorCode.BACKEND_UNSUPPORTED,
+            __import__("castlearq.selection", fromlist=["SelectionErrorCode"]).SelectionErrorCode.BACKEND_UNSUPPORTED,
             "unsupported",
         )
         result = self.service.execute(self.model_spec, self.spec, self.request)

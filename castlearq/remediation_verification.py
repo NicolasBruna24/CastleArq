@@ -15,8 +15,8 @@
 """Verification of a declarative remediation plan (Block B7).
 
 Closes the remediation cycle without ever executing anything: given the
-original :class:`~app.gpu_diagnosis.DiagnosisResult`, the declarative
-:class:`~app.remediation.RemediationPlan` and a *fresh* diagnosis of the
+original :class:`~castlearq.gpu_diagnosis.DiagnosisResult`, the declarative
+:class:`~castlearq.remediation.RemediationPlan` and a *fresh* diagnosis of the
 current state, this module compares what was expected with what is now
 observed and reports the outcome.
 
@@ -24,8 +24,8 @@ This module is pure: it never runs commands, never installs, never downloads,
 never touches the filesystem or the network, and never executes the
 ``install_commands``/``verify_commands`` carried by recipes — those strings
 remain data for the user. Observation of the fresh state is done upstream by
-the existing read-only probes (``app.gpu_setup``) and interpreted by the
-existing :func:`app.gpu_diagnosis.diagnose`; there is no second diagnosis
+the existing read-only probes (``castlearq.gpu_setup``) and interpreted by the
+existing :func:`castlearq.gpu_diagnosis.diagnose`; there is no second diagnosis
 implementation here.
 
 Semantics (per remediated component, never invented):

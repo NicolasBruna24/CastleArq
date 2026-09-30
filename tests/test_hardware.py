@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.hardware import (
+from castlearq.hardware import (
     LinuxHardwareDetector,
     parse_cpuinfo,
     parse_external_gpu_memory,

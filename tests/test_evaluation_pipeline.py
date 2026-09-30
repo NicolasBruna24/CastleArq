@@ -7,10 +7,10 @@ import ast
 from pathlib import Path
 import unittest
 
-from app import evaluation_pipeline as ep
-from app import initial_knowledge as ik
-from app.compatibility_evaluator import CompatibilityStatus
-from app.compatibility_knowledge import (
+from castlearq import evaluation_pipeline as ep
+from castlearq import initial_knowledge as ik
+from castlearq.compatibility_evaluator import CompatibilityStatus
+from castlearq.compatibility_knowledge import (
     KnowledgeAssertion,
     KnowledgeKind,
     KnowledgePredicate,
@@ -19,9 +19,9 @@ from app.compatibility_knowledge import (
     KnowledgeState,
     KnowledgeSubject,
 )
-from app.evaluation_adapter import to_artifact
-from app.models import ArtifactSpec, ModelSpec
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.evaluation_adapter import to_artifact
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 ALLOWED_IMPORTS = {"__future__", "dataclasses", "typing",
                    "compatibility_evaluator", "compatibility_knowledge",
@@ -78,7 +78,7 @@ def llama_pipeline(**kwargs):
 class PurityTests(unittest.TestCase):
     def test_module_imports_only_pipeline_dependencies(self):
         tree = ast.parse(
-            Path("app/evaluation_pipeline.py").read_text(encoding="utf-8"))
+            Path("castlearq/evaluation_pipeline.py").read_text(encoding="utf-8"))
         imported = set()
         for node in ast.walk(tree):
             self.assertNotIsInstance(node, ast.Import)
@@ -100,7 +100,7 @@ class PurityTests(unittest.TestCase):
 
     def test_module_performs_no_io_or_environment_access(self):
         tree = ast.parse(
-            Path("app/evaluation_pipeline.py").read_text(encoding="utf-8"))
+            Path("castlearq/evaluation_pipeline.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

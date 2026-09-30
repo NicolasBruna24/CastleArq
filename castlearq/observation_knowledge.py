@@ -49,14 +49,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.boundary_adapter import (
+from .boundary_adapter import (
     BoundaryTrace,
     MappingOutcome,
     translate,
 )
-from app.compatibility_knowledge import KnowledgeRegistry
-from app.knowledge_bridge import KnowledgeProjection, project_knowledge
-from app.observation_domain import EnvironmentContext
+from .compatibility_knowledge import KnowledgeRegistry
+from .knowledge_bridge import KnowledgeProjection, project_knowledge
+from .observation_domain import EnvironmentContext
 
 __all__ = [
     "IntegrationResult",

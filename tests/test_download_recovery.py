@@ -16,7 +16,7 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from app.downloads import (
+from castlearq.downloads import (
     ArtifactFilesystemInspection,
     ArtifactFilesystemState,
     RecoveryDecision,

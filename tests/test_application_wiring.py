@@ -14,7 +14,7 @@
 
 """I1 tests for the B9.14 Application / Composition Root (application wiring).
 
-Contract tests for ``app/application_wiring.py`` only — they protect the
+Contract tests for ``castlearq/application_wiring.py`` only — they protect the
 ratified architectural contracts, not Observation / Integration internals:
 
 1. Production composition: the Composition Root runs with the Q-9c
@@ -52,9 +52,9 @@ import sys
 import unittest
 from unittest import mock
 
-from app import application_wiring as wiring
-from app.initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
-from app.observation_domain import (
+from castlearq import application_wiring as wiring
+from castlearq.initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
+from castlearq.observation_domain import (
     CoverageEntry,
     CoverageState,
     EnvironmentContext,
@@ -66,8 +66,8 @@ from app.observation_domain import (
     PlatformObservation,
     RuntimeObservation,
 )
-from app.observation_knowledge import IntegrationResult, integrate
-from app.observation_probe import CommandResult
+from castlearq.observation_knowledge import IntegrationResult, integrate
+from castlearq.observation_probe import CommandResult
 
 OBSERVED = ObservationState.OBSERVED
 UNAVAILABLE = ObservationState.UNAVAILABLE

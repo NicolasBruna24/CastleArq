@@ -20,15 +20,15 @@ from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import patch
 
-from app.downloads import (
+from castlearq.downloads import (
     DownloadPlan,
     DownloadPlanStatus,
     DownloadResultStatus,
     DownloadPlanner,
     Downloader,
 )
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec
 
 
 def artifact(**overrides) -> ArtifactSpec:
@@ -448,7 +448,7 @@ class DownloaderTests(unittest.TestCase):
             plan.destination.parent.mkdir(parents=True)
             partial = plan.destination.with_name(plan.destination.name + ".part")
             partial.write_bytes(b"1234")
-            with patch("app.downloads.downloader.os.write", side_effect=OSError("write failed")):
+            with patch("castlearq.downloads.downloader.os.write", side_effect=OSError("write failed")):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: resume_response([b"567"], 4, 9, 10),
@@ -462,7 +462,7 @@ class DownloaderTests(unittest.TestCase):
             plan.destination.parent.mkdir(parents=True)
             partial = plan.destination.with_name(plan.destination.name + ".part")
             partial.write_bytes(b"1234")
-            with patch("app.downloads.downloader.os.fsync", side_effect=OSError("fsync failed")):
+            with patch("castlearq.downloads.downloader.os.fsync", side_effect=OSError("fsync failed")):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: resume_response([b"567890"], 4, 9, 10),
@@ -543,7 +543,7 @@ class DownloaderTests(unittest.TestCase):
     def test_write_error_cleans_own_part(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = self.make_plan(directory)
-            with patch("app.downloads.downloader.os.write", side_effect=OSError("write failed")):
+            with patch("castlearq.downloads.downloader.os.write", side_effect=OSError("write failed")):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: Response([b"data"]),
@@ -555,7 +555,7 @@ class DownloaderTests(unittest.TestCase):
     def test_part_fsync_error_cleans_own_part(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = self.make_plan(directory)
-            with patch("app.downloads.downloader.os.fsync", side_effect=OSError("fsync failed")):
+            with patch("castlearq.downloads.downloader.os.fsync", side_effect=OSError("fsync failed")):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: Response([b"data"]),
@@ -567,7 +567,7 @@ class DownloaderTests(unittest.TestCase):
     def test_link_error_cleans_own_part(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = self.make_plan(directory)
-            with patch("app.downloads.downloader.os.link", side_effect=OSError("link failed")):
+            with patch("castlearq.downloads.downloader.os.link", side_effect=OSError("link failed")):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: Response([b"0123456789"]),
@@ -579,7 +579,7 @@ class DownloaderTests(unittest.TestCase):
     def test_unlink_error_leaves_published_artifact_and_part(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = self.make_plan(directory)
-            with patch("app.downloads.downloader.os.unlink", side_effect=OSError("unlink failed")):
+            with patch("castlearq.downloads.downloader.os.unlink", side_effect=OSError("unlink failed")):
                 with self.assertRaises(OSError):
                     Downloader(
                         ModelStore(Path(directory)),
@@ -598,7 +598,7 @@ class DownloaderTests(unittest.TestCase):
                 plan.destination.write_bytes(final_content)
                 raise FileExistsError("destination appeared")
 
-            with patch("app.downloads.downloader.os.link", side_effect=link_with_existing_destination):
+            with patch("castlearq.downloads.downloader.os.link", side_effect=link_with_existing_destination):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: Response([b"0123456789"]),
@@ -619,7 +619,7 @@ class DownloaderTests(unittest.TestCase):
                     return real_write(fd, data[:2])
                 return real_write(fd, data)
 
-            with patch("app.downloads.downloader.os.write", side_effect=partial_write):
+            with patch("castlearq.downloads.downloader.os.write", side_effect=partial_write):
                 result = Downloader(
                     ModelStore(Path(directory)),
                     opener=lambda *_args: Response([b"abcdef"]),

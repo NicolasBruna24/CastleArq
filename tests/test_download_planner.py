@@ -18,9 +18,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.downloads import DownloadPlanStatus, DownloadPlanner
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec, ArtifactState
+from castlearq.downloads import DownloadPlanStatus, DownloadPlanner
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec, ArtifactState
 
 
 def artifact(**overrides) -> ArtifactSpec:

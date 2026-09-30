@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.artifact_selection import ArtifactSelectionError, select_artifact
-from app.models import ArtifactSpec
+from castlearq.artifact_selection import ArtifactSelectionError, select_artifact
+from castlearq.models import ArtifactSpec
 
 
 def _artifact(

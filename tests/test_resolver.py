@@ -19,10 +19,10 @@ import hashlib
 from dataclasses import replace
 from pathlib import Path
 
-from app.model_catalog import get_catalog
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState
-from app.resolver import ModelArtifactResolutionError, ModelArtifactResolver
+from castlearq.model_catalog import get_catalog
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.resolver import ModelArtifactResolutionError, ModelArtifactResolver
 
 
 class ModelArtifactResolverTests(unittest.TestCase):

@@ -20,7 +20,7 @@ import ast
 import unittest
 from pathlib import Path
 
-from app import gpu_setup as gs
+from castlearq import gpu_setup as gs
 
 UBUNTU_RELEASE = """PRETTY_NAME="Ubuntu 24.04.1 LTS"
 NAME="Ubuntu"

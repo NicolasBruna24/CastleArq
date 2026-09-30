@@ -23,10 +23,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app.gguf_reader import GGUFReadError, read_architecture_evidence
-from app.importing import ImportStatus, LocalArtifactImporter
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec, ArtifactState
+from castlearq.gguf_reader import GGUFReadError, read_architecture_evidence
+from castlearq.importing import ImportStatus, LocalArtifactImporter
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec, ArtifactState
 
 
 def _gguf(entries=(), *, version=3, magic=b"GGUF"):

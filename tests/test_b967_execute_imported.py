@@ -26,14 +26,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execute_model import (
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execute_model import (
     EvaluationAdmission,
     ExecuteModelDependencies,
     ExecutePreparationError,
     execute_model,
 )
-from app.execution import (
+from castlearq.execution import (
     ArtifactPreflightError,
     ExecutableArtifact,
     ExecutionErrorCode,
@@ -42,14 +42,14 @@ from app.execution import (
     ExecutionTarget,
     PreflightErrorCode,
 )
-from app.importing import ImportStatus, LocalArtifactImporter
-from app.model_catalog import get_catalog
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ModelSpec
-from app.resolver import ModelArtifactResolver
-from app.runner import ModelRunner
-from app.runtimes import PromptInputMode, RuntimeCapability
-from app.selection import RuntimeSelection, RuntimeSelectionError, SelectionErrorCode
+from castlearq.importing import ImportStatus, LocalArtifactImporter
+from castlearq.model_catalog import get_catalog
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.resolver import ModelArtifactResolver
+from castlearq.runner import ModelRunner
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.selection import RuntimeSelection, RuntimeSelectionError, SelectionErrorCode
 
 
 def _gguf(architecture="qwen2") -> bytes:
@@ -538,7 +538,7 @@ class ImportedPathRequiredTests(_ExecutionCase):
         self._import()
         from dataclasses import replace
 
-        import app.execute_model as em
+        import castlearq.execute_model as em
 
         original = em.ModelArtifactResolver.resolve
 

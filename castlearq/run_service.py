@@ -20,12 +20,12 @@ This module owns the sequence CLI ``run`` has always used:
 resolver -> compatibility -> preflight -> selection -> runner.
 
 It executes no subprocess itself and prints nothing; it is a pure
-domain/application layer. The HTTP API (``app.api``) adapts this pipeline
+domain/application layer. The HTTP API (``castlearq.api``) adapts this pipeline
 over HTTP without calling the CLI or ``subprocess``.
 
 Block 3.1 adds :func:`open_chat_session`, the session-opening counterpart
 of :func:`run_once`: same resolver -> ``prepare`` sequence, but the final
-step launches a persistent interactive session via ``app.chat`` instead of
+step launches a persistent interactive session via ``castlearq.chat`` instead of
 a one-shot runner. The HTTP layer calls this service; it never touches the
 resolver, preflight, selector, argv or subprocess directly.
 """

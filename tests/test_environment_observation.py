@@ -21,7 +21,7 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 import unittest
 
-from app.observation_domain import (
+from castlearq.observation_domain import (
     CoverageEntry,
     CoverageState,
     DeviceObservation,
@@ -34,7 +34,7 @@ from app.observation_domain import (
     PlatformObservation,
     RuntimeObservation,
 )
-from app.observation_probe import (
+from castlearq.observation_probe import (
     ACQUISITION_ERRORS,
     CommandResult,
     EnvironmentObserver,
@@ -530,7 +530,7 @@ class NoInferenceAndPurityTests(unittest.TestCase):
         self.assertNotEqual(val.state, "unsupported")
 
     def test_ast_purity_observation_domain(self) -> None:
-        domain_file = Path(__file__).resolve().parent.parent / "app" / "observation_domain.py"
+        domain_file = Path(__file__).resolve().parent.parent / "castlearq" / "observation_domain.py"
         tree = ast.parse(domain_file.read_text(encoding="utf-8"))
 
         forbidden_imports = {
@@ -540,14 +540,14 @@ class NoInferenceAndPurityTests(unittest.TestCase):
             "socket",
             "urllib",
             "pathlib",
-            "app.compatibility",
-            "app.compatibility_evaluator",
-            "app.evaluation_pipeline",
-            "app.evaluation_policy",
-            "app.selection",
-            "app.execution_service",
-            "app.run_service",
-            "app.runtimes",
+            "castlearq.compatibility",
+            "castlearq.compatibility_evaluator",
+            "castlearq.evaluation_pipeline",
+            "castlearq.evaluation_policy",
+            "castlearq.selection",
+            "castlearq.execution_service",
+            "castlearq.run_service",
+            "castlearq.runtimes",
         }
 
         for node in ast.walk(tree):
@@ -1076,32 +1076,32 @@ class ObservationImportBoundaryTests(unittest.TestCase):
     """AD-06: Observation stays autonomous; legacy modules are never imported."""
 
     _FORBIDDEN = (
-        "app.hardware",
-        "app.runtimes",
-        "app.gpu_setup",
-        "app.platform",
-        "app.compatibility",
-        "app.compatibility_domain",
-        "app.compatibility_evaluator",
-        "app.compatibility_knowledge",
-        "app.evaluation_adapter",
-        "app.evaluation_pipeline",
-        "app.evaluation_policy",
-        "app.knowledge_bridge",
-        "app.initial_knowledge",
-        "app.model_domain",
-        "app.selection",
-        "app.execution",
-        "app.execution_service",
-        "app.run_service",
-        "app.runner",
-        "app.chat",
-        "app.main",
-        "app.api",
+        "castlearq.hardware",
+        "castlearq.runtimes",
+        "castlearq.gpu_setup",
+        "castlearq.platform",
+        "castlearq.compatibility",
+        "castlearq.compatibility_domain",
+        "castlearq.compatibility_evaluator",
+        "castlearq.compatibility_knowledge",
+        "castlearq.evaluation_adapter",
+        "castlearq.evaluation_pipeline",
+        "castlearq.evaluation_policy",
+        "castlearq.knowledge_bridge",
+        "castlearq.initial_knowledge",
+        "castlearq.model_domain",
+        "castlearq.selection",
+        "castlearq.execution",
+        "castlearq.execution_service",
+        "castlearq.run_service",
+        "castlearq.runner",
+        "castlearq.chat",
+        "castlearq.main",
+        "castlearq.api",
     )
 
     def test_observation_modules_import_no_project_module(self) -> None:
-        app_dir = Path(__file__).resolve().parent.parent / "app"
+        app_dir = Path(__file__).resolve().parent.parent / "castlearq"
         for filename in ("observation_domain.py", "observation_probe.py"):
             tree = ast.parse((app_dir / filename).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
@@ -1111,14 +1111,14 @@ class ObservationImportBoundaryTests(unittest.TestCase):
                             self.assertNotIn(alias.name, self._FORBIDDEN)
                 elif isinstance(node, ast.ImportFrom):
                     module = node.module or ""
-                    target = f"app.{module}" if node.level else module
+                    target = f"castlearq.{module}" if node.level else module
                     with self.subTest(module=filename, imported=target):
                         self.assertNotIn(target, self._FORBIDDEN)
 
     def test_stdlib_platform_is_not_confused_with_app_platform(self) -> None:
         # ``import platform`` (stdlib, used by the platform probe) is allowed;
         # ``from .platform import ...`` (legacy module) is forbidden.
-        app_dir = Path(__file__).resolve().parent.parent / "app"
+        app_dir = Path(__file__).resolve().parent.parent / "castlearq"
         for filename in ("observation_domain.py", "observation_probe.py"):
             tree = ast.parse((app_dir / filename).read_text(encoding="utf-8"))
             relative_modules = {
@@ -1134,7 +1134,7 @@ class ObservationImportBoundaryTests(unittest.TestCase):
             }
             with self.subTest(module=filename):
                 self.assertNotIn("platform", relative_modules)
-                self.assertNotIn("app.platform", plain_imports)
+                self.assertNotIn("castlearq.platform", plain_imports)
                 # Every relative import stays inside the observation package.
                 for module in relative_modules:
                     self.assertEqual(module, "observation_domain")

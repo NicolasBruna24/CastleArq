@@ -14,7 +14,7 @@
 
 """Declarative GPU remediation planning (Block B5).
 
-Turns a :class:`~app.gpu_diagnosis.DiagnosisResult` plus the declarative
+Turns a :class:`~castlearq.gpu_diagnosis.DiagnosisResult` plus the declarative
 recipe catalog into an ordered, non-executable :class:`RemediationPlan`.
 
 This module performs no I/O: it never runs commands, never installs, never

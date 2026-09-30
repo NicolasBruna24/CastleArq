@@ -21,16 +21,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from app.execution import (
+from castlearq.execution import (
     ExecutableArtifact,
     ExecutionErrorCode,
     ExecutionRequest,
     ExecutionTarget,
     RuntimeMetricSource,
 )
-from app.models import ArtifactSpec, ArtifactState
-from app.runner import LlamaCppRunner
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.runner import LlamaCppRunner
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 
 class RunnerTests(unittest.TestCase):

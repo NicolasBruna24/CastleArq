@@ -22,19 +22,19 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from app import gpu_diagnosis
-from app import main as cli
-from app.gpu_diagnosis import DiagnosisStatus
-from app.gpu_recipes import recipes
-from app.gpu_setup import FunctionalCheck, GpuSoftwareStatus
-from app.hardware import (
+from castlearq import gpu_diagnosis
+from castlearq import main as cli
+from castlearq.gpu_diagnosis import DiagnosisStatus
+from castlearq.gpu_recipes import recipes
+from castlearq.gpu_setup import FunctionalCheck, GpuSoftwareStatus
+from castlearq.hardware import (
     CPUInfo,
     GPUInfo,
     HardwareSnapshot,
     MemoryInfo,
     detect_platform,
 )
-from app.runtimes import BackendStatus, RuntimeStatus
+from castlearq.runtimes import BackendStatus, RuntimeStatus
 
 
 def _hardware(operating_system: str = "Linux", gpus=()) -> HardwareSnapshot:
@@ -203,11 +203,11 @@ class PlatformDetectionTests(unittest.TestCase):
                 self.assertEqual(detect_platform(operating_system), expected)
 
     def test_pretty_name_falls_back_to_system(self):
-        with patch("app.hardware.platform.system", return_value="Linux"):
+        with patch("castlearq.hardware.platform.system", return_value="Linux"):
             self.assertEqual(detect_platform("Ubuntu 24.04.3 LTS"), "linux")
 
     def test_unknown_platform_is_never_linux(self):
-        with patch("app.hardware.platform.system", return_value="Solaris"):
+        with patch("castlearq.hardware.platform.system", return_value="Solaris"):
             self.assertEqual(detect_platform("Unknown OS"), "")
 
 
@@ -230,13 +230,13 @@ class DiagnoseCommandTests(unittest.TestCase):
             stack.enter_context(patch.object(sys, "stdout", new=stdout))
             stack.enter_context(patch.object(sys, "stderr", new=stderr))
             stack.enter_context(
-                patch("app.main.detect_hardware", return_value=hardware))
+                patch("castlearq.main.detect_hardware", return_value=hardware))
             stack.enter_context(
-                patch("app.main.detect_runtimes", return_value=_runtimes()))
+                patch("castlearq.main.detect_runtimes", return_value=_runtimes()))
             stack.enter_context(
-                patch("app.main.detect_backends", return_value=_backends()))
+                patch("castlearq.main.detect_backends", return_value=_backends()))
             stack.enter_context(
-                patch("app.main.diagnose_gpu_software", return_value=software))
+                patch("castlearq.main.diagnose_gpu_software", return_value=software))
             for target, kwargs in extra_patches:
                 stack.enter_context(patch(target, **kwargs))
             try:
@@ -291,7 +291,7 @@ class DiagnoseCommandTests(unittest.TestCase):
 
     def test_diagnose_passes_canonical_runtime_and_platform(self):
         with patch(
-            "app.main.gpu_diagnosis.diagnose", wraps=gpu_diagnosis.diagnose
+            "castlearq.main.gpu_diagnosis.diagnose", wraps=gpu_diagnosis.diagnose
         ) as spy:
             code, _, _ = self._run_diagnose()
         self.assertEqual(code, 0)
@@ -305,20 +305,20 @@ class DiagnoseCommandTests(unittest.TestCase):
 class ReadOnlyGuaranteesTests(unittest.TestCase):
     def test_diagnose_does_not_touch_execution_pipeline(self):
         with ExitStack() as stack:
-            runner = stack.enter_context(patch("app.main.LlamaCppRunner"))
-            chat = stack.enter_context(patch("app.main.start_chat_session"))
-            run_model = stack.enter_context(patch("app.main.run_model"))
-            chat_model = stack.enter_context(patch("app.main.chat_model"))
-            run_download = stack.enter_context(patch("app.main.run_download"))
+            runner = stack.enter_context(patch("castlearq.main.LlamaCppRunner"))
+            chat = stack.enter_context(patch("castlearq.main.start_chat_session"))
+            run_model = stack.enter_context(patch("castlearq.main.run_model"))
+            chat_model = stack.enter_context(patch("castlearq.main.chat_model"))
+            run_download = stack.enter_context(patch("castlearq.main.run_download"))
             stack.enter_context(
-                patch("app.main.detect_hardware", return_value=_hardware()))
+                patch("castlearq.main.detect_hardware", return_value=_hardware()))
             stack.enter_context(
-                patch("app.main.detect_runtimes", return_value=_runtimes()))
+                patch("castlearq.main.detect_runtimes", return_value=_runtimes()))
             stack.enter_context(
-                patch("app.main.detect_backends", return_value=_backends()))
+                patch("castlearq.main.detect_backends", return_value=_backends()))
             stack.enter_context(
                 patch(
-                    "app.main.diagnose_gpu_software",
+                    "castlearq.main.diagnose_gpu_software",
                     return_value=_software(True, True, True),
                 )
             )
@@ -332,19 +332,19 @@ class ReadOnlyGuaranteesTests(unittest.TestCase):
     def test_only_read_only_detectors_are_used(self):
         with ExitStack() as stack:
             hardware = stack.enter_context(
-                patch("app.main.detect_hardware", return_value=_hardware()))
+                patch("castlearq.main.detect_hardware", return_value=_hardware()))
             runtimes = stack.enter_context(
-                patch("app.main.detect_runtimes", return_value=_runtimes()))
+                patch("castlearq.main.detect_runtimes", return_value=_runtimes()))
             backends = stack.enter_context(
-                patch("app.main.detect_backends", return_value=_backends()))
+                patch("castlearq.main.detect_backends", return_value=_backends()))
             software = stack.enter_context(
                 patch(
-                    "app.main.diagnose_gpu_software",
+                    "castlearq.main.diagnose_gpu_software",
                     return_value=_software(True, True, False),
                 )
             )
             capability = stack.enter_context(
-                patch("app.main.detect_llama_capability"))
+                patch("castlearq.main.detect_llama_capability"))
             stack.enter_context(
                 patch.object(sys, "argv", ["castlearq", "diagnose"]))
             stack.enter_context(patch.object(sys, "stdout", new=io.StringIO()))

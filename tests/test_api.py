@@ -21,8 +21,8 @@ useful, a tiny in-test catalog.
 
 B9.52: ``POST /v1/run`` no longer calls the legacy ``run_service.run_once``.
 It now crosses the ratified admission contract (evaluation -> ``to_admission``
--> ``execute_model``), so these tests patch ``app.api.evaluate_model_compatibility``
-to control the policy input and ``app.api.execute_model`` to control execution.
+-> ``execute_model``), so these tests patch ``castlearq.api.evaluate_model_compatibility``
+to control the policy input and ``castlearq.api.execute_model`` to control execution.
 llama.cpp is never executed, nothing is downloaded and Ollama is never touched.
 The gate itself is the real one -- only its inputs are doubles.
 """
@@ -39,7 +39,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from app.api import (
+from castlearq.api import (
     APIConfigurationError,
     MAX_REQUEST_BODY_BYTES,
     build_server,
@@ -48,9 +48,9 @@ from app.api import (
     list_model_dtos,
     parse_run_request,
 )
-from app.main import main as cli_main
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ModelSpec
+from castlearq.main import main as cli_main
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ModelSpec
 
 HOST = "127.0.0.1"
 
@@ -389,7 +389,7 @@ class ServerLifecycleTests(unittest.TestCase):
 
     def test_cli_serve_wiring(self):
         argv = ["castlearq", "serve"]
-        with mock.patch("app.main.serve", return_value=0) as serve_mock, mock.patch(
+        with mock.patch("castlearq.main.serve", return_value=0) as serve_mock, mock.patch(
             "sys.argv", argv
         ):
             exit_code = cli_main()
@@ -493,10 +493,10 @@ class GateHarness:
                 raise self._error
             return self._result or _execution_result()
 
-        self._p1 = mock.patch("app.api.evaluate_model_compatibility",
+        self._p1 = mock.patch("castlearq.api.evaluate_model_compatibility",
                               side_effect=evaluate)
-        self._p2 = mock.patch("app.api.execute_model", side_effect=execute)
-        self._p3 = mock.patch("app.api.compose_execute_model_dependencies",
+        self._p2 = mock.patch("castlearq.api.execute_model", side_effect=execute)
+        self._p3 = mock.patch("castlearq.api.compose_execute_model_dependencies",
                               return_value=object())
         self._p1.start()
         self._p2.start()
@@ -656,7 +656,7 @@ class RunEndpointTests(unittest.TestCase):
             def evaluate(model_id, **kwargs):
                 gate.evaluations.append((model_id, kwargs))
                 return _not_found(model_id)
-            with mock.patch("app.api.evaluate_model_compatibility",
+            with mock.patch("castlearq.api.evaluate_model_compatibility",
                             side_effect=evaluate):
                 status, _, raw = harness.post_json(
                     "/v1/run", {"model_id": "nope", "prompt": "hi"}
@@ -761,7 +761,7 @@ class RunEndpointTests(unittest.TestCase):
                     self.assertNotIn(forbidden, text)
 
     def test_preparation_failure_returns_422(self):
-        from app.execute_model import ExecutePreparationError
+        from castlearq.execute_model import ExecutePreparationError
 
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(
@@ -775,7 +775,7 @@ class RunEndpointTests(unittest.TestCase):
 
     def test_preparation_failure_preserves_warnings(self):
         """5.2: 422 keeps its shape and gains the optional warnings."""
-        from app.execute_model import ExecutePreparationError
+        from castlearq.execute_model import ExecutePreparationError
 
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(
@@ -796,7 +796,7 @@ class RunEndpointTests(unittest.TestCase):
 
     def test_admission_denied_inside_execute_model_is_still_403(self):
         """10: the defence in depth maps ExecuteAdmissionDeniedError to 403."""
-        from app.execute_model import ExecuteAdmissionDeniedError
+        from castlearq.execute_model import ExecuteAdmissionDeniedError
 
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(
@@ -856,7 +856,7 @@ class RunEndpointTests(unittest.TestCase):
 
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness() as gate, mock.patch(
-                    "app.api.execute_model", side_effect=slow_execute):
+                    "castlearq.api.execute_model", side_effect=slow_execute):
             results = {}
 
             def first():
@@ -891,7 +891,7 @@ class RunEndpointTests(unittest.TestCase):
             return _execution_result()
 
         with ServerHarness(model_store=StubStore([])) as harness, gate, \
-                mock.patch("app.api.execute_model", side_effect=slow_execute):
+                mock.patch("castlearq.api.execute_model", side_effect=slow_execute):
             worker = threading.Thread(
                 target=lambda: harness.post_json(
                     "/v1/run", {"model_id": "m", "prompt": "one"}
@@ -949,7 +949,7 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual((failed, allowed), (500, 200))
 
     def test_lock_released_after_preparation_failure(self):
-        from app.execute_model import ExecutePreparationError
+        from castlearq.execute_model import ExecutePreparationError
 
         with ServerHarness(model_store=StubStore([])) as harness:
             with GateHarness(error=ExecutePreparationError("no artifact")):
@@ -975,7 +975,7 @@ class RunEndpointTests(unittest.TestCase):
 
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(result=_execution_result()), \
-                mock.patch("app.api.execute_model", side_effect=flaky):
+                mock.patch("castlearq.api.execute_model", side_effect=flaky):
             first = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "one"}
             )[0]
@@ -1006,7 +1006,7 @@ class RunEndpointTests(unittest.TestCase):
     def test_api_does_not_shell_out_to_cli(self):
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(), mock.patch("subprocess.run") as subprocess_mock, \
-                mock.patch("app.main.run_model") as cli_mock:
+                mock.patch("castlearq.main.run_model") as cli_mock:
             status, _, _ = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )
@@ -1018,7 +1018,7 @@ class RunEndpointTests(unittest.TestCase):
         """B9.52: /v1/run must not silently keep the ungated legacy path."""
         with ServerHarness(model_store=StubStore([])) as harness, \
                 GateHarness(), \
-                mock.patch("app.run_service.run_once") as legacy_mock:
+                mock.patch("castlearq.run_service.run_once") as legacy_mock:
             status, _, _ = harness.post_json(
                 "/v1/run", {"model_id": "m", "prompt": "hi"}
             )

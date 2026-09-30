@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the B6 platform detection domain (``app.platform``)."""
+"""Tests for the B6 platform detection domain (``castlearq.platform``)."""
 
 import ast
 import unittest
 from pathlib import Path
 
-from app.platform import PlatformInfo, detect_platform_info
+from castlearq.platform import PlatformInfo, detect_platform_info
 
 
 UBUNTU = (
@@ -191,7 +191,7 @@ class DeterminismAndImmutabilityTests(unittest.TestCase):
 
 class SafetyTests(unittest.TestCase):
     def test_module_does_not_execute_commands_or_network(self):
-        source = Path("app/platform.py").read_text(encoding="utf-8")
+        source = Path("castlearq/platform.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         banned = {"subprocess", "socket", "urllib", "http", "shutil"}
         for node in ast.walk(tree):

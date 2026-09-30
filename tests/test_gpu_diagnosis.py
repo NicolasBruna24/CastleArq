@@ -20,9 +20,9 @@ import ast
 import unittest
 from pathlib import Path
 
-from app import gpu_diagnosis as dg
-from app.gpu_setup import FunctionalCheck, GpuSoftwareStatus
-from app.hardware import GPUInfo
+from castlearq import gpu_diagnosis as dg
+from castlearq.gpu_setup import FunctionalCheck, GpuSoftwareStatus
+from castlearq.hardware import GPUInfo
 
 
 def _check(passed):

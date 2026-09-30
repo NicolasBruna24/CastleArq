@@ -30,7 +30,7 @@ import sys
 import unittest
 from unittest import mock
 
-from app import main as cli
+from castlearq import main as cli
 
 ENVELOPE_KEYS = {
     "schema",
@@ -300,7 +300,7 @@ class PlanJsonTests(_ShouldCase):
         document = one_json_document(out)
         self.assertEqual(document["exit_code"], 2)
         self.assertEqual(document["error"]["kind"], "usage_error")
-        self.assertIn("Usage: python3 -m app.main plan", err)
+        self.assertIn("Usage: python3 -m castlearq.main plan", err)
 
 
 class SurfaceAndParityTests(_ShouldCase):

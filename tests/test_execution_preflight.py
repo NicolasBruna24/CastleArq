@@ -20,13 +20,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.execution import (
+from castlearq.execution import (
     ArtifactExecutionPreflight,
     ArtifactPreflightError,
     PreflightErrorCode,
 )
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec
 
 
 def artifact(**overrides) -> ArtifactSpec:

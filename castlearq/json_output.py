@@ -37,7 +37,7 @@ Contract ratified in B9.76.1:
 - ``error`` is ``{"kind": ..., "message": ...}`` or ``null``; an
   admission denial is a payload, never an ``error``;
 - the output is exactly one deterministic JSON document
-  (``json.dumps(..., indent=2, sort_keys=True)``, the ``app.session``
+  (``json.dumps(..., indent=2, sort_keys=True)``, the ``castlearq.session``
   precedent), with no banners, prefixes or human text.
 """
 

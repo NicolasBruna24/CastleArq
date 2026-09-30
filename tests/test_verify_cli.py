@@ -25,11 +25,11 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from app import main as cli
-from app import session as ses
-from app.gpu_setup import FunctionalCheck, GpuSoftwareStatus
-from app.hardware import CPUInfo, HardwareSnapshot, MemoryInfo
-from app.runtimes import BackendStatus, RuntimeStatus
+from castlearq import main as cli
+from castlearq import session as ses
+from castlearq.gpu_setup import FunctionalCheck, GpuSoftwareStatus
+from castlearq.hardware import CPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.runtimes import BackendStatus, RuntimeStatus
 
 
 def _hardware(operating_system: str = "Linux") -> HardwareSnapshot:
@@ -77,15 +77,15 @@ class VerifyCommandHarness(unittest.TestCase):
             stack.enter_context(patch.object(sys, "stdout", new=stdout))
             stack.enter_context(patch.object(sys, "stderr", new=stderr))
             stack.enter_context(
-                patch("app.main.detect_hardware", return_value=_hardware()))
+                patch("castlearq.main.detect_hardware", return_value=_hardware()))
             stack.enter_context(
-                patch("app.main.detect_runtimes", return_value=_runtimes()))
+                patch("castlearq.main.detect_runtimes", return_value=_runtimes()))
             stack.enter_context(
-                patch("app.main.detect_backends", return_value=_backends()))
+                patch("castlearq.main.detect_backends", return_value=_backends()))
             stack.enter_context(patch(
-                "app.main.diagnose_gpu_software", return_value=software))
+                "castlearq.main.diagnose_gpu_software", return_value=software))
             stack.enter_context(patch(
-                "app.session.session_root", return_value=self.root))
+                "castlearq.session.session_root", return_value=self.root))
             try:
                 code = cli.main()
             except SystemExit as exc:

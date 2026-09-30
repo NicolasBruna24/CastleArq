@@ -21,19 +21,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.downloads import DownloadPlanStatus
-from app.main import print_local_models, print_plan
-from app.model_catalog import get_catalog
-from app.model_identity import (
+from castlearq.downloads import DownloadPlanStatus
+from castlearq.main import print_local_models, print_plan
+from castlearq.model_catalog import get_catalog
+from castlearq.model_identity import (
     SOURCE_REPOSITORY_TO_MODEL_ID,
     SUPPORTED_DOWNLOAD_SOURCES,
     downloadable_locator,
     logical_model_id,
     source_repositories_for_logical_model,
 )
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState
-from app.resolver import (
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.resolver import (
     ModelArtifactResolutionError,
     ModelArtifactResolver,
     ResolvedModelArtifact,
@@ -76,7 +76,7 @@ class ListOutputTests(unittest.TestCase):
             manifest_path=Path("/tmp/manifest.json"),
             message=None,
         )
-        with patch("app.main.ModelStore") as store:
+        with patch("castlearq.main.ModelStore") as store:
             store.return_value.list_artifacts.return_value = [entry]
             output = io.StringIO()
             with redirect_stdout(output):
@@ -105,7 +105,7 @@ class PlanOutputTests(unittest.TestCase):
 
                 return Plan()
 
-        with patch("app.main.DownloadPlanner", Planner):
+        with patch("castlearq.main.DownloadPlanner", Planner):
             output = io.StringIO()
             with redirect_stdout(output):
                 code = print_plan(QWEN_REPOSITORY, "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
@@ -115,7 +115,7 @@ class PlanOutputTests(unittest.TestCase):
         self.assertNotEqual(captured["artifact"].model_id, QWEN_REPOSITORY)
 
     def test_plan_rejects_unmapped_repository(self):
-        with patch("app.main.DownloadPlanner") as planner:
+        with patch("castlearq.main.DownloadPlanner") as planner:
             error = io.StringIO()
             with redirect_stderr(error):
                 code = print_plan("owner/repository", "model.gguf")

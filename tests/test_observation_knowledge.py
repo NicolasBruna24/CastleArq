@@ -27,8 +27,8 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 import unittest
 
-from app.boundary_adapter import MappingOutcome, translate
-from app.compatibility_knowledge import (
+from castlearq.boundary_adapter import MappingOutcome, translate
+from castlearq.compatibility_knowledge import (
     KnowledgeAssertion,
     KnowledgeKind,
     KnowledgePredicate,
@@ -37,8 +37,8 @@ from app.compatibility_knowledge import (
     KnowledgeState,
     KnowledgeSubject,
 )
-from app.knowledge_bridge import KnowledgeProjection
-from app.observation_domain import (
+from castlearq.knowledge_bridge import KnowledgeProjection
+from castlearq.observation_domain import (
     CoverageEntry,
     CoverageState,
     EnvironmentContext,
@@ -50,7 +50,7 @@ from app.observation_domain import (
     PlatformObservation,
     RuntimeObservation,
 )
-from app.observation_knowledge import (
+from castlearq.observation_knowledge import (
     IntegrationResult,
     RuntimeIntegration,
     UnmappedRuntime,
@@ -294,7 +294,7 @@ class PurityAndIsolationTests(unittest.TestCase):
     def _module_tree(self):
         source = (
             Path(__file__).resolve().parent.parent
-            / "app" / "observation_knowledge.py"
+            / "castlearq" / "observation_knowledge.py"
         ).read_text(encoding="utf-8")
         return source, ast.parse(source)
 
@@ -310,12 +310,12 @@ class PurityAndIsolationTests(unittest.TestCase):
                     continue
                 imported.add(module)
         forbidden = {
-            "app.platform", "app.hardware", "app.runtimes", "app.gpu_setup",
-            "app.compatibility", "app.selection", "app.execution_service",
-            "app.compatibility_evaluator", "app.evaluation_adapter",
-            "app.evaluation_pipeline", "app.evaluation_policy",
-            "app.execution", "app.runner", "app.main",
-            "app.observation_probe",
+            "castlearq.platform", "castlearq.hardware", "castlearq.runtimes", "castlearq.gpu_setup",
+            "castlearq.compatibility", "castlearq.selection", "castlearq.execution_service",
+            "castlearq.compatibility_evaluator", "castlearq.evaluation_adapter",
+            "castlearq.evaluation_pipeline", "castlearq.evaluation_policy",
+            "castlearq.execution", "castlearq.runner", "castlearq.main",
+            "castlearq.observation_probe",
             "subprocess", "os", "platform", "time", "random", "socket",
             "shutil",
         }

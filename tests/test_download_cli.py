@@ -24,17 +24,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app.downloads import (
+from castlearq.downloads import (
     Downloader,
     DownloadPlan,
     DownloadPlanStatus,
     DownloadResult,
     DownloadResultStatus,
 )
-from app.main import run_download
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec, ArtifactState
-from app.resolver import ModelArtifactResolver
+from castlearq.main import run_download
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.resolver import ModelArtifactResolver
 
 
 def _artifact(**overrides):
@@ -130,7 +130,7 @@ class RunDownloadTests(unittest.TestCase):
         self.assertIn("no unique source repository", err.getvalue())
 
     def test_source_error_is_operational_error(self):
-        from app.sources import SourceError
+        from castlearq.sources import SourceError
 
         def factory():
             source = Mock()
@@ -328,8 +328,8 @@ class RunDownloadTests(unittest.TestCase):
         self.assertIn("SHA-256", err)
 
     def test_repository_id_never_resolves_even_when_discovery_succeeds(self):
-        from app.model_store import ModelStore
-        from app.resolver import (
+        from castlearq.model_store import ModelStore
+        from castlearq.resolver import (
             ModelArtifactResolutionError,
             ModelArtifactResolver,
         )
@@ -598,7 +598,7 @@ class DownloadablePredicateGateTests(unittest.TestCase):
         return code, kwargs["err"].getvalue(), source
 
     def test_zero_mappings_is_rejected_without_discovery(self):
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", {}):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", {}):
             code, err, source = self._run("some-model")
         self.assertEqual(code, 1)
         self.assertIn("no unique source repository", err)
@@ -606,7 +606,7 @@ class DownloadablePredicateGateTests(unittest.TestCase):
 
     def test_single_huggingface_mapping_uses_that_locator(self):
         mapping = {("huggingface", "owner/repo"): "some-model"}
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
             code, err, source = self._run("some-model")
         source.discover_artifacts.assert_called_once_with("owner/repo")
         self.assertNotIn("no unique source repository", err)
@@ -617,7 +617,7 @@ class DownloadablePredicateGateTests(unittest.TestCase):
             ("huggingface", "owner/one"): "some-model",
             ("huggingface", "owner/two"): "some-model",
         }
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
             code, err, source = self._run("some-model")
         self.assertEqual(code, 1)
         self.assertIn("no unique source repository", err)
@@ -625,7 +625,7 @@ class DownloadablePredicateGateTests(unittest.TestCase):
 
     def test_unsupported_source_is_rejected_before_discovery(self):
         mapping = {("ollama", "qwen2.5-coder:7b"): "some-model"}
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
             code, err, source = self._run("some-model")
         self.assertEqual(code, 1)
         self.assertIn("unsupported source", err)

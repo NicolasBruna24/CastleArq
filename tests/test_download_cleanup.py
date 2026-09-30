@@ -18,9 +18,9 @@ import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
-from app.downloads import ArtifactCleanup, CleanupOperation, CleanupResult
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec
+from castlearq.downloads import ArtifactCleanup, CleanupOperation, CleanupResult
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec
 
 
 def artifact(**overrides) -> ArtifactSpec:

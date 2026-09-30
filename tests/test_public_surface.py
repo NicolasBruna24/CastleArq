@@ -19,12 +19,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from app.main import main
+from castlearq.main import main
 
 README = Path("README.md")
-MAIN_PY = Path("app/main.py")
+MAIN_PY = Path("castlearq/main.py")
 PYPROJECT = Path("pyproject.toml")
-COMPATIBILITY_PY = Path("app/compatibility.py")
+COMPATIBILITY_PY = Path("castlearq/compatibility.py")
 
 
 def _read(path: Path) -> str:

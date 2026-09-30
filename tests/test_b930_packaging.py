@@ -12,9 +12,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from app.compatibility import default_config_path, load_config
-from app.model_store import default_models_directory
-from app.version import get_version
+from castlearq.compatibility import default_config_path, load_config
+from castlearq.model_store import default_models_directory
+from castlearq.version import get_version
 
 
 class PackageMetadataTests(unittest.TestCase):
@@ -37,12 +37,12 @@ class PackageMetadataTests(unittest.TestCase):
     def test_console_script_metadata(self):
         self.assertEqual(
             self.pyproject["project"]["scripts"],
-            {"castlearq": "app.main:main"},
+            {"castlearq": "castlearq.main:main"},
         )
 
     def test_runtime_package_discovery_includes_production_subpackages(self):
         discovery = self.pyproject["tool"]["setuptools"]["packages"]["find"]
-        self.assertEqual(discovery["include"], ["app*"])
+        self.assertEqual(discovery["include"], ["castlearq*"])
         self.assertIn("config*", discovery["exclude"])
 
 
@@ -52,7 +52,7 @@ class ConsoleScriptTargetTests(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["castlearq", "--help"]):
             with self.assertRaises(SystemExit) as context:
                 with redirect_stdout(output):
-                    from app.main import main
+                    from castlearq.main import main
 
                     main()
         self.assertEqual(context.exception.code, 0)
@@ -65,7 +65,7 @@ class ConsoleScriptTargetTests(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["castlearq", "--version"]):
             with self.assertRaises(SystemExit) as context:
                 with redirect_stdout(output):
-                    from app.main import main
+                    from castlearq.main import main
 
                     main()
         self.assertEqual(context.exception.code, 0)
@@ -88,7 +88,7 @@ class VersionResolutionTests(unittest.TestCase):
         self.assertEqual(get_version(), "0.3.0")
 
     def test_metadata_unavailable_uses_source_fallback(self):
-        with mock.patch("app.version.importlib.metadata.version", side_effect=PackageNotFoundError):
+        with mock.patch("castlearq.version.importlib.metadata.version", side_effect=PackageNotFoundError):
             self.assertEqual(get_version(), "0.3.0")
 
 

@@ -60,10 +60,10 @@ Homepage = "https://www.nicobrunaf.dev/projects/castlearq/"
 Repository = "https://github.com/NicolasBruna24/CastleArq"
 
 [project.scripts]
-castlearq = "app.main:main"
+castlearq = "castlearq.main:main"
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["castlearq*"]
 exclude = ["config*"]
 
 [tool.pytest.ini_options]

@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.gpu_diagnosis import GpuComponent
-from app.gpu_recipes import GpuRecipe, find_recipe, recipe_for_component, recipes
+from castlearq.gpu_diagnosis import GpuComponent
+from castlearq.gpu_recipes import GpuRecipe, find_recipe, recipe_for_component, recipes
 
 
 class GpuRecipeTests(unittest.TestCase):

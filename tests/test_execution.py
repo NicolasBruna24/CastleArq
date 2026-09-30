@@ -17,7 +17,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
-from app.execution import (
+from castlearq.execution import (
     ExecutionDiagnostics,
     ExecutionErrorCode,
     ExecutionErrorInfo,
@@ -27,7 +27,7 @@ from app.execution import (
     RuntimeMetricSource,
     RuntimeMetrics,
 )
-from app.models import ArtifactSpec
+from castlearq.models import ArtifactSpec
 
 
 def artifact() -> ArtifactSpec:

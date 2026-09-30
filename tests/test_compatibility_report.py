@@ -35,7 +35,7 @@ import unittest
 from unittest import mock
 from unittest.mock import patch
 
-from app.compatibility_domain import (
+from castlearq.compatibility_domain import (
     CheckStatus,
     CompatibilityCheck,
     CompatibilityCondition,
@@ -44,18 +44,18 @@ from app.compatibility_domain import (
     EvidenceItem,
     EvidenceKind,
 )
-from app.compatibility_report import format_evaluation_report
-from app.evaluate_compatibility import (
+from castlearq.compatibility_report import format_evaluation_report
+from castlearq.evaluate_compatibility import (
     EvaluateCompatibilityDependencies,
     EvaluateModelCompatibilityResult,
 )
-from app.execution import (
+from castlearq.execution import (
     ExecutionErrorCode,
     ExecutionErrorInfo,
     ExecutionResult,
 )
-from app.gguf_reader import GGUFReadError
-from app.models import ArtifactSpec
+from castlearq.gguf_reader import GGUFReadError
+from castlearq.models import ArtifactSpec
 
 
 def _check(name, status, expected=None, observed=None, evidence=()):
@@ -96,7 +96,7 @@ def _result(status, checks, *, conditions=(), warnings=(), model_id="m1"):
 
 def _cli(*argv):
     """Run ``main()`` with injected argv/streams; return (code, out, err)."""
-    from app.main import main
+    from castlearq.main import main
 
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(sys, "argv", ["castlearq", *argv]), patch.object(
@@ -261,7 +261,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
     """P1-1: ask the question without running inference."""
 
     def test_command_is_registered_and_dispatched(self):
-        with patch("app.main.compatibility_command", return_value=0) as caller:
+        with patch("castlearq.main.compatibility_command", return_value=0) as caller:
             code, _, _ = _cli("compatibility", "m1")
         self.assertEqual(code, 0)
         caller.assert_called_once_with(
@@ -269,7 +269,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         )
 
     def test_missing_model_id_is_usage_error_without_evaluation(self):
-        with patch("app.main.evaluate_model_compatibility") as evaluate:
+        with patch("castlearq.main.evaluate_model_compatibility") as evaluate:
             code, out, err = _cli("compatibility")
         self.assertEqual(code, 2)
         self.assertIn("Usage:", err)
@@ -281,17 +281,17 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_it_reuses_the_same_use_case_and_runs_no_runtime(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         result = _result(
             CompatibilityStatus.COMPATIBLE, [_check("c", CheckStatus.PASSED)]
         )
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.evaluate_model_compatibility", return_value=result
-        ) as evaluate, patch("app.main.LlamaCppRunner") as runner, patch(
-            "app.main.execute_model"
-        ) as execute, patch("app.main.run_model") as run:
+            "castlearq.main.evaluate_model_compatibility", return_value=result
+        ) as evaluate, patch("castlearq.main.LlamaCppRunner") as runner, patch(
+            "castlearq.main.execute_model"
+        ) as execute, patch("castlearq.main.run_model") as run:
             code = compatibility_command("m1", out=out, err=err)
         self.assertEqual(code, 0)
         # B9.74: the evaluation is handed the use case's dependency holder so
@@ -309,20 +309,20 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         self.assertIn("Verdict: COMPATIBLE", out.getvalue())
 
     def test_it_does_not_download(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         result = _result(
             CompatibilityStatus.COMPATIBLE, [_check("c", CheckStatus.PASSED)]
         )
         with patch(
-            "app.main.evaluate_model_compatibility", return_value=result
-        ), patch("app.main.run_download") as download:
+            "castlearq.main.evaluate_model_compatibility", return_value=result
+        ), patch("castlearq.main.run_download") as download:
             code = compatibility_command("m1", out=io.StringIO(), err=io.StringIO())
         self.assertEqual(code, 0)
         download.assert_not_called()
 
     def test_denied_evaluation_returns_one_and_still_explains(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         result = _result(
             CompatibilityStatus.INCOMPATIBLE,
@@ -336,7 +336,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
             ],
         )
         out = io.StringIO()
-        with patch("app.main.evaluate_model_compatibility", return_value=result):
+        with patch("castlearq.main.evaluate_model_compatibility", return_value=result):
             code = compatibility_command("m1", out=out, err=io.StringIO())
         self.assertEqual(code, 1)
         self.assertIn("model architecture support: FAILED", out.getvalue())
@@ -349,7 +349,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         The command therefore exits 0 here, exactly as ``execute`` would, and
         still shows the UNKNOWN checks truthfully.
         """
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         result = _result(
             CompatibilityStatus.INSUFFICIENT_EVIDENCE,
@@ -359,7 +359,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
             ],
         )
         out = io.StringIO()
-        with patch("app.main.evaluate_model_compatibility", return_value=result):
+        with patch("castlearq.main.evaluate_model_compatibility", return_value=result):
             code = compatibility_command("m1", out=out, err=io.StringIO())
         self.assertEqual(code, 0)
         text = out.getvalue()
@@ -370,7 +370,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         self.assertNotIn("FAILED", text)
 
     def test_insufficient_evidence_with_a_real_failure_is_reported_as_denied(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         result = _result(
             CompatibilityStatus.INSUFFICIENT_EVIDENCE,
@@ -380,7 +380,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
             ],
         )
         out = io.StringIO()
-        with patch("app.main.evaluate_model_compatibility", return_value=result):
+        with patch("castlearq.main.evaluate_model_compatibility", return_value=result):
             code = compatibility_command("m1", out=out, err=io.StringIO())
         self.assertEqual(code, 1)
         self.assertIn("model architecture support: FAILED", out.getvalue())
@@ -390,11 +390,11 @@ class EvaluationErrorSemanticsTests(unittest.TestCase):
     """P0-2: a raised evaluation is not a policy denial."""
 
     def test_compatibility_command_reports_error_not_verdict(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.evaluate_model_compatibility",
+            "castlearq.main.evaluate_model_compatibility",
             side_effect=GGUFReadError("truncated header"),
         ):
             code = compatibility_command("m1", out=out, err=err)
@@ -409,16 +409,16 @@ class EvaluationErrorSemanticsTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "")
 
     def test_execute_reports_error_and_stays_fail_closed(self):
-        from app.execute_model import ExecuteAdmissionDeniedError
-        from app.main import execute_command
+        from castlearq.execute_model import ExecuteAdmissionDeniedError
+        from castlearq.main import execute_command
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.compose_execute_model_dependencies", return_value=object()
+            "castlearq.main.compose_execute_model_dependencies", return_value=object()
         ), patch(
-            "app.main.evaluate_model_compatibility",
+            "castlearq.main.evaluate_model_compatibility",
             side_effect=ValueError("corrupt gguf"),
-        ), patch("app.main.execute_model") as execute:
+        ), patch("castlearq.main.execute_model") as execute:
             execute.side_effect = ExecuteAdmissionDeniedError(
                 "Execution denied by evaluation admission; deny-by-default applies"
             )
@@ -437,12 +437,12 @@ class EvaluationErrorSemanticsTests(unittest.TestCase):
         self.assertNotIn("Verdict:", text)
 
     def test_resolution_error_is_not_reported_as_a_verdict(self):
-        from app.main import compatibility_command
-        from app.resolver import ModelArtifactResolutionError
+        from castlearq.main import compatibility_command
+        from castlearq.resolver import ModelArtifactResolutionError
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.evaluate_model_compatibility",
+            "castlearq.main.evaluate_model_compatibility",
             side_effect=ModelArtifactResolutionError("no such model"),
         ):
             code = compatibility_command("m1", out=out, err=err)
@@ -451,11 +451,11 @@ class EvaluationErrorSemanticsTests(unittest.TestCase):
         self.assertNotIn("Verdict:", err.getvalue())
 
     def test_os_error_is_not_reported_as_a_verdict(self):
-        from app.main import compatibility_command
+        from castlearq.main import compatibility_command
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.evaluate_model_compatibility",
+            "castlearq.main.evaluate_model_compatibility",
             side_effect=OSError("store unreadable"),
         ):
             code = compatibility_command("m1", out=out, err=err)
@@ -468,8 +468,8 @@ class AdmissionExplanationTests(unittest.TestCase):
     """P0-1 on the execute path: the denial shows its checks."""
 
     def test_admission_denial_message_is_kept_and_explained(self):
-        from app.execute_model import ExecuteAdmissionDeniedError
-        from app.main import execute_command
+        from castlearq.execute_model import ExecuteAdmissionDeniedError
+        from castlearq.main import execute_command
 
         result = _result(
             CompatibilityStatus.INCOMPATIBLE,
@@ -477,11 +477,11 @@ class AdmissionExplanationTests(unittest.TestCase):
         )
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.compose_execute_model_dependencies", return_value=object()
+            "castlearq.main.compose_execute_model_dependencies", return_value=object()
         ), patch(
-            "app.main.evaluate_model_compatibility", return_value=result
+            "castlearq.main.evaluate_model_compatibility", return_value=result
         ), patch(
-            "app.main.execute_model",
+            "castlearq.main.execute_model",
             side_effect=ExecuteAdmissionDeniedError(
                 "Execution denied by evaluation admission; deny-by-default applies"
             ),
@@ -495,17 +495,17 @@ class AdmissionExplanationTests(unittest.TestCase):
         self.assertIn("Observed: 'y'", text)
 
     def test_no_report_is_repeated_when_the_evaluation_raised(self):
-        from app.execute_model import ExecuteAdmissionDeniedError
-        from app.main import execute_command
+        from castlearq.execute_model import ExecuteAdmissionDeniedError
+        from castlearq.main import execute_command
 
         out, err = io.StringIO(), io.StringIO()
         with patch(
-            "app.main.compose_execute_model_dependencies", return_value=object()
+            "castlearq.main.compose_execute_model_dependencies", return_value=object()
         ), patch(
-            "app.main.evaluate_model_compatibility",
+            "castlearq.main.evaluate_model_compatibility",
             side_effect=RuntimeError("boom"),
         ), patch(
-            "app.main.execute_model",
+            "castlearq.main.execute_model",
             side_effect=ExecuteAdmissionDeniedError("Execution denied"),
         ):
             code = execute_command("m1", "hi", out=out, err=err)
@@ -513,7 +513,7 @@ class AdmissionExplanationTests(unittest.TestCase):
         self.assertEqual(err.getvalue().count("Compatibility evaluation error:"), 1)
 
     def test_successful_execution_is_unchanged(self):
-        from app.main import execute_command
+        from castlearq.main import execute_command
 
         result = _result(
             CompatibilityStatus.COMPATIBLE, [_check("c", CheckStatus.PASSED)]
@@ -521,10 +521,10 @@ class AdmissionExplanationTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         success = ExecutionResult(True, 0, "model output\n", "")
         with patch(
-            "app.main.compose_execute_model_dependencies", return_value=object()
+            "castlearq.main.compose_execute_model_dependencies", return_value=object()
         ), patch(
-            "app.main.evaluate_model_compatibility", return_value=result
-        ), patch("app.main.execute_model", return_value=success):
+            "castlearq.main.evaluate_model_compatibility", return_value=result
+        ), patch("castlearq.main.execute_model", return_value=success):
             code = execute_command("m1", "hi", out=out, err=err)
         self.assertEqual(code, 0)
         self.assertIn("model output", out.getvalue())
@@ -540,7 +540,7 @@ class ExecutionPolicyTests(unittest.TestCase):
         import ast
         from pathlib import Path
 
-        tree = ast.parse(Path("app/main.py").read_text(encoding="utf-8"))
+        tree = ast.parse(Path("castlearq/main.py").read_text(encoding="utf-8"))
         functions = {
             node.name: node
             for node in tree.body
@@ -575,7 +575,7 @@ class ExecutionPolicyTests(unittest.TestCase):
 
     def test_run_still_reaches_the_legacy_runtime_path(self):
         """`run` keeps working: it is not removed, only documented."""
-        from app.main import run_model
+        from castlearq.main import run_model
 
         self.assertTrue(callable(run_model))
 
@@ -623,7 +623,7 @@ class NoNewArchitectureTests(unittest.TestCase):
     """B9.48 section 13: no new layer was introduced."""
 
     def test_report_module_has_no_io_and_no_evaluation(self):
-        from app import compatibility_report
+        from castlearq import compatibility_report
 
         with open(compatibility_report.__file__, encoding="utf-8") as handle:
             source = handle.read()
@@ -638,7 +638,7 @@ class NoNewArchitectureTests(unittest.TestCase):
             self.assertNotIn(banned, source)
 
     def test_to_admission_keeps_its_fail_closed_contract(self):
-        from app.evaluate_compatibility import to_admission
+        from castlearq.evaluate_compatibility import to_admission
 
         self.assertEqual(to_admission(None).status, "blocked")
         self.assertIsNone(to_admission(None).verdict)
@@ -653,7 +653,15 @@ class NoNewArchitectureTests(unittest.TestCase):
             "evaluation_store",
             "policy_engine",
         }
-        present = {p.stem for p in Path("app").glob("*.py")}
+        present = {p.stem for p in Path("castlearq").glob("*.py")}
+        # B9.77: without this guard the assertion below is vacuous. A glob over
+        # a directory that does not resolve returns an empty set, and
+        # ``set() & banned == set()`` would pass while verifying nothing.
+        self.assertTrue(
+            present,
+            "Path('castlearq').glob('*.py') resolved no production modules; "
+            "run the suite from the repository root.",
+        )
         self.assertEqual(present & banned, set())
 
 

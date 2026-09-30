@@ -49,11 +49,11 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
-from app.main import main
+from castlearq.main import main
 
 README = Path("README.md")
-MAIN_PY = Path("app/main.py")
-API_PY = Path("app/api.py")
+MAIN_PY = Path("castlearq/main.py")
+API_PY = Path("castlearq/api.py")
 DECISION_DOC = Path(
     "docs/B9.51-http-admission-contract-decision.md"
 )
@@ -81,8 +81,8 @@ def _relative_imports(path: Path) -> set[str]:
     """Package-relative modules imported by ``path``.
 
     Relative imports are resolved against the module's own package, so
-    ``from .api import X`` inside ``app/execute_model.py`` is reported as
-    ``app.api``. Absolute imports are reported verbatim. Only real import
+    ``from .api import X`` inside ``castlearq/execute_model.py`` is reported as
+    ``castlearq.api``. Absolute imports are reported verbatim. Only real import
     statements are considered: names appearing in docstrings, comments or
     string literals are deliberately ignored, because a module is allowed to
     *describe* another module without depending on it.
@@ -93,8 +93,8 @@ def _relative_imports(path: Path) -> set[str]:
 def _package_parts(path: Path) -> tuple[str, ...]:
     """The dotted package the module lives in, derived from its path.
 
-    ``app/downloads/downloader.py`` belongs to package ``app.downloads``;
-    ``app/execute_compatibility.py`` belongs to ``app``. The file name is
+    ``castlearq/downloads/downloader.py`` belongs to package ``castlearq.downloads``;
+    ``castlearq/execute_compatibility.py`` belongs to ``castlearq``. The file name is
     dropped, because a module is a member of its package, not the package.
     """
     return tuple(path.parent.parts)
@@ -106,7 +106,7 @@ def _resolve_relative(base: str, level: int, package: tuple[str, ...]) -> str:
     ``level`` counts the leading dots: ``level == 1`` is the module's own
     package, ``level == 2`` its parent, and so on. Truncating the package parts
     from the right is what makes ``from ..model_store import X`` inside
-    ``app/downloads/`` resolve to ``app.model_store`` rather than to a name
+    ``castlearq/downloads/`` resolve to ``castlearq.model_store`` rather than to a name
     built from the leaf directory alone. A level that would walk past the
     package root is clamped to the root, because that is the only anchor
     available from the file path alone.
@@ -122,9 +122,9 @@ def _relative_import_names(path: Path) -> set[tuple[str, str]]:
     """``(module, imported_name)`` pairs for every import in ``path``.
 
     Relative imports are resolved against the importing module's package, so
-    ``from .api import X`` inside ``app/execute_model.py`` is reported as
-    ``app.api`` and ``from ..model_store import Y`` inside
-    ``app/downloads/downloader.py`` is reported as ``app.model_store``.
+    ``from .api import X`` inside ``castlearq/execute_model.py`` is reported as
+    ``castlearq.api`` and ``from ..model_store import Y`` inside
+    ``castlearq/downloads/downloader.py`` is reported as ``castlearq.model_store``.
     Absolute imports are reported verbatim.
 
     Only real import statements are considered: names appearing in docstrings,
@@ -132,7 +132,7 @@ def _relative_import_names(path: Path) -> set[tuple[str, str]]:
     allowed to *describe* another module without depending on it.
 
     The imported symbol is kept alongside the module, because the ratified
-    entry points are identified by what ``app/api.py`` binds and from where,
+    entry points are identified by what ``castlearq/api.py`` binds and from where,
     not merely by whether a name is spelled somewhere in the file.
     """
     tree = ast.parse(_read(path))
@@ -196,7 +196,7 @@ def _forbidden_upward_modules() -> tuple[str, ...]:
     the layering rule holds in both directions of ownership without depending
     on which stdlib module happens to implement the transport.
     """
-    return ("app.api", "app.main")
+    return ("castlearq.api", "castlearq.main")
 
 
 def _cli_choices() -> set[str]:
@@ -222,7 +222,7 @@ def _cli_choices() -> set[str]:
                         for element in keyword.value.elts
                         if isinstance(element, ast.Constant)
                     }
-    raise AssertionError("command choices tuple not found in app/main.py")
+    raise AssertionError("command choices tuple not found in castlearq/main.py")
 
 
 def _readme_commands() -> set[str]:
@@ -291,7 +291,7 @@ class ServeIsNotReadOnlyTests(unittest.TestCase):
 
     def test_serve_rejects_non_loopback_hosts(self):
         """Network exposure property: loopback only, enforced at construction."""
-        from app.api import APIConfigurationError, serve
+        from castlearq.api import APIConfigurationError, serve
 
         with self.assertRaises(APIConfigurationError):
             serve(host="0.0.0.0", port=0)
@@ -365,7 +365,7 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         """
         self.assertTrue(
             HTTP_ADMISSION_IMPLEMENTED,
-            "HTTP admission is implemented in app/api.py. The flag must not be "
+            "HTTP admission is implemented in castlearq/api.py. The flag must not be "
             "reverted while the gate is reachable: the policy in B9.51 is "
             "OPTION A, so an ungated HTTP path is a defect, not a state.",
         )
@@ -378,7 +378,7 @@ class ExecutionGatePolicyTests(unittest.TestCase):
             self.assertIn(
                 required,
                 source,
-                f"app/api.py no longer references {required}: HTTP execution "
+                f"castlearq/api.py no longer references {required}: HTTP execution "
                 "stopped crossing the ratified admission gate",
             )
 
@@ -403,8 +403,8 @@ class ExecutionGatePolicyTests(unittest.TestCase):
                 elif isinstance(func, ast.Attribute):
                     called.add(func.attr)
         for legacy in ("run_once", "RunOutcome", "run_dependencies"):
-            self.assertNotIn(legacy, imported, f"app/api.py imports {legacy}")
-            self.assertNotIn(legacy, called, f"app/api.py calls {legacy}")
+            self.assertNotIn(legacy, imported, f"castlearq/api.py imports {legacy}")
+            self.assertNotIn(legacy, called, f"castlearq/api.py calls {legacy}")
 
     def test_documentation_no_longer_describes_a_transitional_gap(self):
         """The gap label is gone now that the gate is implemented."""
@@ -469,11 +469,11 @@ class ExecutionGatePolicyTests(unittest.TestCase):
     #: core must not depend on the HTTP transport, and the transport must be
     #: the only layer that owns it.
     EVALUATION_CORE_MODULES = (
-        "app/evaluate_compatibility.py",
-        "app/evaluation_policy.py",
-        "app/evaluation_pipeline.py",
-        "app/compatibility_domain.py",
-        "app/initial_knowledge.py",
+        "castlearq/evaluate_compatibility.py",
+        "castlearq/evaluation_policy.py",
+        "castlearq/evaluation_pipeline.py",
+        "castlearq/compatibility_domain.py",
+        "castlearq/initial_knowledge.py",
     )
 
     def test_evaluation_core_does_not_depend_on_the_transport_layer(self):
@@ -485,7 +485,7 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         tree. What survives them, and is the property that still has force,
         is the dependency direction: the evaluation core is reached *by* the
         transport, it never reaches *out* to it. A later block that made the
-        engine depend on ``http`` or on ``app.api`` would invert the layering
+        engine depend on ``http`` or on ``castlearq.api`` would invert the layering
         this suite exists to protect, and this test fails on that change.
 
         Concurrency is deliberately not forbidden here: ``threading`` is not
@@ -527,7 +527,7 @@ class ExecutionGatePolicyTests(unittest.TestCase):
         """
         transport = _http_transport_modules()
         upward = _forbidden_upward_modules()
-        store = _relative_imports(Path("app/model_store.py"))
+        store = _relative_imports(Path("castlearq/model_store.py"))
         self.assertEqual(
             sorted(
                 name
@@ -535,10 +535,10 @@ class ExecutionGatePolicyTests(unittest.TestCase):
                 if name in transport or name.startswith(upward)
             ),
             [],
-            "app/model_store.py must not depend on the HTTP transport; it is a "
+            "castlearq/model_store.py must not depend on the HTTP transport; it is a "
             "local filesystem port used by the evaluation and download layers",
         )
-        downloader = _relative_imports(Path("app/downloads/downloader.py"))
+        downloader = _relative_imports(Path("castlearq/downloads/downloader.py"))
         self.assertEqual(
             sorted(
                 name
@@ -546,7 +546,7 @@ class ExecutionGatePolicyTests(unittest.TestCase):
                 if name.startswith(upward)
             ),
             [],
-            "app/downloads/downloader.py must not depend on the HTTP surface; "
+            "castlearq/downloads/downloader.py must not depend on the HTTP surface; "
             "the download surface is adapted by the API, not the reverse. Its "
             "outbound network I/O is its purpose and is not constrained here.",
         )
@@ -627,13 +627,13 @@ class HttpAdmissionContractTests(unittest.TestCase):
         self.assertIn("COMPLETED IN B9.52", text)
 
     ADMISSION_CORE_MODULES = (
-        "app/evaluate_compatibility.py",
-        "app/evaluation_policy.py",
-        "app/evaluation_pipeline.py",
-        "app/compatibility_domain.py",
-        "app/initial_knowledge.py",
-        "app/execute_model.py",
-        "app/run_service.py",
+        "castlearq/evaluate_compatibility.py",
+        "castlearq/evaluation_policy.py",
+        "castlearq/evaluation_pipeline.py",
+        "castlearq/compatibility_domain.py",
+        "castlearq/initial_knowledge.py",
+        "castlearq/execute_model.py",
+        "castlearq/run_service.py",
     )
 
     def test_admission_core_does_not_depend_on_the_transport_layer(self):
@@ -645,7 +645,7 @@ class HttpAdmissionContractTests(unittest.TestCase):
         this is the second one: the modules the HTTP gate consults must not
         have acquired a dependency on the transport, the run lock, or the
         request handler. If a future block made ``execute_model`` import
-        ``app.api`` -- for instance to read a request flag -- the layering
+        ``castlearq.api`` -- for instance to read a request flag -- the layering
         this suite pins would invert, and this test fails.
         """
         transport = _http_transport_modules()
@@ -668,15 +668,15 @@ class HttpAdmissionContractTests(unittest.TestCase):
         """B9.51 §5.5: the API must reuse the ratified admission symbols.
 
         §5.5 is a *reuse* constraint, and reuse is not the same as name
-        presence. A local ``def to_admission(...)`` inside ``app/api.py`` would
+        presence. A local ``def to_admission(...)`` inside ``castlearq/api.py`` would
         spell the right name and violate the contract outright, so this test
         distinguishes the two explicitly:
 
         * each of the four symbols §5.5 names must be **imported** by
-          ``app/api.py`` from the module that owns it -- ``app.evaluate_compatibility``
-          for the evaluation and admission conversion, ``app.execute_model`` for
+          ``castlearq/api.py`` from the module that owns it -- ``castlearq.evaluate_compatibility``
+          for the evaluation and admission conversion, ``castlearq.execute_model`` for
           the use case and its admission type;
-        * and none of them may be **defined** in ``app/api.py`` itself.
+        * and none of them may be **defined** in ``castlearq/api.py`` itself.
 
         All four symbols are checked because §5.5 names all four. Where one is
         reached indirectly rather than by a direct import, that would be a real
@@ -702,23 +702,23 @@ class HttpAdmissionContractTests(unittest.TestCase):
                 )
         imports = _relative_import_names(Path(API_PY))
         owners = {
-            "evaluate_model_compatibility": "app.evaluate_compatibility",
-            "to_admission": "app.evaluate_compatibility",
-            "EvaluationAdmission": "app.execute_model",
-            "execute_model": "app.execute_model",
+            "evaluate_model_compatibility": "castlearq.evaluate_compatibility",
+            "to_admission": "castlearq.evaluate_compatibility",
+            "EvaluationAdmission": "castlearq.execute_model",
+            "execute_model": "castlearq.execute_model",
         }
         for symbol, owner in owners.items():
             self.assertIn(
                 (owner, symbol),
                 imports,
-                f"app/api.py must import {symbol} from {owner}: B9.51 §5.5 "
+                f"castlearq/api.py must import {symbol} from {owner}: B9.51 §5.5 "
                 f"requires reusing the ratified implementation, and a local "
                 f"definition would be a second admission implementation",
             )
             self.assertNotIn(
                 symbol,
                 defined,
-                f"app/api.py defines {symbol} itself; it must reuse the "
+                f"castlearq/api.py defines {symbol} itself; it must reuse the "
                 f"ratified one from {owner} instead of forking it",
             )
         for banned in (
@@ -732,7 +732,7 @@ class HttpAdmissionContractTests(unittest.TestCase):
             self.assertNotIn(
                 banned,
                 defined,
-                f"app/api.py defines {banned}: a second admission "
+                f"castlearq/api.py defines {banned}: a second admission "
                 f"implementation would fork the ratified contract",
             )
 

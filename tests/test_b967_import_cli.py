@@ -29,9 +29,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import main as cli
-from app.importing import ImportStatus, LocalArtifactImporter
-from app.model_store import ModelStore
+from castlearq import main as cli
+from castlearq.importing import ImportStatus, LocalArtifactImporter
+from castlearq.model_store import ModelStore
 
 
 def _gguf(architecture="qwen2") -> bytes:
@@ -273,26 +273,26 @@ class DelegationTests(_CliCase):
         self.assertEqual(Path(spy.call_args.args[0]), source)
 
     def test_cli_does_not_invoke_any_runner(self):
-        with mock.patch("app.execute_model.execute_model") as runner:
+        with mock.patch("castlearq.execute_model.execute_model") as runner:
             self._import(str(self._source()))
         runner.assert_not_called()
 
     def test_cli_does_not_resolve_or_execute(self):
-        with mock.patch("app.execute_model.execute_model") as execute:
-            with mock.patch("app.main.run_model") as run:
+        with mock.patch("castlearq.execute_model.execute_model") as execute:
+            with mock.patch("castlearq.main.run_model") as run:
                 code, _ = self._import(str(self._source()))
         self.assertEqual(code, 0)
         execute.assert_not_called()
         run.assert_not_called()
 
     def test_cli_builds_no_artifact_of_its_own(self):
-        with mock.patch("app.main.ArtifactSpec") as spec:
+        with mock.patch("castlearq.main.ArtifactSpec") as spec:
             code, _ = self._import(str(self._source()))
         self.assertEqual(code, 0)
         spec.assert_not_called()
 
     def test_failure_status_maps_to_exit_one(self):
-        from app.importing import ImportResult
+        from castlearq.importing import ImportResult
         failure = ImportResult(
             status=ImportStatus.FAILED, error="simulated importer failure"
         )
@@ -304,7 +304,7 @@ class DelegationTests(_CliCase):
         self.assertIn("simulated importer failure", out)
 
     def test_failure_never_becomes_a_warning(self):
-        from app.importing import ImportResult
+        from castlearq.importing import ImportResult
         failure = ImportResult(status=ImportStatus.FAILED, error="concrete failure")
         with mock.patch.object(
             LocalArtifactImporter, "import_artifact", return_value=failure
@@ -348,5 +348,5 @@ class SourceRejectionTests(_CliCase):
 
 def _fake():
     """A minimal successful ImportResult for delegation assertions."""
-    from app.importing import ImportResult
+    from castlearq.importing import ImportResult
     return ImportResult(status=ImportStatus.IMPORTED, content_id="0" * 64)

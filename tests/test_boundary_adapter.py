@@ -26,7 +26,7 @@ import ast
 from pathlib import Path
 import unittest
 
-from app.boundary_adapter import (
+from castlearq.boundary_adapter import (
     BoundaryTranslation,
     MappingOutcome,
     TraceOutcome,
@@ -34,12 +34,12 @@ from app.boundary_adapter import (
     map_runtime_identity,
     translate,
 )
-from app.compatibility_knowledge import (
+from castlearq.compatibility_knowledge import (
     KnowledgeKind,
     KnowledgeScope,
     KnowledgeSubject,
 )
-from app.observation_domain import (
+from castlearq.observation_domain import (
     CoverageEntry,
     CoverageState,
     EnvironmentContext,
@@ -382,7 +382,7 @@ class DeterminismAndPurityTests(unittest.TestCase):
 
     def test_module_has_no_legacy_or_io_imports(self) -> None:
         source = (
-            Path(__file__).resolve().parent.parent / "app" / "boundary_adapter.py"
+            Path(__file__).resolve().parent.parent / "castlearq" / "boundary_adapter.py"
         ).read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported = set()
@@ -392,10 +392,10 @@ class DeterminismAndPurityTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom):
                 imported.add(node.module or "")
         forbidden = {
-            "app.platform",
-            "app.hardware",
-            "app.runtimes",
-            "app.gpu_setup",
+            "castlearq.platform",
+            "castlearq.hardware",
+            "castlearq.runtimes",
+            "castlearq.gpu_setup",
             "subprocess",
             "os",
             "platform",

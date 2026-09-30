@@ -16,8 +16,8 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from app.execution import RuntimeMetricSource, RuntimeMetrics
-from app.runtime_metrics import parse_llama_human_output
+from castlearq.execution import RuntimeMetricSource, RuntimeMetrics
+from castlearq.runtime_metrics import parse_llama_human_output
 
 
 class RuntimeMetricsParserTests(unittest.TestCase):

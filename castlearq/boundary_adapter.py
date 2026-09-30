@@ -29,7 +29,7 @@ randomness, no environment reads, no command execution, no discovery of
 new facts.
 
 Isolation (spec §19): this module does NOT import legacy provider modules
-(``app.platform``, ``app.hardware``, ``app.runtimes``, ``app.gpu_setup``)
+(``castlearq.platform``, ``castlearq.hardware``, ``castlearq.runtimes``, ``castlearq.gpu_setup``)
 and never reuses the legacy ``compatibility_names`` vocabulary. It imports
 only the B9.11 observation domain (its input contract) and the Knowledge
 contracts that define the destination vocabulary (``KnowledgeSubject``,
@@ -50,12 +50,12 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
-from app.compatibility_knowledge import (
+from .compatibility_knowledge import (
     KnowledgeKind,
     KnowledgeScope,
     KnowledgeSubject,
 )
-from app.observation_domain import (
+from .observation_domain import (
     CoverageState,
     EnvironmentContext,
     ObservationFamily,

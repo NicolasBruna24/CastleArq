@@ -14,12 +14,12 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from app.execution import (
+from castlearq.execution import (
     ExecutionErrorInfo,
     ExecutionErrorCode,
     ExecutionResult,
 )
-from app.run_service import (
+from castlearq.run_service import (
     PreparationError,
     RunDependencies,
     RunExecutionFailedError,
@@ -43,9 +43,9 @@ class RunServiceErrorSemanticsTests(unittest.TestCase):
 
     def _run_once_failure(self, *, runner_result=None, prepare_error=None):
         with mock.patch(
-            "app.run_service.ModelArtifactResolver"
+            "castlearq.run_service.ModelArtifactResolver"
         ) as resolver_cls, mock.patch(
-            "app.run_service.prepare"
+            "castlearq.run_service.prepare"
         ) as prepare_mock:
             resolver_cls.return_value.resolve.return_value = SimpleNamespace(
                 model=SimpleNamespace(model_id="m"),

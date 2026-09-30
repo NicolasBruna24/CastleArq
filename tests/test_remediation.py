@@ -21,12 +21,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import main as cli
-from app import remediation as rem
-from app.gpu_diagnosis import GpuComponent, diagnose
-from app.gpu_recipes import GpuRecipe
-from app.gpu_setup import FunctionalCheck, GpuSoftwareStatus
-from app.hardware import CPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq import main as cli
+from castlearq import remediation as rem
+from castlearq.gpu_diagnosis import GpuComponent, diagnose
+from castlearq.gpu_recipes import GpuRecipe
+from castlearq.gpu_setup import FunctionalCheck, GpuSoftwareStatus
+from castlearq.hardware import CPUInfo, HardwareSnapshot, MemoryInfo
 
 RESOLVE = rem.RemediationActionKind.RESOLVE_COMPONENT
 VERIFY = rem.RemediationActionKind.VERIFY_COMPONENT
@@ -80,7 +80,7 @@ def _hardware(gpus=()) -> HardwareSnapshot:
 
 class FullPlanTests(unittest.TestCase):
     def test_all_missing_grouped_into_single_plan(self):
-        with patch("app.remediation.find_recipe", side_effect=_recipe_lookup):
+        with patch("castlearq.remediation.find_recipe", side_effect=_recipe_lookup):
             plan = rem.build_remediation_plan(_diagnosis(False, False, False))
         self.assertEqual(plan.status, rem.RemediationStatus.READY)
         self.assertEqual(len(plan.problems), 3)
@@ -117,7 +117,7 @@ class FullPlanTests(unittest.TestCase):
         self.assertEqual(plan.actions[-1].kind, REDIAGNOSE)
 
     def test_order_is_deterministic(self):
-        with patch("app.remediation.find_recipe", side_effect=_recipe_lookup):
+        with patch("castlearq.remediation.find_recipe", side_effect=_recipe_lookup):
             first = rem.build_remediation_plan(_diagnosis(False, False, False))
             second = rem.build_remediation_plan(_diagnosis(False, False, False))
         self.assertEqual(first, second)
@@ -194,7 +194,7 @@ class PartialPlanTests(unittest.TestCase):
                 platforms=("linux",),
             )
 
-        with patch("app.remediation.find_recipe", side_effect=verify_only):
+        with patch("castlearq.remediation.find_recipe", side_effect=verify_only):
             plan = rem.build_remediation_plan(_diagnosis(True, True, False))
         self.assertEqual(plan.recipe_refs, ("verify-only",))
         self.assertEqual(plan.verify_commands, ("llama --list-devices",))
@@ -213,7 +213,7 @@ class AuthorizationTests(unittest.TestCase):
         self.assertTrue(plan.requires_authorization)
 
     def test_ready_plan_requires_authorization(self):
-        with patch("app.remediation.find_recipe", side_effect=_recipe_lookup):
+        with patch("castlearq.remediation.find_recipe", side_effect=_recipe_lookup):
             plan = rem.build_remediation_plan(_diagnosis(True, True, False))
         self.assertEqual(plan.status, rem.RemediationStatus.READY)
         self.assertTrue(plan.requires_authorization)

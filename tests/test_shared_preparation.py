@@ -22,12 +22,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import ExecutionResult, ExecutionTarget
-from app.main import PreparationError, _prepare
-from app.models import ArtifactSpec, ArtifactState, ModelSpec
-from app.resolver import ResolvedModelArtifact
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import ExecutionResult, ExecutionTarget
+from castlearq.main import PreparationError, _prepare
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.resolver import ResolvedModelArtifact
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 
 def _invocable_capability() -> RuntimeCapability:
@@ -105,33 +105,33 @@ class SharedPreparationTests(unittest.TestCase):
         self.model_store = Mock()
 
     def test_prepare_evaluates_compatibility_once(self):
-        with patch("app.run_service.assess_model") as assess_model, patch(
-            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
+        with patch("castlearq.run_service.assess_model") as assess_model, patch(
+            "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             assess_model.assert_called_once()
 
     def test_prepare_runs_preflight_once(self):
-        with patch("app.run_service.assess_model") as assess_model, patch(
-            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
+        with patch("castlearq.run_service.assess_model") as assess_model, patch(
+            "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             self.preflight.validate.assert_called_once_with(self.artifact)
 
     def test_prepare_runs_selection_once(self):
-        with patch("app.run_service.assess_model") as assess_model, patch(
-            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
+        with patch("castlearq.run_service.assess_model") as assess_model, patch(
+            "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             _prepare(self.model, self.artifact, self.capability, self.model_store)
             self.selector.select.assert_called_once()
 
     def test_prepare_returns_same_target_for_run_and_chat(self):
-        with patch("app.run_service.assess_model") as assess_model, patch(
-            "app.run_service.ArtifactExecutionPreflight", return_value=self.preflight
-        ), patch("app.run_service.RuntimeBackendSelector", return_value=self.selector):
+        with patch("castlearq.run_service.assess_model") as assess_model, patch(
+            "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
+        ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             preparation = _prepare(
                 self.model, self.artifact, self.capability, self.model_store
@@ -143,7 +143,7 @@ class SharedPreparationTests(unittest.TestCase):
             self.assertIn("marginal", preparation.selection_warnings)
 
     def test_prepare_refuses_incompatible_model(self):
-        with patch("app.run_service.assess_model") as assess_model:
+        with patch("castlearq.run_service.assess_model") as assess_model:
             assess_model.return_value = CompatibilityResult(
                 model=self.model,
                 status=CompatibilityStatus.INCOMPATIBLE,
@@ -164,7 +164,7 @@ class SharedPreparationTests(unittest.TestCase):
     def test_run_and_chat_both_call_prepare(self):
         """run_model and chat_model must both delegate to the shared _prepare."""
         from contextlib import redirect_stderr, redirect_stdout
-        from app.main import run_model, chat_model
+        from castlearq.main import run_model, chat_model
 
         preparation = SimpleNamespace(
             executable_artifact=self.exe,
@@ -178,14 +178,14 @@ class SharedPreparationTests(unittest.TestCase):
         runner.run.return_value = ExecutionResult(True, 0, "ok\n", "")
         output = io.StringIO()
         error = io.StringIO()
-        with patch("app.main.ModelArtifactResolver") as resolver, patch(
-            "app.main._prepare", return_value=preparation
-        ) as prepare, patch("app.main.LlamaCppRunner", return_value=runner), patch(
-            "app.main.detect_hardware"
+        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
+            "castlearq.main._prepare", return_value=preparation
+        ) as prepare, patch("castlearq.main.LlamaCppRunner", return_value=runner), patch(
+            "castlearq.main.detect_hardware"
         ), patch(
-            "app.main.detect_llama_capability"
+            "castlearq.main.detect_llama_capability"
         ), patch(
-            "app.main.detect_backends"
+            "castlearq.main.detect_backends"
         ), redirect_stdout(
             output
         ), redirect_stderr(
@@ -201,11 +201,11 @@ class SharedPreparationTests(unittest.TestCase):
         session.send.return_value = SimpleNamespace(
             user="hi", assistant="Hello!", chunks=("Hello!",), metrics=None
         )
-        with patch("app.main.ModelArtifactResolver") as resolver, patch(
-            "app.main.detect_llama_capability", return_value=_invocable_capability()
+        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
+            "castlearq.main.detect_llama_capability", return_value=_invocable_capability()
         ), patch(
-            "app.main._prepare", return_value=preparation
-        ) as prepare, patch("app.main.start_chat_session", return_value=session):
+            "castlearq.main._prepare", return_value=preparation
+        ) as prepare, patch("castlearq.main.start_chat_session", return_value=session):
             resolver.return_value.resolve.return_value = self.resolved
             out = io.StringIO()
             err = io.StringIO()

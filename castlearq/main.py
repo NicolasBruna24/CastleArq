@@ -502,7 +502,7 @@ def print_gpu_diagnosis() -> int:
         else:
             print(
                 "Verification session saved. Apply the remediation manually,"
-                " then run: python3 -m app.main verify")
+                " then run: python3 -m castlearq.main verify")
     return 0
 
 
@@ -518,17 +518,17 @@ def print_remediation_verification() -> int:
         session = load_session()
     except (SessionError, OSError) as error:
         print(f"Verification session is unusable: {error}")
-        print("Run 'python3 -m app.main diagnose' to create a new one.")
+        print("Run 'python3 -m castlearq.main diagnose' to create a new one.")
         return 2
     if session is None:
         print("No previous diagnosis session found.")
-        print("Run 'python3 -m app.main diagnose' first.")
+        print("Run 'python3 -m castlearq.main diagnose' first.")
         return 0
     try:
         original = _diagnosis_from_session(session)
     except ValueError as error:
         print(f"Verification session is unusable: {error}")
-        print("Run 'python3 -m app.main diagnose' to create a new one.")
+        print("Run 'python3 -m castlearq.main diagnose' to create a new one.")
         return 2
 
     plan = build_remediation_plan(original)
@@ -598,7 +598,7 @@ def _json_models_payload(hardware, results) -> dict:
     """Project the existing ``models`` result; recompute nothing.
 
     The catalog assessment belongs to the LEGACY compatibility domain
-    (``app.compatibility``: compatible / marginal / incompatible / unknown),
+    (``castlearq.compatibility``: compatible / marginal / incompatible / unknown),
     which is NOT the strict B9.3 evaluation vocabulary. It is therefore
     reported under its own ``legacy_compatibility`` name so the two can
     never be read as the same thing, and its enum travels as ``.value``.
@@ -748,7 +748,7 @@ def _emit_json_envelope(
     """Print exactly one ``castlearq.cli`` envelope and return ``exit_code``.
 
     The command built the payload and decided the exit code; the shared
-    ``app.json_output`` layer owns the envelope and the serialization. This
+    ``castlearq.json_output`` layer owns the envelope and the serialization. This
     helper never invents data and never derives an exit code: the code it is
     given is the code the process returns.
     """
@@ -1050,7 +1050,7 @@ def import_command(
     """
     if not path:
         usage = (
-            "Usage: python3 -m app.main import <path-to-gguf> [--label LABEL]"
+            "Usage: python3 -m castlearq.main import <path-to-gguf> [--label LABEL]"
         )
         if as_json:
             # The human usage line goes to stdout, which JSON mode must keep
@@ -1126,7 +1126,7 @@ def import_command(
 
 def print_source(provider: str | None, repository: str | None) -> int:
     if provider != "huggingface" or not repository:
-        print("Usage: python3 -m app.main source huggingface <repository>")
+        print("Usage: python3 -m castlearq.main source huggingface <repository>")
         return 2
     try:
         artifacts = HuggingFaceSource().discover_artifacts(repository)
@@ -1202,7 +1202,7 @@ def print_plan(
     as_json: bool = False,
 ) -> int:
     if not repository or not filename:
-        usage = "Usage: python3 -m app.main plan <repository> <filename>"
+        usage = "Usage: python3 -m castlearq.main plan <repository> <filename>"
         if as_json:
             print(usage, file=sys.stderr)
             return _emit_json_envelope(
@@ -1284,7 +1284,7 @@ def run_download(
 
     Selection policy (explicit, no guessing):
     - the logical ID must resolve to exactly one (source, repository)
-      via :mod:`app.model_identity`;
+      via :mod:`castlearq.model_identity`;
     - ``HuggingFaceSource.discover_artifacts`` returns available GGUF artifacts;
     - ``select_artifact`` selects exactly one artifact deterministically if
       no ambiguity exists or matching the given selectors;
@@ -1303,7 +1303,7 @@ def run_download(
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
     if not model_id:
-        print("Usage: python3 -m app.main download <model-id>", file=err)
+        print("Usage: python3 -m castlearq.main download <model-id>", file=err)
         return 2
 
     locator = downloadable_locator(model_id)
@@ -1451,7 +1451,7 @@ def run_model(
     model_store: ModelStore | None = None,
 ) -> int:
     if not model_id or prompt is None or not prompt.strip():
-        print("Usage: python3 -m app.main run <model-id> --prompt <text>", file=sys.stderr)
+        print("Usage: python3 -m castlearq.main run <model-id> --prompt <text>", file=sys.stderr)
         return 2
     try:
         model_store = model_store if model_store is not None else ModelStore()
@@ -1525,7 +1525,7 @@ def chat_model(
     input_fn = input_fn if input_fn is not None else input
 
     if not model_id:
-        print("Usage: python3 -m app.main chat <model-id>", file=err)
+        print("Usage: python3 -m castlearq.main chat <model-id>", file=err)
         return 2
 
     try:
@@ -1642,7 +1642,7 @@ def execute_command(
     err = err if err is not None else sys.stderr
     if not model_id or prompt is None or not prompt.strip():
         print(
-            "Usage: python3 -m app.main execute <model-id> <prompt>",
+            "Usage: python3 -m castlearq.main execute <model-id> <prompt>",
             file=err,
         )
         return 2
@@ -1738,7 +1738,7 @@ def _compatibility_evaluation_payload(result) -> dict:
     """
 
     def items(value) -> tuple:
-        # Same defensive rule as app.compatibility_report: only real
+        # Same defensive rule as castlearq.compatibility_report: only real
         # collections are projected, a stand-in degrades to "nothing to show".
         return tuple(value) if isinstance(value, (tuple, list)) else ()
 
@@ -1772,7 +1772,7 @@ def compatibility_command(
     """Report the existing strict compatibility evaluation (B9.48).
 
     Read-only Product Caller for
-    :func:`~app.evaluate_compatibility.evaluate_model_compatibility`.
+    :func:`~castlearq.evaluate_compatibility.evaluate_model_compatibility`.
     It asks the question ``execute`` would answer implicitly, and it answers
     it WITHOUT running inference.
 
@@ -1793,7 +1793,7 @@ def compatibility_command(
     err = err if err is not None else sys.stderr
     if not model_id or not model_id.strip():
         print(
-            "Usage: python3 -m app.main compatibility <model-id>",
+            "Usage: python3 -m castlearq.main compatibility <model-id>",
             file=err,
         )
         if as_json:
@@ -1803,7 +1803,7 @@ def compatibility_command(
                 {},
                 error=json_output.error(
                     "usage_error",
-                    "Usage: python3 -m app.main compatibility <model-id>",
+                    "Usage: python3 -m castlearq.main compatibility <model-id>",
                 ),
                 out=out,
             )
@@ -1918,7 +1918,7 @@ def validate_command(
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
     if not model_id or not model_id.strip():
-        print("Usage: python3 -m app.main validate <model-id>", file=err)
+        print("Usage: python3 -m castlearq.main validate <model-id>", file=err)
         if as_json:
             return _emit_json_envelope(
                 "validate",
@@ -1926,7 +1926,7 @@ def validate_command(
                 {},
                 error=json_output.error(
                     "usage_error",
-                    "Usage: python3 -m app.main validate <model-id>",
+                    "Usage: python3 -m castlearq.main validate <model-id>",
                 ),
                 out=out,
             )
@@ -2159,7 +2159,7 @@ examples:
   castlearq execute qwen2.5-coder-7b-instruct "Reply with exactly OK"
   castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"
   castlearq diagnose
-  python3 -m app.main --help  # development from checkout
+  python3 -m castlearq.main --help  # development from checkout
 
 
 """

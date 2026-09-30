@@ -21,16 +21,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import remediation as rem
-from app import remediation_verification as rv
-from app.gpu_diagnosis import (
+from castlearq import remediation as rem
+from castlearq import remediation_verification as rv
+from castlearq.gpu_diagnosis import (
     DiagnosisStatus,
     GpuComponent,
     component_check,
     diagnose,
 )
-from app.gpu_recipes import GpuRecipe
-from app.gpu_setup import FunctionalCheck, GpuSoftwareStatus
+from castlearq.gpu_recipes import GpuRecipe
+from castlearq.gpu_setup import FunctionalCheck, GpuSoftwareStatus
 
 
 def _status(kernel, drm, vulkan) -> GpuSoftwareStatus:
@@ -61,7 +61,7 @@ def _recipe_lookup(runtime, backend, component, platform):
 
 
 def _plan(diagnosis):
-    with patch("app.remediation.find_recipe", side_effect=_recipe_lookup):
+    with patch("castlearq.remediation.find_recipe", side_effect=_recipe_lookup):
         return rem.build_remediation_plan(diagnosis)
 
 
@@ -206,7 +206,7 @@ class NoRecipeAndSpecialPlanTests(unittest.TestCase):
     def test_needs_research_partial_recipe_verifies_only_known(self):
         original = _diagnosis(False, True, False)
         with patch(
-            "app.remediation.find_recipe",
+            "castlearq.remediation.find_recipe",
             side_effect=lambda runtime, backend, component, platform: (
                 _recipe_lookup(runtime, backend, component, platform)
                 if component is GpuComponent.VULKAN_FUNCTIONAL else None

@@ -18,10 +18,10 @@ Answers *"what platform are we on?"* as one read-only, deterministic model:
 :data:`PlatformInfo`. It reuses the existing conventions of the project
 instead of introducing new ones:
 
-* the canonical platform token comes from :func:`app.hardware.detect_platform`
+* the canonical platform token comes from :func:`castlearq.hardware.detect_platform`
   (``linux``/``windows``/``macos`` or ``""`` when unknown);
 * the distribution identity comes from the existing ``/etc/os-release``
-  parser in :mod:`app.gpu_setup` (:class:`OsReleaseInfo`);
+  parser in :mod:`castlearq.gpu_setup` (:class:`OsReleaseInfo`);
 * the architecture follows the existing ``platform.machine()`` convention
   (``"Unknown"`` when it cannot be determined).
 

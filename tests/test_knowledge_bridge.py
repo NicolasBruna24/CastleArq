@@ -7,9 +7,9 @@ import ast
 from pathlib import Path
 import unittest
 
-from app import initial_knowledge as ik
-from app.compatibility_evaluator import RuntimeKnowledge
-from app.compatibility_knowledge import (
+from castlearq import initial_knowledge as ik
+from castlearq.compatibility_evaluator import RuntimeKnowledge
+from castlearq.compatibility_knowledge import (
     KnowledgeAssertion,
     KnowledgeKind,
     KnowledgePredicate,
@@ -19,7 +19,7 @@ from app.compatibility_knowledge import (
     KnowledgeState,
     KnowledgeSubject,
 )
-from app.knowledge_bridge import KnowledgeProjection, project_knowledge
+from castlearq.knowledge_bridge import KnowledgeProjection, project_knowledge
 
 STATE = KnowledgeState
 KIND = KnowledgeKind
@@ -58,7 +58,7 @@ def assertion(subject_id, obj, state, scope=None):
 class PurityTests(unittest.TestCase):
     def test_module_imports_only_bridge_dependencies(self):
         tree = ast.parse(
-            Path("app/knowledge_bridge.py").read_text(encoding="utf-8"))
+            Path("castlearq/knowledge_bridge.py").read_text(encoding="utf-8"))
         imported = set()
         for node in ast.walk(tree):
             self.assertNotIsInstance(node, ast.Import)
@@ -68,7 +68,7 @@ class PurityTests(unittest.TestCase):
 
     def test_module_performs_no_io_or_environment_access(self):
         tree = ast.parse(
-            Path("app/knowledge_bridge.py").read_text(encoding="utf-8"))
+            Path("castlearq/knowledge_bridge.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

@@ -19,13 +19,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.compatibility import (
+from castlearq.compatibility import (
     CompatibilityConfig,
     CompatibilityStatus,
     assess_model,
 )
-from app.downloads import ArtifactFilesystemState
-from app.execution import (
+from castlearq.downloads import ArtifactFilesystemState
+from castlearq.execution import (
     ArtifactExecutionPreflight,
     ExecutableArtifact,
     ExecutionErrorCode,
@@ -33,19 +33,19 @@ from app.execution import (
     ExecutionResult,
     ExecutionTarget,
 )
-from app.execution_service import ModelExecutionService
-from app.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
-from app.model_catalog import get_catalog
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState, ModelSpec
-from app.runner import ModelRunner
-from app.runtimes import (
+from castlearq.execution_service import ModelExecutionService
+from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.model_catalog import get_catalog
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.runner import ModelRunner
+from castlearq.runtimes import (
     BackendStatus,
     PromptInputMode,
     RuntimeCapability,
     RuntimeStatus,
 )
-from app.selection import RuntimeBackendSelector
+from castlearq.selection import RuntimeBackendSelector
 
 
 class FakeModelRunner(ModelRunner):

@@ -19,9 +19,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.manifest_migration import MigrationAction, migrate_model_store
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState
+from castlearq.manifest_migration import MigrationAction, migrate_model_store
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState
 
 QWEN_REPOSITORY = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
 QWEN_LOGICAL_ID = "qwen2.5-coder-7b-instruct"

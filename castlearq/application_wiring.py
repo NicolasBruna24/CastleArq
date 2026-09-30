@@ -66,7 +66,7 @@ Constructing a collaborator is NOT performing its job: this module still
 captures no context, integrates nothing, reconciles nothing, builds no
 execution target and runs no subprocess for the Execute path either. The
 ordering, the compatibility gate, the selection authority and the execution
-stay inside the use case; ``app/execute_model.py`` keeps importing no
+stay inside the use case; ``castlearq/execute_model.py`` keeps importing no
 concrete infrastructure and never knows a runner implementation
 (B9.22 §3/§10). The direction is one-way: this module imports the
 Application boundary, never the reverse.

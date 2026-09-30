@@ -22,10 +22,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import ExecutionRequest, ExecutionTarget
-from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
-from app.main import (
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import ExecutionRequest, ExecutionTarget
+from castlearq.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
+from castlearq.main import (
     _DEFAULT_EXECUTION_TIMEOUT_SECONDS,
     _download_status,
     print_runtime_diagnostics,
@@ -33,13 +33,13 @@ from app.main import (
     run_download,
     run_model,
 )
-from app.model_catalog import get_catalog
-from app.models import ArtifactSpec, Quantization
-from app.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
+from castlearq.model_catalog import get_catalog
+from castlearq.models import ArtifactSpec, Quantization
+from castlearq.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
 
 class RuntimeDiagnosticsTests(unittest.TestCase):
     def test_available_runtime_presentation_and_exit_zero(self):
-        from app.runtimes import (
+        from castlearq.runtimes import (
             LlamaRuntimeIdentity,
             ResolvedLlamaRuntime,
             RuntimeAvailability,
@@ -54,7 +54,7 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
             LlamaRuntimeIdentity("llama.cpp", "/tmp/llama", "llama", "0.4", "7",
                                  RuntimeAvailability.AVAILABLE), capability)
         output = io.StringIO()
-        with patch("app.main.resolve_llama_runtime", return_value=resolved):
+        with patch("castlearq.main.resolve_llama_runtime", return_value=resolved):
             code = print_runtime_diagnostics(out=output)
         self.assertEqual(code, 0)
         text = output.getvalue()
@@ -64,26 +64,26 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
             self.assertIn(expected, text)
 
     def test_not_found_is_nonzero_and_oriented(self):
-        from app.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
+        from castlearq.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
         resolved = ResolvedLlamaRuntime(
             LlamaRuntimeIdentity("llama.cpp", None, None, None, None,
                                  RuntimeAvailability.NOT_FOUND, "llama executable was not found"), None)
         output = io.StringIO()
-        with patch("app.main.resolve_llama_runtime", return_value=resolved):
+        with patch("castlearq.main.resolve_llama_runtime", return_value=resolved):
             code = print_runtime_diagnostics(out=output)
         self.assertNotEqual(code, 0)
         self.assertIn("Availability: NOT_FOUND", output.getvalue())
         self.assertNotIn("Executable:", output.getvalue())
 
     def test_other_states_preserve_enum_and_nonzero_exit(self):
-        from app.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
+        from castlearq.runtimes import LlamaRuntimeIdentity, ResolvedLlamaRuntime, RuntimeAvailability
         for state in (RuntimeAvailability.FOUND_UNUSABLE, RuntimeAvailability.PROBE_ERROR,
                       RuntimeAvailability.UNKNOWN):
             resolved = ResolvedLlamaRuntime(
                 LlamaRuntimeIdentity("llama.cpp", "/tmp/llama", "llama", None, None,
                                      state, "reason"), None)
             output = io.StringIO()
-            with patch("app.main.resolve_llama_runtime", return_value=resolved):
+            with patch("castlearq.main.resolve_llama_runtime", return_value=resolved):
                 self.assertNotEqual(print_runtime_diagnostics(out=output), 0)
             self.assertIn(f"Availability: {state.name}", output.getvalue())
 
@@ -115,7 +115,7 @@ class MainRunTests(unittest.TestCase):
         return runner
 
     def test_empty_prompt_is_usage_error_without_resolution(self):
-        with patch("app.main.ModelArtifactResolver") as resolver:
+        with patch("castlearq.main.ModelArtifactResolver") as resolver:
             self.assertEqual(run_model(self.model.model_id, "  "), 2)
             resolver.assert_not_called()
 
@@ -124,7 +124,7 @@ class MainRunTests(unittest.TestCase):
             sys,
             "argv",
             [
-                "app.main",
+                "castlearq.main",
                 "run",
                 "unknown-model",
                 "unexpected",
@@ -133,7 +133,7 @@ class MainRunTests(unittest.TestCase):
             ],
         ):
             with self.assertRaises(SystemExit) as context:
-                from app.main import main
+                from castlearq.main import main
 
                 main()
         self.assertEqual(context.exception.code, 2)
@@ -142,21 +142,21 @@ class MainRunTests(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["app.main", "run", "unknown-model", "--prompt", "hello"],
+            ["castlearq.main", "run", "unknown-model", "--prompt", "hello"],
         ), patch(
-            "app.main.ModelArtifactResolver"
+            "castlearq.main.ModelArtifactResolver"
         ) as resolver:
             resolver.return_value.resolve.side_effect = (
                 ModelArtifactResolutionError("missing")
             )
-            from app.main import main
+            from castlearq.main import main
 
             self.assertEqual(main(), 1)
 
     def test_resolution_error_returns_one_without_execution(self):
-        with patch("app.main.ModelArtifactResolver") as resolver, patch(
-            "app.main._prepare"
-        ) as prepare, patch("app.main.LlamaCppRunner") as runner:
+        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
+            "castlearq.main._prepare"
+        ) as prepare, patch("castlearq.main.LlamaCppRunner") as runner:
             resolver.return_value.resolve.side_effect = (
                 ModelArtifactResolutionError("missing")
             )
@@ -169,10 +169,10 @@ class MainRunTests(unittest.TestCase):
             runner.assert_not_called()
 
     def test_preparation_error_returns_one_without_running(self):
-        error_class = __import__("app.main", fromlist=["PreparationError"]).PreparationError
-        with patch("app.main.ModelArtifactResolver") as resolver, patch(
-            "app.main._prepare"
-        ) as prepare, patch("app.main.LlamaCppRunner") as runner:
+        error_class = __import__("castlearq.main", fromlist=["PreparationError"]).PreparationError
+        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
+            "castlearq.main._prepare"
+        ) as prepare, patch("castlearq.main.LlamaCppRunner") as runner:
             resolver.return_value.resolve.return_value = self.resolved
             prepare.side_effect = error_class(
                 "Model compatibility does not permit execution",
@@ -189,10 +189,10 @@ class MainRunTests(unittest.TestCase):
     def test_success_prints_stdout_and_warnings(self):
         self.preparation.compatibility_warnings = ("estimated memory",)
         result = ExecutionResult(True, 0, "model response\n", "runtime diagnostic\n")
-        with patch("app.main.ModelArtifactResolver", return_value=Mock(
+        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main._prepare", return_value=self.preparation), patch(
-            "app.main.LlamaCppRunner", return_value=self._runner(result)
+        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
+            "castlearq.main.LlamaCppRunner", return_value=self._runner(result)
         ):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
@@ -205,10 +205,10 @@ class MainRunTests(unittest.TestCase):
             ),
         )
         error = io.StringIO()
-        with patch("app.main.ModelArtifactResolver", return_value=Mock(
+        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main._prepare", return_value=self.preparation), patch(
-            "app.main.LlamaCppRunner", return_value=self._runner(result)
+        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
+            "castlearq.main.LlamaCppRunner", return_value=self._runner(result)
         ), redirect_stderr(error):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 1)
@@ -223,10 +223,10 @@ class MainRunTests(unittest.TestCase):
 
         runner = Mock()
         runner.run.side_effect = run
-        with patch("app.main.ModelArtifactResolver", return_value=Mock(
+        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
             resolve=Mock(return_value=self.resolved)
-        )), patch("app.main._prepare", return_value=self.preparation), patch(
-            "app.main.LlamaCppRunner", return_value=runner
+        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
+            "castlearq.main.LlamaCppRunner", return_value=runner
         ):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
@@ -238,9 +238,9 @@ class MainRunTests(unittest.TestCase):
     def test_run_model_forwards_quantization_and_filename_to_resolver(self):
         resolver_mock = Mock()
         resolver_mock.resolve.return_value = self.resolved
-        with patch("app.main.ModelArtifactResolver", return_value=resolver_mock), patch(
-            "app.main._prepare", return_value=self.preparation
-        ), patch("app.main.LlamaCppRunner", return_value=self._runner(ExecutionResult(True, 0, "ok\n", ""))):
+        with patch("castlearq.main.ModelArtifactResolver", return_value=resolver_mock), patch(
+            "castlearq.main._prepare", return_value=self.preparation
+        ), patch("castlearq.main.LlamaCppRunner", return_value=self._runner(ExecutionResult(True, 0, "ok\n", ""))):
             code = run_model(
                 self.model.model_id,
                 "hello",
@@ -255,7 +255,7 @@ class MainRunTests(unittest.TestCase):
             )
 
     def test_chat_model_forwards_quantization_and_filename_to_resolver(self):
-        from app.main import chat_model
+        from castlearq.main import chat_model
 
         resolver_mock = Mock()
         resolver_mock.resolve.return_value = self.resolved
@@ -263,11 +263,11 @@ class MainRunTests(unittest.TestCase):
         session_mock.state = Mock(value="closed")
         capability = Mock()
         capability.invocable = True
-        with patch("app.main.ModelArtifactResolver", return_value=resolver_mock), patch(
-            "app.main.detect_llama_capability", return_value=capability
+        with patch("castlearq.main.ModelArtifactResolver", return_value=resolver_mock), patch(
+            "castlearq.main.detect_llama_capability", return_value=capability
         ), patch(
-            "app.main._prepare", return_value=self.preparation
-        ), patch("app.main.start_chat_session", return_value=session_mock):
+            "castlearq.main._prepare", return_value=self.preparation
+        ), patch("castlearq.main.start_chat_session", return_value=session_mock):
             out = io.StringIO()
             err = io.StringIO()
             code = chat_model(
@@ -290,7 +290,7 @@ class MainRunTests(unittest.TestCase):
             sys,
             "argv",
             [
-                "app.main",
+                "castlearq.main",
                 "run",
                 self.model.model_id,
                 "--prompt",
@@ -300,8 +300,8 @@ class MainRunTests(unittest.TestCase):
                 "--filename",
                 "model.Q4_K_M.gguf",
             ],
-        ), patch("app.main.run_model", return_value=0) as run_mock:
-            from app.main import main
+        ), patch("castlearq.main.run_model", return_value=0) as run_mock:
+            from castlearq.main import main
 
             self.assertEqual(main(), 0)
             run_mock.assert_called_once_with(
@@ -317,7 +317,7 @@ class MainRunTests(unittest.TestCase):
             sys,
             "argv",
             [
-                "app.main",
+                "castlearq.main",
                 "chat",
                 self.model.model_id,
                 "--quantization",
@@ -325,8 +325,8 @@ class MainRunTests(unittest.TestCase):
                 "--filename",
                 "model.Q4_K_M.gguf",
             ],
-        ), patch("app.main.chat_model", return_value=0) as chat_mock:
-            from app.main import main
+        ), patch("castlearq.main.chat_model", return_value=0) as chat_mock:
+            from castlearq.main import main
 
             self.assertEqual(main(), 0)
             chat_mock.assert_called_once_with(
@@ -339,7 +339,7 @@ class MainRunTests(unittest.TestCase):
 
 class PrintLocalModelsTests(unittest.TestCase):
     def test_list_without_artifacts(self):
-        from app.main import print_local_models
+        from castlearq.main import print_local_models
 
         mock_store = Mock()
         mock_store.list_artifacts.return_value = []
@@ -351,9 +351,9 @@ class PrintLocalModelsTests(unittest.TestCase):
         self.assertIn("No local model artifacts found.", text)
 
     def test_list_with_single_artifact(self):
-        from app.main import print_local_models
-        from app.model_store import StoredArtifact
-        from app.models import ArtifactSpec, ArtifactState
+        from castlearq.main import print_local_models
+        from castlearq.model_store import StoredArtifact
+        from castlearq.models import ArtifactSpec, ArtifactState
 
         artifact = ArtifactSpec(
             model_id="qwen2.5-coder-7b-instruct",
@@ -382,9 +382,9 @@ class PrintLocalModelsTests(unittest.TestCase):
         self.assertIn("status: VERIFIED", text)
 
     def test_list_with_multiple_artifacts_and_deterministic_order(self):
-        from app.main import print_local_models
-        from app.model_store import StoredArtifact
-        from app.models import ArtifactSpec, ArtifactState
+        from castlearq.main import print_local_models
+        from castlearq.model_store import StoredArtifact
+        from castlearq.models import ArtifactSpec, ArtifactState
 
         art_q8 = ArtifactSpec(
             model_id="qwen2.5-coder-7b-instruct",
@@ -431,9 +431,9 @@ class PrintLocalModelsTests(unittest.TestCase):
         self.assertIn("status: VERIFIED", text)
 
     def test_list_with_size_bytes_none(self):
-        from app.main import print_local_models
-        from app.model_store import StoredArtifact
-        from app.models import ArtifactSpec, ArtifactState
+        from castlearq.main import print_local_models
+        from castlearq.model_store import StoredArtifact
+        from castlearq.models import ArtifactSpec, ArtifactState
 
         artifact = ArtifactSpec(
             model_id="qwen2.5-coder-7b-instruct",
@@ -480,16 +480,16 @@ class PrintModelsTests(unittest.TestCase):
         hardware = SimpleNamespace(gpus=(), memory=SimpleNamespace(total_gib=16.0))
         with ExitStack() as stack:
             stack.enter_context(
-                patch("app.main.detect_hardware", return_value=hardware)
+                patch("castlearq.main.detect_hardware", return_value=hardware)
             )
-            stack.enter_context(patch("app.main.detect_runtimes", return_value=[]))
-            stack.enter_context(patch("app.main.detect_backends", return_value=[]))
+            stack.enter_context(patch("castlearq.main.detect_runtimes", return_value=[]))
+            stack.enter_context(patch("castlearq.main.detect_backends", return_value=[]))
             stack.enter_context(
-                patch("app.main.recommend_models", return_value=results)
+                patch("castlearq.main.recommend_models", return_value=results)
             )
             if mapping is not None:
                 stack.enter_context(
-                    patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping)
+                    patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping)
                 )
             output = io.StringIO()
             with redirect_stdout(output):
@@ -550,7 +550,7 @@ class PrintModelsTests(unittest.TestCase):
         self.assertNotIn("Download: available", text)
 
     def test_repository_is_taken_only_from_the_real_mapping(self):
-        from app.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
+        from castlearq.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
 
         qwen = self._model("qwen2.5-coder-7b-instruct")
         llama = self._model("llama-3.1-8b-instruct")
@@ -586,13 +586,13 @@ class DownloadStatusTests(unittest.TestCase):
     """``_download_status`` must agree with the ``download`` command gate."""
 
     def _status(self, model_id, mapping):
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
             return _download_status(model_id)
 
     def _gate_passes(self, model_id, mapping):
         source = Mock()
         source.discover_artifacts.return_value = []
-        with patch("app.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
+        with patch("castlearq.model_identity.SOURCE_REPOSITORY_TO_MODEL_ID", mapping):
             run_download(
                 model_id,
                 source_factory=lambda: source,
@@ -650,7 +650,7 @@ class DownloadStatusTests(unittest.TestCase):
                 )
 
     def test_real_qwen_mapping_stays_downloadable(self):
-        from app.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
+        from castlearq.model_identity import SOURCE_REPOSITORY_TO_MODEL_ID
 
         status = _download_status("qwen2.5-coder-7b-instruct")
         self.assertTrue(status.startswith("available ("))
@@ -667,7 +667,7 @@ class CliHelpTests(unittest.TestCase):
     """Tier 1 help: documentation-only changes must not alter command wiring."""
 
     def _help_text(self) -> str:
-        from app.main import main
+        from castlearq.main import main
 
         buffer = io.StringIO()
         with patch.object(sys, "argv", ["castlearq", "--help"]), patch.object(
@@ -716,7 +716,7 @@ class CliHelpTests(unittest.TestCase):
         text = self._help_text()
         for command in ("models", "download", "list", "run", "chat"):
             self.assertIn(f"castlearq {command}", text)
-        self.assertIn("python3 -m app.main --help", text)
+        self.assertIn("python3 -m castlearq.main --help", text)
 
     def test_help_explains_model_id(self):
         text = self._help_text()
@@ -733,10 +733,10 @@ class CliHelpTests(unittest.TestCase):
         self.assertIn(
             'castlearq run qwen2.5-coder-7b-instruct --prompt "Hello"', text
         )
-        self.assertIn("python3 -m app.main --help", text)
+        self.assertIn("python3 -m castlearq.main --help", text)
 
     def test_all_commands_are_recognized(self):
-        from app.main import main
+        from castlearq.main import main
 
         for command in ("detect", "models", "list", "source", "plan", "download", "run", "chat"):
             buffer = io.StringIO()
@@ -754,11 +754,11 @@ class CliHelpTests(unittest.TestCase):
             self.assertNotEqual(exit_code, 2, command)
 
     def test_download_run_chat_wiring_unchanged(self):
-        from app.main import main
+        from castlearq.main import main
 
         with patch.object(
             sys, "argv", ["castlearq", "download", "some-model"]
-        ) as argv, patch("app.main.run_download") as run_download_mock:
+        ) as argv, patch("castlearq.main.run_download") as run_download_mock:
             main()
         run_download_mock.assert_called_once_with(
             "some-model", quantization=None, filename=None, model_store=None
@@ -773,7 +773,7 @@ class CliHelpTests(unittest.TestCase):
                 sys,
                 "argv",
                 ["castlearq", command, "some-model"],
-            ), patch(f"app.main.{function_name}") as function_mock:
+            ), patch(f"castlearq.main.{function_name}") as function_mock:
                 main()
             if command == "run":
                 function_mock.assert_called_once_with(
@@ -794,7 +794,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
     ALL_FLAGS = ("prompt", "quantization", "filename")
 
     def _run_cli(self, argv):
-        from app.main import main
+        from castlearq.main import main
 
         stdout, stderr = io.StringIO(), io.StringIO()
         with patch.object(sys, "argv", ["castlearq", *argv]), patch.object(
@@ -827,7 +827,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
         self.assertIn("--prompt is not valid for command 'chat'", stderr)
 
     def test_valid_flag_combinations_reach_command_functions(self):
-        with patch("app.main.run_download") as download_mock:
+        with patch("castlearq.main.run_download") as download_mock:
             self._run_cli(
                 ["download", "some-model", "--quantization", "Q4_K_M", "--filename", "a.gguf"]
             )
@@ -836,7 +836,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
             model_store=None,
         )
 
-        with patch("app.main.run_model") as run_mock:
+        with patch("castlearq.main.run_model") as run_mock:
             self._run_cli(
                 ["run", "some-model", "--prompt", "Hi", "--quantization", "Q4_K_M"]
             )
@@ -845,7 +845,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
             model_store=None,
         )
 
-        with patch("app.main.chat_model") as chat_mock:
+        with patch("castlearq.main.chat_model") as chat_mock:
             self._run_cli(["chat", "some-model", "--filename", "a.gguf"])
         chat_mock.assert_called_once_with(
             "some-model", quantization=None, filename="a.gguf", model_store=None
@@ -862,7 +862,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
         self.assertIn("Source error: Repository is not mapped to a catalog model", stdout)
 
     def test_invalid_flag_rejected_before_command_execution(self):
-        with patch("app.main.run_download") as download_mock:
+        with patch("castlearq.main.run_download") as download_mock:
             exit_code, _, _ = self._run_cli(["download", "--prompt", "x"])
         self.assertEqual(exit_code, 2)
         download_mock.assert_not_called()

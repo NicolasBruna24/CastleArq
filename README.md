@@ -897,8 +897,8 @@ flow above.
 From a checkout, the supported mechanism is:
 
 ```bash
-python3 -m app.main --help
-python3 -m app.main --version
+python3 -m castlearq.main --help
+python3 -m castlearq.main --version
 ```
 
 Tests run with pytest:

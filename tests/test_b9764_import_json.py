@@ -37,8 +37,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import main as cli
-from app.model_store import ModelStore
+from castlearq import main as cli
+from castlearq.model_store import ModelStore
 
 ENVELOPE_KEYS = {
     "schema",
@@ -290,7 +290,7 @@ class FailedImportJsonTests(_ImportCase):
         self.assert_envelope(document, exit_code=2)
         self.assertEqual(document["error"]["kind"], "usage_error")
         # The usage line moved to stderr so stdout stays a single document.
-        self.assertIn("Usage: python3 -m app.main import", err)
+        self.assertIn("Usage: python3 -m castlearq.main import", err)
 
 
 class ExitParityTests(_ImportCase):

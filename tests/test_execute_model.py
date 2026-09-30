@@ -16,9 +16,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import execute_model as em
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import (
+from castlearq import execute_model as em
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import (
     ArtifactPreflightError,
     ExecutableArtifact,
     ExecutionErrorCode,
@@ -28,16 +28,16 @@ from app.execution import (
     ExecutionTarget,
     PreflightErrorCode,
 )
-from app.models import ArtifactSpec, ModelSpec
-from app.runner import ModelRunner
-from app.runtimes import PromptInputMode, RuntimeCapability
-from app.selection import (
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.runner import ModelRunner
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.selection import (
     RuntimeSelection,
     RuntimeSelectionError,
     SelectionErrorCode,
 )
 
-SOURCE = Path("app/execute_model.py").read_text(encoding="utf-8")
+SOURCE = Path("castlearq/execute_model.py").read_text(encoding="utf-8")
 
 
 def _capability(**overrides):
@@ -291,7 +291,7 @@ class ResolutionTests(unittest.TestCase):
         )
 
     def test_resolution_failure_is_preparation_failure(self):
-        from app.resolver import ModelArtifactResolutionError
+        from castlearq.resolver import ModelArtifactResolutionError
 
         h = _Harness(resolution_error=ModelArtifactResolutionError("no model"))
         error = h.run_error()
@@ -766,21 +766,21 @@ class IsolationTests(unittest.TestCase):
         for node in ast.walk(ast.parse(SOURCE)):
             if isinstance(node, ast.ImportFrom) and node.module:
                 modules.add(node.module)
-                modules.add("app." + node.module)
+                modules.add("castlearq." + node.module)
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     modules.add(alias.name)
-                    modules.add("app." + alias.name)
+                    modules.add("castlearq." + alias.name)
         return modules
 
     def test_no_forbidden_imports(self):
         modules = self._imported_modules()
         for banned in (
             "subprocess",
-            "app.run_service",
-            "app.main",
-            "app.api",
-            "app.cli",
+            "castlearq.run_service",
+            "castlearq.main",
+            "castlearq.api",
+            "castlearq.cli",
         ):
             self.assertNotIn(banned, modules)
 
@@ -810,12 +810,12 @@ class IsolationTests(unittest.TestCase):
     def test_no_evaluation_dependencies(self):
         modules = self._imported_modules()
         for evaluation in (
-            "app.evaluation_pipeline",
-            "app.evaluation_composition",
-            "app.evaluation_adapter",
-            "app.compatibility_domain",
-            "app.evaluate_compatibility",
-            "app.application_wiring",
+            "castlearq.evaluation_pipeline",
+            "castlearq.evaluation_composition",
+            "castlearq.evaluation_adapter",
+            "castlearq.compatibility_domain",
+            "castlearq.evaluate_compatibility",
+            "castlearq.application_wiring",
         ):
             self.assertNotIn(evaluation, modules)
 

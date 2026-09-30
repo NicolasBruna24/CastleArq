@@ -15,7 +15,7 @@
 
 """CLI tests for the Fase 5 ``chat`` command (Bloque 3).
 
-No real inference: the pipeline is patched at the ``app.main`` seams and the
+No real inference: the pipeline is patched at the ``castlearq.main`` seams and the
 session is a fake, mirroring the Fase 4 CLI test style.
 """
 
@@ -26,15 +26,15 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.main as main_module
-import app.run_service as run_service_module
-from app.chat import ChatProcessError
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import ExecutableArtifact
-from app.main import chat_model
-from app.models import ArtifactSpec, ArtifactState, ModelSpec, Quantization
-from app.runtimes import PromptInputMode, RuntimeCapability
-from app.selection import RuntimeSelectionError, SelectionErrorCode
+import castlearq.main as main_module
+import castlearq.run_service as run_service_module
+from castlearq.chat import ChatProcessError
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import ExecutableArtifact
+from castlearq.main import chat_model
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec, Quantization
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.selection import RuntimeSelectionError, SelectionErrorCode
 
 
 def make_capability(tmp_path):
@@ -93,7 +93,7 @@ class FakeSession:
 
 @pytest.fixture()
 def pipeline(tmp_path, monkeypatch):
-    """Patch the chat pipeline seams inside app.main."""
+    """Patch the chat pipeline seams inside castlearq.main."""
 
     capability = make_capability(tmp_path)
     model = ModelSpec(
@@ -302,7 +302,7 @@ def test_chat_error_during_turn_stops_without_restart(pipeline):
 
 
 def test_chat_resolution_failure_returns_1(pipeline, monkeypatch):
-    from app.resolver import ModelArtifactResolutionError
+    from castlearq.resolver import ModelArtifactResolutionError
 
     class FailingResolver:
         def __init__(self, store):
@@ -325,7 +325,7 @@ def test_chat_resolution_failure_returns_1(pipeline, monkeypatch):
 
 
 def test_chat_preflight_failure_returns_1(pipeline, monkeypatch):
-    from app.execution import ArtifactPreflightError, PreflightErrorCode
+    from castlearq.execution import ArtifactPreflightError, PreflightErrorCode
 
     class FailingPreflight:
         def __init__(self, store):

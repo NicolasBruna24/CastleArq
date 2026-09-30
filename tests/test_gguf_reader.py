@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.gguf_reader import GGUFReadError, read_architecture_evidence
+from castlearq.gguf_reader import GGUFReadError, read_architecture_evidence
 
 
 def _gguf(entries=(), *, version=3, magic=b"GGUF", truncate=False):

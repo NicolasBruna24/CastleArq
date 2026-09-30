@@ -17,12 +17,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.downloads import (
+from castlearq.downloads import (
     ArtifactFilesystemInspector,
     ArtifactFilesystemState,
 )
-from app.model_store import ModelStore, UnsafePathError
-from app.models import ArtifactSpec
+from castlearq.model_store import ModelStore, UnsafePathError
+from castlearq.models import ArtifactSpec
 
 
 def artifact(**overrides) -> ArtifactSpec:

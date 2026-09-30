@@ -20,9 +20,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from app.main import print_plan, print_source
-from app.model_catalog import get_catalog
-from app.models import ArtifactSpec, ArtifactState
+from castlearq.main import print_plan, print_source
+from castlearq.model_catalog import get_catalog
+from castlearq.models import ArtifactSpec, ArtifactState
 
 
 def _artifact(**overrides):
@@ -41,7 +41,7 @@ def _artifact(**overrides):
 class PrintSourceTests(unittest.TestCase):
     def test_source_shows_logical_model_id_once(self):
         artifacts = [_artifact()]
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.return_value = artifacts
             output = io.StringIO()
             with redirect_stdout(output):
@@ -54,7 +54,7 @@ class PrintSourceTests(unittest.TestCase):
 
     def test_source_shows_catalog_membership(self):
         artifacts = [_artifact()]
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.return_value = artifacts
             output = io.StringIO()
             with redirect_stdout(output):
@@ -63,7 +63,7 @@ class PrintSourceTests(unittest.TestCase):
 
     def test_source_warns_when_logical_model_not_in_catalog(self):
         artifacts = [_artifact(model_id="future-model-not-in-catalog")]
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.return_value = artifacts
             output = io.StringIO()
             with redirect_stdout(output):
@@ -73,9 +73,9 @@ class PrintSourceTests(unittest.TestCase):
         self.assertIn("future-model-not-in-catalog", out)
 
     def test_source_rejects_unmapped_repository(self):
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.side_effect = (
-                __import__("app.sources", fromlist=["SourceError"]).SourceError(
+                __import__("castlearq.sources", fromlist=["SourceError"]).SourceError(
                     "Repository is not mapped to a catalog model: owner/repository"
                 )
             )
@@ -90,7 +90,7 @@ class PrintSourceTests(unittest.TestCase):
             sha256="a" * 64,
             download_url="https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
         )
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.return_value = [artifacts]
             output = io.StringIO()
             with redirect_stdout(output):
@@ -123,15 +123,15 @@ class PrintPlanTests(unittest.TestCase):
 
 class VocabularyCoherenceTests(unittest.TestCase):
     def test_source_model_id_is_exactly_accepted_by_resolver(self):
-        from app.model_store import ModelStore
-        from app.resolver import (
+        from castlearq.model_store import ModelStore
+        from castlearq.resolver import (
             ModelArtifactResolutionError,
             ModelArtifactResolver,
             ResolvedModelArtifact,
         )
 
         artifacts = [_artifact(state=ArtifactState.VERIFIED)]
-        with patch("app.main.HuggingFaceSource") as source:
+        with patch("castlearq.main.HuggingFaceSource") as source:
             source.return_value.discover_artifacts.return_value = artifacts
             output = io.StringIO()
             with redirect_stdout(output):
@@ -164,7 +164,7 @@ class VocabularyCoherenceTests(unittest.TestCase):
                 spec = _artifact(model_id=model_id, state=ArtifactState.VERIFIED)
                 manifest = store.save_manifest(spec)
                 # The resolver only accepts an artifact that is present on
-                # disk (app/resolver.py:91-109); a manifest alone resolves to
+                # disk (castlearq/resolver.py:91-109); a manifest alone resolves to
                 # NOT_DOWNLOADED. One byte is enough -- no model, no download.
                 manifest.parent.joinpath(spec.filename).write_bytes(b"model")
             resolver = ModelArtifactResolver(store)

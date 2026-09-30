@@ -15,7 +15,7 @@
 """P1.3: pure presentation of an already-computed artifact validation.
 
 This module is a **formatter only**, in the same spirit as
-:mod:`app.compatibility_report`:
+:mod:`castlearq.compatibility_report`:
 
 * it invents no verdict, no new status and no new artifact state;
 * it creates no type: it renders three ``CheckStatus`` values and one

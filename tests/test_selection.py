@@ -15,14 +15,14 @@
 
 import unittest
 
-from app.compatibility import CompatibilityResult, CompatibilityStatus
-from app.execution import ExecutableArtifact, ExecutionTarget
-from app.models import ArtifactSpec, ModelSpec
-from app.runtimes import (
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import ExecutableArtifact, ExecutionTarget
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.runtimes import (
     PromptInputMode,
     RuntimeCapability,
 )
-from app.selection import (
+from castlearq.selection import (
     RuntimeBackendSelector,
     RuntimeSelectionError,
     SelectionErrorCode,

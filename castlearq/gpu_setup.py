@@ -15,7 +15,7 @@
 """Read-only functional probes for GPU software stacks (Block A).
 
 This module answers *"what GPU-related software is verifiably present and
-functional?"* while :mod:`app.hardware` keeps answering *"what hardware
+functional?"* while :mod:`castlearq.hardware` keeps answering *"what hardware
 exists"*. It produces facts (``True``/``False``/``None``) for a future
 recommendation engine; it never recommends installations, never executes
 anything that modifies the system, and never uses a shell.
@@ -195,7 +195,7 @@ def _llama_devices_text(
 ) -> str | None:
     """Return ``--list-devices`` output, or ``None`` when unavailable.
 
-    Delegates to :func:`app.runtimes.query_llama_devices` so every caller
+    Delegates to :func:`castlearq.runtimes.query_llama_devices` so every caller
     tries the same subcommand variants in the same order; adapts the
     read-only string-based ``CommandRunner`` to the probe protocol.
     System-wide evidence semantics (H1) are unchanged.

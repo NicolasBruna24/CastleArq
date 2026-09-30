@@ -21,8 +21,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import session as ses
-from app.gpu_diagnosis import DiagnosisStatus
+from castlearq import session as ses
+from castlearq.gpu_diagnosis import DiagnosisStatus
 
 
 def _session() -> ses.DiagnosisSession:

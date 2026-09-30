@@ -31,8 +31,8 @@ from pathlib import Path
 
 import pytest
 
-import app.chat as chat_module
-from app.chat import (
+import castlearq.chat as chat_module
+from castlearq.chat import (
     ChatLaunchError,
     ChatProcessError,
     ChatSessionClosedError,
@@ -40,9 +40,9 @@ from app.chat import (
     LlamaCppChatSession,
     start_chat_session,
 )
-from app.execution import ExecutableArtifact, ExecutionTarget
-from app.models import ArtifactSpec, ArtifactState
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.execution import ExecutableArtifact, ExecutionTarget
+from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 
 BANNER = b"Loading model...\nlog: built with nothing useful\n> \n"
@@ -174,7 +174,7 @@ class FakeRuntime:
 
 @pytest.fixture()
 def popen_log(monkeypatch):
-    """Replace subprocess.Popen inside app.chat with a recording factory."""
+    """Replace subprocess.Popen inside castlearq.chat with a recording factory."""
 
     created: list = []
     options: dict = {"respond": True}

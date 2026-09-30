@@ -21,14 +21,14 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 import unittest
 
-from app.compatibility_domain import (
+from castlearq.compatibility_domain import (
     CheckStatus,
     CompatibilityCheck,
     CompatibilityResult,
     CompatibilityStatus,
 )
-from app.compatibility_evaluator import EvaluationContext, RuntimeKnowledge
-from app.compatibility_knowledge import (
+from castlearq.compatibility_evaluator import EvaluationContext, RuntimeKnowledge
+from castlearq.compatibility_knowledge import (
     KnowledgeAssertion,
     KnowledgeConflict,
     KnowledgeKind,
@@ -37,8 +37,8 @@ from app.compatibility_knowledge import (
     KnowledgeState,
     KnowledgeSubject,
 )
-from app.evaluation_pipeline import StrictEvaluation
-from app.evaluation_policy import (
+from castlearq.evaluation_pipeline import StrictEvaluation
+from castlearq.evaluation_policy import (
     IDENTITY_CHECK_NAME,
     REASON_BLOCKED_BY_CONFLICT,
     REASON_COMPATIBLE_PASS,
@@ -51,8 +51,8 @@ from app.evaluation_policy import (
     PolicyReason,
     decide,
 )
-from app.knowledge_bridge import KnowledgeProjection
-from app.model_domain import (
+from castlearq.knowledge_bridge import KnowledgeProjection
+from castlearq.model_domain import (
     Model,
     ModelArchitecture,
     ModelArtifact,
@@ -357,7 +357,7 @@ class DeterminismAndPurityTests(unittest.TestCase):
         self.assertEqual(d1, d2)
 
     def test_static_ast_purity(self) -> None:
-        policy_file = Path(__file__).resolve().parent.parent / "app" / "evaluation_policy.py"
+        policy_file = Path(__file__).resolve().parent.parent / "castlearq" / "evaluation_policy.py"
         tree = ast.parse(policy_file.read_text(encoding="utf-8"))
 
         forbidden_imports = {
@@ -368,11 +368,11 @@ class DeterminismAndPurityTests(unittest.TestCase):
             "urllib",
             "pathlib",
             "shutil",
-            "app.compatibility",
-            "app.selection",
-            "app.execution_service",
-            "app.run_service",
-            "app.runtimes",
+            "castlearq.compatibility",
+            "castlearq.selection",
+            "castlearq.execution_service",
+            "castlearq.run_service",
+            "castlearq.runtimes",
         }
 
         for node in ast.walk(tree):

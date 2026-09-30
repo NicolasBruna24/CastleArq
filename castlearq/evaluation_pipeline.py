@@ -31,7 +31,7 @@ from labels, never converts UNKNOWN or absence into UNSUPPORTED, never
 resolves conflicts and never produces legacy recommendations. Production
 wiring and decision policy belong to a future block (B9.10).
 
-Purity: this module imports neither ``app.runtimes`` in runtime (the
+Purity: this module imports neither ``castlearq.runtimes`` in runtime (the
 capability arrives as an already-built value object; ``TYPE_CHECKING`` for
 the hint, same pattern as B9.8) nor any I/O, process, network or environment
 facility. Same inputs always yield an equal output; inputs are never mutated.

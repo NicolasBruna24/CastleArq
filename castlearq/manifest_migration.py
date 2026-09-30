@@ -17,7 +17,7 @@
 
 Legacy manifests persisted the source repository inside ``model_id``. This
 module rewrites only the persisted identity, using the explicit mapping in
-:mod:`app.model_identity`, and renames the model directory so the artifact
+:mod:`castlearq.model_identity`, and renames the model directory so the artifact
 stays discoverable by the store, preflight and downloader. The artifact file
 itself (its bytes, size, SHA-256, filename and ``artifact_id``) is never
 modified. The migration is idempotent: running it again changes nothing.

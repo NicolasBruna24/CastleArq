@@ -11,7 +11,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from app import compatibility_knowledge as ck
+from castlearq import compatibility_knowledge as ck
 
 
 STATE = ck.KnowledgeState

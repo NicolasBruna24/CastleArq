@@ -13,13 +13,13 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from app.compatibility_domain import CheckStatus
-from app import evaluate_compatibility as uc
-from app import initial_knowledge as ik
-from app.models import ArtifactSpec, ArtifactState, ModelSpec
-from app.model_store import StoredArtifact
-from app.observation_knowledge import IntegrationResult
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq.compatibility_domain import CheckStatus
+from castlearq import evaluate_compatibility as uc
+from castlearq import initial_knowledge as ik
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.model_store import StoredArtifact
+from castlearq.observation_knowledge import IntegrationResult
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 
 def _capability(**overrides):

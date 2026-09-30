@@ -18,7 +18,7 @@ This module makes visible what the evaluation already decided. It is a
 **formatter only**:
 
 * it reads an existing
-  :class:`~app.evaluate_compatibility.EvaluateModelCompatibilityResult`
+  :class:`~castlearq.evaluate_compatibility.EvaluateModelCompatibilityResult`
   and renders it as text;
 * it invents no verdict, no check, no recommendation and no remediation;
 * it performs no I/O, no evaluation, no admission and no execution;

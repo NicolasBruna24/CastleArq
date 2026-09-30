@@ -17,7 +17,7 @@
 Covers the obligations of the block:
 
 * every JSON document is exactly one ``castlearq.cli`` envelope built by
-  ``app.json_output`` (exit parity, envelope fields, stdout purity);
+  ``castlearq.json_output`` (exit parity, envelope fields, stdout purity);
 * ``human exit code == json exit code`` for the relevant conditions of each
   command, without changing any existing exit code;
 * strict evaluation and admission stay separate in ``compatibility --json``,
@@ -49,8 +49,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from app import main as cli
-from app.compatibility_domain import (
+from castlearq import main as cli
+from castlearq.compatibility_domain import (
     CheckStatus,
     CompatibilityCheck,
     CompatibilityResult,
@@ -58,10 +58,10 @@ from app.compatibility_domain import (
     EvidenceItem,
     EvidenceKind,
 )
-from app.evaluate_compatibility import EvaluateModelCompatibilityResult
-from app.gguf_reader import GGUFReadError
-from app.model_store import ModelStore
-from app.models import ArtifactSpec
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult
+from castlearq.gguf_reader import GGUFReadError
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LABEL = "b9763-fixture"
@@ -97,13 +97,13 @@ def run_cli(*argv):
 
 
 def run_subprocess(*argv, home: Path):
-    """Run ``python3 -m app.main`` for real, isolated from the user's store."""
+    """Run ``python3 -m castlearq.main`` for real, isolated from the user's store."""
     env = dict(os.environ)
     env["HOME"] = str(home)
     env["XDG_DATA_HOME"] = str(home / ".local" / "share")
     env["XDG_CONFIG_HOME"] = str(home / ".config")
     return subprocess.run(
-        [sys.executable, "-m", "app.main", *argv],
+        [sys.executable, "-m", "castlearq.main", *argv],
         cwd=str(REPO_ROOT),
         env=env,
         capture_output=True,
@@ -496,7 +496,7 @@ class ValidateJsonTests(unittest.TestCase):
         document = one_json_document(json_run[1])
         assert_envelope(self, document, command="validate", exit_code=2)
         self.assertEqual(document["error"]["kind"], "usage_error")
-        self.assertIn("Usage: python3 -m app.main validate <model-id>", human[2])
+        self.assertIn("Usage: python3 -m castlearq.main validate <model-id>", human[2])
 
     def test_human_unknown_report_is_unchanged(self):
         code, out, _ = run_cli(
@@ -530,11 +530,11 @@ class CompatibilityJsonTests(unittest.TestCase):
             argv.append("--json")
         if side_effect is not None:
             patched = mock.patch(
-                "app.main.evaluate_model_compatibility", side_effect=side_effect
+                "castlearq.main.evaluate_model_compatibility", side_effect=side_effect
             )
         else:
             patched = mock.patch(
-                "app.main.evaluate_model_compatibility", return_value=result
+                "castlearq.main.evaluate_model_compatibility", return_value=result
             )
         with patched:
             return run_cli(*argv)
@@ -819,7 +819,7 @@ class JsonFlagSurfaceTests(unittest.TestCase):
 
 
 class LayerBoundaryTests(unittest.TestCase):
-    """Serialization belongs to ``app.json_output``, not to the commands."""
+    """Serialization belongs to ``castlearq.json_output``, not to the commands."""
 
     #: The command handlers this block had to touch. None of them may
     #: serialize JSON: they build data and the shared layer serializes it.
@@ -832,7 +832,7 @@ class LayerBoundaryTests(unittest.TestCase):
 
     @staticmethod
     def _path(name: str) -> Path:
-        return REPO_ROOT / "app" / name
+        return REPO_ROOT / "castlearq" / name
 
     @staticmethod
     def _json_dumps_sites(source: str) -> list[tuple[str, int]]:
@@ -867,7 +867,7 @@ class LayerBoundaryTests(unittest.TestCase):
                 self.assertEqual(sites, [], f"{name} serializes JSON on its own")
 
     def test_model_store_keeps_only_its_preexisting_manifest_writer(self):
-        # ``app/model_store.py`` serializes a MANIFEST to disk (B9.74), which
+        # ``castlearq/model_store.py`` serializes a MANIFEST to disk (B9.74), which
         # predates the JSON surface and is not a CLI output serializer. The
         # point of the boundary is that B9.76.3 adds no second one.
         sites = self._json_dumps_sites(

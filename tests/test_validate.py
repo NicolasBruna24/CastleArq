@@ -36,11 +36,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import main as cli
-from app.execution import ArtifactExecutionPreflight
-from app.model_store import ModelStore
-from app.models import ArtifactSpec, ArtifactState, ModelSpec
-from app.resolver import ModelArtifactResolver
+from castlearq import main as cli
+from castlearq.execution import ArtifactExecutionPreflight
+from castlearq.model_store import ModelStore
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.resolver import ModelArtifactResolver
 
 MODEL_ID = "qwen2.5-coder-7b-instruct"
 FILENAME = "qwen2.5-coder-7b-instruct-Q4_K_M.gguf"

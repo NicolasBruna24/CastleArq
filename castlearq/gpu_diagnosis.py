@@ -14,14 +14,14 @@
 
 """Pure diagnosis + recommendation over GPU software facts (Block B2).
 
-Detection lives in :mod:`app.gpu_setup` (facts: ``True``/``False``/``None``).
+Detection lives in :mod:`castlearq.gpu_setup` (facts: ``True``/``False``/``None``).
 This module only *interprets* already-built, in-memory objects: it never
 probes hardware, never runs commands, never touches the filesystem or the
 network, and never installs anything. ``vulkan_functional`` is interpreted
 as system-wide evidence — the system/runtime reports functional Vulkan
 support; no per-GPU attribution is attempted. When a component is
 explicitly missing, :func:`recommend` resolves the declarative recipes in
-:mod:`app.gpu_recipes` (by id) for the recorded
+:mod:`castlearq.gpu_recipes` (by id) for the recorded
 ``runtime``/``backend``/``platform``; nothing is installed or executed here.
 """
 

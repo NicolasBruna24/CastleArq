@@ -16,7 +16,7 @@
 import unittest
 from unittest import mock
 
-from app.runtimes import (
+from castlearq.runtimes import (
     PromptInputMode,
     RuntimeCapability,
     RuntimeProbeResult,
@@ -68,7 +68,7 @@ class RuntimeCapabilityTests(unittest.TestCase):
         self.assertIsNone(capability.executable_path)
 
     def test_resolver_reports_not_found(self):
-        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+        from castlearq.runtimes import RuntimeAvailability, resolve_llama_runtime
 
         resolved = resolve_llama_runtime(which=lambda _: None, run=successful_probe)
         self.assertIs(resolved.identity.availability, RuntimeAvailability.NOT_FOUND)
@@ -76,7 +76,7 @@ class RuntimeCapabilityTests(unittest.TestCase):
         self.assertEqual(resolved.identity.canonical_id, "llama.cpp")
 
     def test_resolver_reports_found_unusable_for_non_executable(self):
-        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+        from castlearq.runtimes import RuntimeAvailability, resolve_llama_runtime
         import tempfile
         from pathlib import Path
 
@@ -92,9 +92,9 @@ class RuntimeCapabilityTests(unittest.TestCase):
         self.assertIsNone(resolved.capability)
 
     def test_resolver_preserves_probe_failure_without_claiming_success(self):
-        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+        from castlearq.runtimes import RuntimeAvailability, resolve_llama_runtime
 
-        with mock.patch("app.runtimes.os.access", return_value=True):
+        with mock.patch("castlearq.runtimes.os.access", return_value=True):
             resolved = resolve_llama_runtime(
                 which=lambda name: "/opt/llama" if name == "llama" else None,
                 run=lambda command: RuntimeProbeResult(1, "", "probe failed"),
@@ -104,9 +104,9 @@ class RuntimeCapabilityTests(unittest.TestCase):
         self.assertEqual(resolved.identity.reason, "llama cli version/help probe failed")
 
     def test_resolver_reports_identity_and_capability(self):
-        from app.runtimes import RuntimeAvailability, resolve_llama_runtime
+        from castlearq.runtimes import RuntimeAvailability, resolve_llama_runtime
 
-        with mock.patch("app.runtimes.os.access", return_value=True):
+        with mock.patch("castlearq.runtimes.os.access", return_value=True):
             resolved = resolve_llama_runtime(
                 which=lambda name: "/opt/llama" if name == "llama" else None,
                 run=successful_probe,

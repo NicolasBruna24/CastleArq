@@ -15,7 +15,7 @@
 
 import unittest
 
-from app.runtimes import detect_backends, detect_runtimes
+from castlearq.runtimes import detect_backends, detect_runtimes
 
 
 class RuntimeTests(unittest.TestCase):

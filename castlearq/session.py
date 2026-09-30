@@ -85,7 +85,7 @@ class MissingComponentRecord:
     """Faithful copy of one missing component's evidence (data only).
 
     ``passed`` is always ``False`` (only confirmed absences are persisted)
-    so reconstructing :class:`~app.gpu_diagnosis.MissingComponent` keeps its
+    so reconstructing :class:`~castlearq.gpu_diagnosis.MissingComponent` keeps its
     invariant: unknown evidence is never turned into a missing component.
     """
 

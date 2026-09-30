@@ -14,7 +14,7 @@
 
 """B9.8: pure adapter from the execution domain to the strict B9.3 domain.
 
-Adapts ``ModelSpec``/``ArtifactSpec`` (``app/models.py``) and a detected
+Adapts ``ModelSpec``/``ArtifactSpec`` (``castlearq/models.py``) and a detected
 runtime capability into the strict evaluation inputs of B9.3
 (``Model``, ``ModelArtifact``, ``EvaluationContext``), composing the B9.7
 knowledge bridge for the runtime knowledge. It never executes ``evaluate()``,
@@ -37,7 +37,7 @@ knowledge (B9.8 design, ratified decisions N-1..N-4):
   anything outside it becomes ``None`` (UNKNOWN downstream), never
   UNSUPPORTED.
 
-Purity: this module imports neither ``app.runtimes`` (the capability arrives
+Purity: this module imports neither ``castlearq.runtimes`` (the capability arrives
 as an already-built value object; the type hint uses ``TYPE_CHECKING``) nor
 any I/O, process, network or environment facility. Same inputs always yield
 equal outputs; inputs are never mutated.

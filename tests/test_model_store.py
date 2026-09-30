@@ -22,8 +22,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from app.model_store import ModelStore, UnsafePathError, default_models_directory
-from app.models import ArtifactSpec, ArtifactState
+from castlearq.model_store import ModelStore, UnsafePathError, default_models_directory
+from castlearq.models import ArtifactSpec, ArtifactState
 
 
 def artifact(**kwargs) -> ArtifactSpec:
@@ -301,7 +301,7 @@ class ModelStoreTests(unittest.TestCase):
             os.makedirs(home)
             missing_config = Path(directory) / "does-not-exist.toml"
             with mock.patch(
-                "app.model_store.os.path.expanduser",
+                "castlearq.model_store.os.path.expanduser",
                 lambda p: p.replace("~", home) if p.startswith("~") else p,
             ):
                 result = default_models_directory(missing_config)
@@ -315,7 +315,7 @@ class ModelStoreTests(unittest.TestCase):
             os.makedirs(legacy)
             missing_config = Path(directory) / "does-not-exist.toml"
             with mock.patch(
-                "app.model_store.os.path.expanduser",
+                "castlearq.model_store.os.path.expanduser",
                 lambda p: p.replace("~", home) if p.startswith("~") else p,
             ):
                 result = default_models_directory(missing_config)
@@ -330,7 +330,7 @@ class ModelStoreTests(unittest.TestCase):
             os.makedirs(new)
             missing_config = Path(directory) / "does-not-exist.toml"
             with mock.patch(
-                "app.model_store.os.path.expanduser",
+                "castlearq.model_store.os.path.expanduser",
                 lambda p: p.replace("~", home) if p.startswith("~") else p,
             ):
                 result = default_models_directory(missing_config)

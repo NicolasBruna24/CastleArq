@@ -17,8 +17,8 @@ import json
 import unittest
 from urllib.error import HTTPError
 
-from app.models import ArtifactState
-from app.sources.huggingface import HuggingFaceSource, SourceError, detect_quantization
+from castlearq.models import ArtifactState
+from castlearq.sources.huggingface import HuggingFaceSource, SourceError, detect_quantization
 
 
 def source(payload):

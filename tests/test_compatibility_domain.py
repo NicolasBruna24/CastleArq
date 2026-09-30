@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import compatibility_domain as cd
+from castlearq import compatibility_domain as cd
 
 
 STATUS = cd.CompatibilityStatus

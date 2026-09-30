@@ -15,7 +15,7 @@
 """B9.10: evaluation policy boundary -- pure operational decisions.
 
 Establishes the boundary between factual compatibility evaluation
-(:class:`~app.evaluation_pipeline.StrictEvaluation`) and operational
+(:class:`~castlearq.evaluation_pipeline.StrictEvaluation`) and operational
 authorization (:class:`EvaluationDecision`).
 
 The core architectural boundary is:

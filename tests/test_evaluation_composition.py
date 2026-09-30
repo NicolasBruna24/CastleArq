@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Focused B9.15 tests for app/evaluation_composition.py.
+"""Focused B9.15 tests for castlearq/evaluation_composition.py.
 
 Contract tests for the Evaluation Composition stage-scoped composition
 point only: verbatim IntegrationResult acceptance (Q-8 delivery), explicit
@@ -30,19 +30,19 @@ from pathlib import Path
 import unittest
 from unittest import mock
 
-from app import evaluation_composition as ec
-from app import evaluation_pipeline as ep
-from app import initial_knowledge as ik
-from app.boundary_adapter import MappingOutcome
-from app.compatibility_evaluator import CompatibilityResult
-from app.compatibility_knowledge import KnowledgeRegistry
-from app.evaluation_pipeline import StrictEvaluation
-from app.model_domain import Model, ModelArtifact
-from app.models import ArtifactSpec, ModelSpec
-from app.observation_knowledge import IntegrationResult, UnmappedRuntime
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq import evaluation_composition as ec
+from castlearq import evaluation_pipeline as ep
+from castlearq import initial_knowledge as ik
+from castlearq.boundary_adapter import MappingOutcome
+from castlearq.compatibility_evaluator import CompatibilityResult
+from castlearq.compatibility_knowledge import KnowledgeRegistry
+from castlearq.evaluation_pipeline import StrictEvaluation
+from castlearq.model_domain import Model, ModelArtifact
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.observation_knowledge import IntegrationResult, UnmappedRuntime
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
-MODULE_PATH = Path("app/evaluation_composition.py")
+MODULE_PATH = Path("castlearq/evaluation_composition.py")
 PARAMETER_ORDER = ["result", "registry", "spec", "artifact", "capability",
                    "backend", "required_capabilities", "scope",
                    "physical_evidence"]
@@ -230,17 +230,17 @@ class ExistingContractReuseTests(unittest.TestCase):
 class BoundaryAndPurityTests(unittest.TestCase):
     # §19.8: no raw observation context enters Evaluation.
     def test_no_environment_context_enters_evaluation(self):
-        for path in (MODULE_PATH, Path("app/evaluation_pipeline.py"),
-                     Path("app/evaluation_adapter.py")):
+        for path in (MODULE_PATH, Path("castlearq/evaluation_pipeline.py"),
+                     Path("castlearq/evaluation_adapter.py")):
             self.assertNotIn(
                 "EnvironmentContext", path.read_text(encoding="utf-8"))
 
     # §19.9: no dataset module is imported by Evaluation code.
     def test_no_registry_global_is_imported_by_evaluation_code(self):
-        for path in (MODULE_PATH, Path("app/evaluation_pipeline.py"),
-                     Path("app/evaluation_adapter.py"),
-                     Path("app/compatibility_evaluator.py"),
-                     Path("app/evaluation_policy.py")):
+        for path in (MODULE_PATH, Path("castlearq/evaluation_pipeline.py"),
+                     Path("castlearq/evaluation_adapter.py"),
+                     Path("castlearq/compatibility_evaluator.py"),
+                     Path("castlearq/evaluation_policy.py")):
             self.assertNotIn(
                 "initial_knowledge", path.read_text(encoding="utf-8"))
 
@@ -858,10 +858,10 @@ class ReconciliationBehaviorTests(unittest.TestCase):
         self.assertIsInstance(evaluation_ollama, StrictEvaluation)
 
 # Import required for the new tests
-from app.boundary_adapter import BoundaryTrace
-from app.knowledge_bridge import project_knowledge
-from app.compatibility_knowledge import KnowledgeSubject, KnowledgeKind, KnowledgeScope
-from app.observation_knowledge import RuntimeIntegration
+from castlearq.boundary_adapter import BoundaryTrace
+from castlearq.knowledge_bridge import project_knowledge
+from castlearq.compatibility_knowledge import KnowledgeSubject, KnowledgeKind, KnowledgeScope
+from castlearq.observation_knowledge import RuntimeIntegration
 
 
 if __name__ == "__main__":

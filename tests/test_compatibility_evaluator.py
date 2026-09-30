@@ -22,14 +22,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import compatibility_evaluator as ce
-from app.compatibility_domain import (
+from castlearq import compatibility_evaluator as ce
+from castlearq.compatibility_domain import (
     CheckStatus,
     CompatibilityStatus,
     EvidenceKind,
 )
-from app.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
-from app.model_domain import (
+from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.model_domain import (
     Model,
     ModelArchitecture,
     ModelArtifact,

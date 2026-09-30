@@ -15,16 +15,16 @@
 
 import unittest
 
-from app.compatibility import (
+from castlearq.compatibility import (
     CompatibilityConfig,
     CompatibilityStatus,
     assess_model,
     estimate_memory_bytes,
     recommend_models,
 )
-from app.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
-from app.models import ModelSpec, Quantization
-from app.runtimes import BackendStatus, RuntimeStatus
+from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
+from castlearq.models import ModelSpec, Quantization
+from castlearq.runtimes import BackendStatus, RuntimeStatus
 
 
 def hardware(vram_gib: int | None, ram_gib: int = 32) -> HardwareSnapshot:

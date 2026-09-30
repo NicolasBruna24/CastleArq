@@ -7,13 +7,13 @@ import ast
 from pathlib import Path
 import unittest
 
-from app import evaluation_adapter as ea
-from app import initial_knowledge as ik
-from app.compatibility_evaluator import EvaluationContext, evaluate
-from app.compatibility_knowledge import KnowledgeRegistry, KnowledgeScope
-from app.models import ArtifactSpec, ModelSpec
-from app.model_domain import Model, ModelArtifact, QuantizationStatus
-from app.runtimes import PromptInputMode, RuntimeCapability
+from castlearq import evaluation_adapter as ea
+from castlearq import initial_knowledge as ik
+from castlearq.compatibility_evaluator import EvaluationContext, evaluate
+from castlearq.compatibility_knowledge import KnowledgeRegistry, KnowledgeScope
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.model_domain import Model, ModelArtifact, QuantizationStatus
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
 
 ALLOWED_IMPORTS = {"__future__", "typing", "compatibility_evaluator",
                    "compatibility_knowledge", "knowledge_bridge",
@@ -64,7 +64,7 @@ def artifact(**overrides):
 class PurityTests(unittest.TestCase):
     def test_module_imports_only_pure_dependencies(self):
         tree = ast.parse(
-            Path("app/evaluation_adapter.py").read_text(encoding="utf-8"))
+            Path("castlearq/evaluation_adapter.py").read_text(encoding="utf-8"))
         imported = set()
         for node in ast.walk(tree):
             self.assertNotIsInstance(node, ast.Import)
@@ -88,7 +88,7 @@ class PurityTests(unittest.TestCase):
 
     def test_module_performs_no_io_or_environment_access(self):
         tree = ast.parse(
-            Path("app/evaluation_adapter.py").read_text(encoding="utf-8"))
+            Path("castlearq/evaluation_adapter.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
