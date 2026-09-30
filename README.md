@@ -9,9 +9,11 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The published release is `0.2.0` (`pip install castlearq`).
-> This README describes that release. It adds the `validate` command and
-> requires **Python 3.11 or newer**.
+> **Version note.** The published release is `0.3.0` (`pip install castlearq`).
+> This README describes that release. It adds the `import` command for bringing
+> a local GGUF file you already have into the model store, so you can use
+> CastleArq without obtaining a model from the catalog, and it keeps the
+> `validate` command. It requires **Python 3.11 or newer**.
 
 ## What problem does it solve?
 
@@ -86,7 +88,7 @@ castlearq --version
 ```
 
 A previously built wheel or sdist can also be installed, for example
-`pip install dist/castlearq-0.2.0-py3-none-any.whl`. Installation needs neither
+`pip install dist/castlearq-0.3.0-py3-none-any.whl`. Installation needs neither
 `PYTHONPATH` nor the source tree afterwards, and the package contains no models.
 
 ## Requirements
