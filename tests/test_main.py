@@ -309,6 +309,7 @@ class MainRunTests(unittest.TestCase):
                 "hello",
                 quantization="Q4_K_M",
                 filename="model.Q4_K_M.gguf",
+                model_store=None,
             )
 
     def test_main_cli_forwards_selection_to_chat(self):
@@ -332,6 +333,7 @@ class MainRunTests(unittest.TestCase):
                 self.model.model_id,
                 quantization="Q4_K_M",
                 filename="model.Q4_K_M.gguf",
+                model_store=None,
             )
 
 
@@ -759,7 +761,7 @@ class CliHelpTests(unittest.TestCase):
         ) as argv, patch("app.main.run_download") as run_download_mock:
             main()
         run_download_mock.assert_called_once_with(
-            "some-model", quantization=None, filename=None
+            "some-model", quantization=None, filename=None, model_store=None
         )
         self.assertEqual(argv[1:2], ["download"])
 
@@ -775,11 +777,13 @@ class CliHelpTests(unittest.TestCase):
                 main()
             if command == "run":
                 function_mock.assert_called_once_with(
-                    "some-model", None, quantization=None, filename=None
+                    "some-model", None, quantization=None, filename=None,
+                    model_store=None,
                 )
             else:
                 function_mock.assert_called_once_with(
-                    "some-model", quantization=None, filename=None
+                    "some-model", quantization=None, filename=None,
+                    model_store=None,
                 )
 
 
@@ -828,7 +832,8 @@ class PerCommandFlagValidationTests(unittest.TestCase):
                 ["download", "some-model", "--quantization", "Q4_K_M", "--filename", "a.gguf"]
             )
         download_mock.assert_called_once_with(
-            "some-model", quantization="Q4_K_M", filename="a.gguf"
+            "some-model", quantization="Q4_K_M", filename="a.gguf",
+            model_store=None,
         )
 
         with patch("app.main.run_model") as run_mock:
@@ -836,13 +841,14 @@ class PerCommandFlagValidationTests(unittest.TestCase):
                 ["run", "some-model", "--prompt", "Hi", "--quantization", "Q4_K_M"]
             )
         run_mock.assert_called_once_with(
-            "some-model", "Hi", quantization="Q4_K_M", filename=None
+            "some-model", "Hi", quantization="Q4_K_M", filename=None,
+            model_store=None,
         )
 
         with patch("app.main.chat_model") as chat_mock:
             self._run_cli(["chat", "some-model", "--filename", "a.gguf"])
         chat_mock.assert_called_once_with(
-            "some-model", quantization=None, filename="a.gguf"
+            "some-model", quantization=None, filename="a.gguf", model_store=None
         )
 
     def test_plan_positionals_still_work_with_no_flags(self):

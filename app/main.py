@@ -69,7 +69,14 @@ from .model_identity import (
     logical_model_id,
     source_repositories_for_logical_model,
 )
-from .model_store import ModelStore, StoredArtifact, UnsafePathError
+from .model_store import (
+    ModelStore,
+    ModelStoreResolution,
+    StoredArtifact,
+    UnsafePathError,
+    legacy_store_notice,
+    resolve_model_store,
+)
 from .version import get_version
 from .downloads import (
     DownloadPlan,
@@ -103,7 +110,11 @@ from .execute_model import (
     ExecutePreparationError,
     execute_model,
 )
-from .evaluate_compatibility import evaluate_model_compatibility, to_admission
+from .evaluate_compatibility import (
+    EvaluateCompatibilityDependencies,
+    evaluate_model_compatibility,
+    to_admission,
+)
 from .compatibility_report import (
     evaluation_report,
     format_evaluation_report,
@@ -574,6 +585,13 @@ def _format_size(size_bytes: int | None) -> str:
 
 
 def print_local_models(model_store: ModelStore | None = None) -> None:
+    """List the artifacts of the model store selected for this invocation.
+
+    ``model_store`` is the store B9.74 resolved for the invocation (from
+    ``--model-store``); when it is omitted the command resolves the store
+    itself through the same single resolution function, so both paths name the
+    same root.
+    """
     print("CastleArq - Local models")
     print("==========================")
     store = model_store or ModelStore()
@@ -614,7 +632,12 @@ def print_local_models(model_store: ModelStore | None = None) -> None:
             print(f"  - {entry.manifest_path} ({entry.message or 'invalid manifest'})")
 
 
-def import_command(path: str | None, *, label: str | None = None) -> int:
+def import_command(
+    path: str | None,
+    *,
+    label: str | None = None,
+    model_store: ModelStore | None = None,
+) -> int:
     """Import a local GGUF file into the managed model store (B9.67).
 
     This is a presentation layer only. Every decision -- source validation,
@@ -631,8 +654,12 @@ def import_command(path: str | None, *, label: str | None = None) -> int:
         print("Usage: python3 -m app.main import <path-to-gguf> [--label LABEL]")
         return 2
     # `LocalArtifactImporter` inspects the path itself. Expanding `~` here is
-    # shell convenience, not validation: no sanitizer is duplicated.
-    importer = LocalArtifactImporter(ModelStore())
+    # shell convenience, not validation: no sanitizer is duplicated. The store
+    # is the one B9.74 resolved for this invocation, so an import lands in the
+    # selected store and nowhere else.
+    importer = LocalArtifactImporter(
+        model_store if model_store is not None else ModelStore()
+    )
     result = importer.import_artifact(Path(path).expanduser(), label=label)
 
     if result.status is ImportStatus.FAILED:
@@ -703,7 +730,11 @@ def print_source(provider: str | None, repository: str | None) -> int:
     return 0
 
 
-def print_plan(repository: str | None, filename: str | None) -> int:
+def print_plan(
+    repository: str | None,
+    filename: str | None,
+    model_store: ModelStore | None = None,
+) -> int:
     if not repository or not filename:
         print("Usage: python3 -m app.main plan <repository> <filename>")
         return 2
@@ -725,7 +756,7 @@ def print_plan(repository: str | None, filename: str | None) -> int:
         quantization=detect_quantization(filename),
         download_url=download_url,
     )
-    plan = DownloadPlanner().plan(artifact)
+    plan = DownloadPlanner(model_store=model_store).plan(artifact)
     print("CastleArq - Offline download plan")
     print("==========================")
     print(f"  Model: {artifact.model_id}")
@@ -926,12 +957,13 @@ def run_model(
     *,
     quantization: str | None = None,
     filename: str | None = None,
+    model_store: ModelStore | None = None,
 ) -> int:
     if not model_id or prompt is None or not prompt.strip():
         print("Usage: python3 -m app.main run <model-id> --prompt <text>", file=sys.stderr)
         return 2
     try:
-        model_store = ModelStore()
+        model_store = model_store if model_store is not None else ModelStore()
         resolver = ModelArtifactResolver(model_store)
         resolved = resolver.resolve(
             model_id,
@@ -994,6 +1026,7 @@ def chat_model(
     out=None,
     err=None,
     session_factory=None,
+    model_store: ModelStore | None = None,
 ) -> int:
     """Interactive multi-turn chat over one persistent runtime process."""
     out = out if out is not None else sys.stdout
@@ -1005,7 +1038,7 @@ def chat_model(
         return 2
 
     try:
-        model_store = ModelStore()
+        model_store = model_store if model_store is not None else ModelStore()
         resolver = ModelArtifactResolver(model_store)
         resolved = resolver.resolve(
             model_id,
@@ -1096,6 +1129,7 @@ def execute_command(
     filename: str | None = None,
     out=None,
     err=None,
+    model_store=None,
 ) -> int:
     """Run one prompt through the Execute Model use case (B9.24).
 
@@ -1104,6 +1138,14 @@ def execute_command(
     projection of
     the Application result to streams and exit code (0 success, 1 failure,
     2 usage). Infrastructure stays behind the Composition Root.
+
+    B9.74: ``model_store`` is the opaque store the CLI resolved for this
+    invocation, handed on to the two Application seams that own it (the
+    composition and the evaluation dependencies). It is deliberately
+    unannotated: the ratified B9.24 boundary check forbids this caller from
+    naming infrastructure types, and the caller still coordinates none --
+    it only forwards the value it was given. ``None`` means "no CLI selection"
+    and leaves both seams on their unchanged environment-resolved default.
     """
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
@@ -1114,12 +1156,13 @@ def execute_command(
         )
         return 2
 
-    dependencies = compose_execute_model_dependencies()
+    dependencies = compose_execute_model_dependencies(model_store=model_store)
     try:
         evaluation_result = evaluate_model_compatibility(
             model_id,
             quantization=quantization,
             filename=filename,
+            dependencies=EvaluateCompatibilityDependencies(model_store=model_store),
         )
     except (
         ModelArtifactResolutionError,
@@ -1198,6 +1241,7 @@ def compatibility_command(
     filename: str | None = None,
     out=None,
     err=None,
+    model_store: ModelStore | None = None,
 ) -> int:
     """Report the existing strict compatibility evaluation (B9.48).
 
@@ -1233,6 +1277,7 @@ def compatibility_command(
             model_id,
             quantization=quantization,
             filename=filename,
+            dependencies=EvaluateCompatibilityDependencies(model_store=model_store),
         )
     except (
         ModelArtifactResolutionError,
@@ -1307,6 +1352,10 @@ def validate_command(
 
     A missing SHA-256 is reported as ``UNKNOWN`` and exits ``0``: absence of
     evidence is not a failure, and this command makes no checksum policy.
+
+    B9.74: ``store`` is the store the CLI resolved for this invocation. When it
+    is given, the resolver is built on it, so resolution and the preflight
+    cannot end up reading two different stores.
     """
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
@@ -1314,7 +1363,7 @@ def validate_command(
         print("Usage: python3 -m app.main validate <model-id>", file=err)
         return 2
 
-    resolver = resolver or ModelArtifactResolver()
+    resolver = resolver or ModelArtifactResolver(store)
     store = store if store is not None else resolver.model_store
     preflight = preflight or ArtifactExecutionPreflight(store)
 
@@ -1454,6 +1503,17 @@ read-only inspection:
           GPU software diagnosis and its read-only re-verification
           (these concern the ENVIRONMENT, not artifact integrity)
 
+model store:
+  store   report the store in use: path, source (cli, config, xdg, default or
+          legacy-compatibility), existence and legacy status. Read-only
+
+  selection order, highest first:
+    --model-store PATH  ->  config.toml [models] directory  ->  XDG_DATA_HOME
+    ->  ~/.local/share/castlearq/models  ->  legacy compatibility fallback
+  An explicit selection wins even when its directory does not exist yet, and
+  --model-store PATH selects it for one invocation only. Nothing is ever
+  moved, copied or deleted: CastleArq does not migrate models.
+
 serving (EXECUTES MODELS - not a status-only surface):
   serve   HTTP API on 127.0.0.1. POST /v1/run runs real inference and
           POST /v1/chat/sessions opens a live chat session. Both apply the
@@ -1506,7 +1566,11 @@ def print_runtime_diagnostics(out=None) -> int:
     return 0 if identity.availability is RuntimeAvailability.AVAILABLE else 1
 
 
-def serve_command(host: str | None = None, port: int | None = None) -> int:
+def serve_command(
+    host: str | None = None,
+    port: int | None = None,
+    model_store: ModelStore | None = None,
+) -> int:
     """Start the HTTP API server (loopback-only).
 
     B9.50: this is NOT a read-only surface. It executes models --
@@ -1533,8 +1597,41 @@ def serve_command(host: str | None = None, port: int | None = None) -> int:
     acceptable; the two are documented separately. ``run`` is unaffected:
     B9.52 performs no ``run`` -> ``execute`` cutover, so ``run`` keeps its
     historical legacy policy.
+
+    B9.74: ``model_store`` is the store this invocation selected; the server
+    uses it for listing, resolution and evaluation. HTTP execution keeps its
+    own ratified composition (B9.52), which B9.74 does not touch.
     """
-    return serve(host=host or "127.0.0.1", port=8000 if port is None else port)
+    return serve(
+        host=host or "127.0.0.1",
+        port=8000 if port is None else port,
+        model_store=model_store,
+    )
+
+
+def store_command(
+    *,
+    model_store_path: str | None = None,
+    out=None,
+) -> int:
+    """Report which model store CastleArq uses for this invocation (B9.74).
+
+    Read-only, and honest about it: the store is *resolved* (the same single
+    resolution function every other command uses) and then *observed*. Nothing
+    is created, moved, copied or deleted -- the report says ``Exists: no`` for
+    a selected store that does not exist yet, and leaving it that way is the
+    correct outcome, because the directory is created only when a write
+    operation actually needs it.
+    """
+    out = out if out is not None else sys.stdout
+    resolution = resolve_model_store(model_store_path)
+    print("Store", file=out)
+    print(f"Path: {resolution.path}", file=out)
+    print(f"Source: {resolution.source}", file=out)
+    print(f"Exists: {'yes' if resolution.path.exists() else 'no'}", file=out)
+    print(f"Legacy detected: {'yes' if resolution.legacy_detected else 'no'}", file=out)
+    print(f"Legacy used: {'yes' if resolution.legacy_used else 'no'}", file=out)
+    return 0
 
 
 class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -1574,7 +1671,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -1617,6 +1714,15 @@ def main() -> int:
             "store and never used as a logical model identity"
         ),
     )
+    parser.add_argument(
+        "--model-store",
+        metavar="PATH",
+        help=(
+            "model store to use for this invocation only; overrides config.toml "
+            "[models] directory and XDG_DATA_HOME. Never created or modified by "
+            "resolution alone"
+        ),
+    )
     args = parser.parse_args()
     if args.command is None:
         parser.error("a command is required")
@@ -1637,13 +1743,37 @@ def main() -> int:
         "execute": ("quantization", "filename"),
         "chat": ("quantization", "filename"),
         "serve": (),
+        "store": (),
     }
+    # B9.74: the commands that consume a model store. They are exactly the ones
+    # that accept --model-store, and exactly the ones where the legacy
+    # compatibility notice can be meaningful.
+    store_commands = (
+        "list",
+        "plan",
+        "download",
+        "import",
+        "validate",
+        "run",
+        "execute",
+        "compatibility",
+        "chat",
+        "serve",
+        "store",
+    )
     for flag in ("prompt", "quantization", "filename", "label"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     for flag in ("host", "port"):
         if getattr(args, flag) is not None and args.command != "serve":
             parser.error(f"--{flag} is not valid for command '{args.command}'")
+    if args.model_store is not None:
+        if not args.model_store.strip():
+            parser.error("--model-store requires a non-empty path")
+        if args.command not in store_commands:
+            parser.error(
+                f"--model-store is not valid for command '{args.command}'"
+            )
     if args.command == "diagnose" and (
         args.provider is not None or args.repository is not None
     ):
@@ -1652,6 +1782,26 @@ def main() -> int:
         args.provider is not None or args.repository is not None
     ):
         parser.error("verify takes no arguments")
+
+    # B9.74: select the store ONCE per invocation, through the single
+    # resolution function, and hand the result to the command. The legacy
+    # compatibility fallback is announced on stderr only when it is the store
+    # actually selected, and nothing remembers that the notice was shown.
+    #
+    # `--model-store` is the one selection the CLI alone knows, so it is the
+    # one value the CLI forwards as a store. Every other source (config,
+    # XDG_DATA_HOME, default, legacy) is resolved by the command itself through
+    # that same function when no store is forwarded, so both paths name exactly
+    # the same root and no command can ever resolve a second, divergent store.
+    model_store: ModelStore | None = None
+    if args.command in store_commands:
+        resolution = resolve_model_store(args.model_store)
+        notice = legacy_store_notice(resolution)
+        if notice is not None:
+            print(notice, file=sys.stderr)
+        if args.model_store is not None:
+            model_store = ModelStore(resolution.path)
+
     if args.command == "detect":
         print_detection()
     elif args.command == "diagnose":
@@ -1661,13 +1811,17 @@ def main() -> int:
     elif args.command == "models":
         print_models()
     elif args.command == "list":
-        print_local_models()
+        print_local_models(model_store)
     elif args.command == "runtime":
         return print_runtime_diagnostics()
     elif args.command == "source":
         return print_source(args.provider, args.repository)
     elif args.command == "plan":
-        return print_plan(args.provider, args.repository)
+        return print_plan(args.provider, args.repository, model_store=model_store)
+    elif args.command == "store":
+        return store_command(
+            model_store_path=args.model_store, out=sys.stdout
+        )
     elif args.command == "compatibility":
         if args.repository is not None:
             parser.error("compatibility accepts exactly one model-id")
@@ -1675,6 +1829,7 @@ def main() -> int:
             args.provider,
             quantization=args.quantization,
             filename=args.filename,
+            model_store=model_store,
         )
     elif args.command == "validate":
         if args.repository is not None:
@@ -1683,6 +1838,7 @@ def main() -> int:
             args.provider,
             quantization=args.quantization,
             filename=args.filename,
+            store=model_store,
         )
     elif args.command == "download":
         if args.repository is not None:
@@ -1691,11 +1847,14 @@ def main() -> int:
             args.provider,
             quantization=args.quantization,
             filename=args.filename,
+            model_store=model_store,
         )
     elif args.command == "import":
         if args.repository is not None:
             parser.error("import accepts exactly one path")
-        return import_command(args.provider, label=args.label)
+        return import_command(
+            args.provider, label=args.label, model_store=model_store
+        )
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")
@@ -1704,6 +1863,7 @@ def main() -> int:
             args.prompt,
             quantization=args.quantization,
             filename=args.filename,
+            model_store=model_store,
         )
     elif args.command == "execute":
         return execute_command(
@@ -1711,6 +1871,7 @@ def main() -> int:
             args.repository,
             quantization=args.quantization,
             filename=args.filename,
+            model_store=model_store,
         )
     elif args.command == "chat":
         if args.repository is not None:
@@ -1719,9 +1880,12 @@ def main() -> int:
             args.provider,
             quantization=args.quantization,
             filename=args.filename,
+            model_store=model_store,
         )
     elif args.command == "serve":
-        return serve_command(host=args.host, port=args.port)
+        return serve_command(
+            host=args.host, port=args.port, model_store=model_store
+        )
     return 0
 
 

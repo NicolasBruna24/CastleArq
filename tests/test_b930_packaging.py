@@ -107,17 +107,46 @@ class UserPathResolutionTests(unittest.TestCase):
                     config = load_config()
         self.assertEqual(config.safety_margin, 1.20)
 
-    def test_model_store_path_uses_xdg_and_legacy_priority(self):
+    def test_model_store_path_prefers_xdg_over_legacy(self):
+        """B9.74 policy: an explicit XDG selection wins, existing or not.
+
+        The previous assertion encoded the superseded semantics, where the
+        *existence* of a directory decided the winner: with XDG_DATA_HOME set
+        and the XDG store absent, the legacy store was selected. Selection now
+        follows the declared intention, so the same scenario selects the XDG
+        store, and creating that directory does not change the answer.
+        """
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            new = root / "data" / "castlearq" / "models"
+            xdg_store = root / "data" / "castlearq" / "models"
             legacy = root / "home" / ".local" / "share" / "localai-hub" / "models"
             legacy.mkdir(parents=True)
-            with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "data"), "HOME": str(root / "home")}, clear=False):
-                self.assertEqual(default_models_directory(), legacy)
-                new.mkdir(parents=True)
-                self.assertEqual(default_models_directory(), new)
+            environment = {
+                "XDG_DATA_HOME": str(root / "data"),
+                "XDG_CONFIG_HOME": str(root / "config"),
+                "HOME": str(root / "home"),
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                self.assertEqual(default_models_directory(), xdg_store)
+                self.assertFalse(xdg_store.exists())
+                # Creating the selected store does not move the selection either.
+                xdg_store.mkdir(parents=True)
+                self.assertEqual(default_models_directory(), xdg_store)
             self.assertFalse((root / "data" / "castlearq" / "config.toml").exists())
+
+    def test_model_store_path_falls_back_to_legacy_only_without_any_selection(self):
+        """B9.74: the legacy store is a compatibility fallback, nothing more."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / "home" / ".local" / "share" / "localai-hub" / "models"
+            legacy.mkdir(parents=True)
+            environment = {
+                "XDG_CONFIG_HOME": str(root / "config"),
+                "HOME": str(root / "home"),
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                os.environ.pop("XDG_DATA_HOME", None)
+                self.assertEqual(default_models_directory(), legacy)
 
 
 if __name__ == "__main__":

@@ -225,7 +225,9 @@ def production_capability_provider() -> RuntimeCapability:
     return detect_llama_capability()
 
 
-def compose_execute_model_dependencies() -> ExecuteModelDependencies:
+def compose_execute_model_dependencies(
+    model_store: ModelStore | None = None,
+) -> ExecuteModelDependencies:
     """Compose ``ExecuteModelDependencies`` from real infrastructure (B9.22).
 
     One call = ONE use-case invocation: the dependencies are built, the
@@ -257,6 +259,13 @@ def compose_execute_model_dependencies() -> ExecuteModelDependencies:
     No exception handling, retry, fallback, degradation or reinterpretation
     is applied: a detection or store failure is a Class-B defect and
     propagates unchanged (§11.2).
+
+    ``model_store`` (B9.74): the store this invocation selected. It is passed
+    in by the caller that resolved ``--model-store``; when it is omitted the
+    composition binds the environment/default-resolved store, exactly as
+    before. Composition still names the store here and nowhere else, and no
+    second resolution is introduced: the value the CLI resolved is the value
+    bound.
     """
     capability = production_capability_provider()
 
@@ -265,7 +274,7 @@ def compose_execute_model_dependencies() -> ExecuteModelDependencies:
         return capability
 
     return ExecuteModelDependencies(
-        model_store=ModelStore(),
+        model_store=model_store if model_store is not None else ModelStore(),
         models=get_catalog(),
         capability_provider=capability_provider,
         preflight_factory=ArtifactExecutionPreflight,

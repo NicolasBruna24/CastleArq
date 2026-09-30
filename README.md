@@ -462,23 +462,64 @@ executable, exactly as before.
 re-derives the artifact, and adds `--quantization` / `--filename` to select
 which artifact to validate.
 
-The model store is independent of the checkout:
+The model store is independent of the checkout. CastleArq selects it from the
+first source you declare, in this order of authority:
 
-```text
-$XDG_DATA_HOME/castlearq/models
+| Declared source | Store used |
+|---|---|
+| `castlearq --model-store PATH ...` | `PATH`, for that one invocation |
+| `[models] directory` in `config.toml` | the configured directory |
+| `XDG_DATA_HOME` | `$XDG_DATA_HOME/castlearq/models` |
+| nothing declared | `~/.local/share/castlearq/models` |
+| nothing declared, and no CastleArq store exists yet | `~/.local/share/localai-hub/models` (legacy compatibility) |
+
+Explicit configuration always wins, and **directory existence does not decide
+the winner**: a store you select is used even when its directory does not exist
+yet, is empty, or sits next to another store. Resolving the path does not create
+anything; the directory appears only when an operation actually writes to it.
+
+To see which store is in use:
+
+```bash
+castlearq store
 ```
 
-with the fallback:
-
 ```text
-~/.local/share/castlearq/models
+Store
+Path: /home/you/.local/share/castlearq/models
+Source: default
+Exists: no
+Legacy detected: yes
+Legacy used: no
 ```
+
+`Source` names the source that won: `cli`, `config`, `xdg`, `default` or
+`legacy-compatibility`. `store` is read-only.
+
+The user configuration file is `$XDG_CONFIG_HOME/castlearq/config.toml`,
+falling back to `~/.config/castlearq/config.toml`, and it selects the store with:
+
+```toml
+[models]
+directory = "~/.local/share/castlearq/models"
+```
+
+The `config/config.toml` in the repository is a sample of that schema, not a
+file CastleArq reads at runtime.
 
 `~/.local/share/localai-hub/models` is the path used by the predecessor local
-installation. CastleArq only falls back to it when the `castlearq` directory does
-not exist and the legacy one does, so artifacts already downloaded with the
-predecessor remain usable without being moved by hand. New installations use the
-`castlearq` path shown above; you do not need to edit manifests or move models.
+installation. It is a compatibility fallback and nothing more: it is selected
+only when you declared no store at all, the CastleArq store does not exist, and
+the legacy store does. When that happens, CastleArq says so on stderr, and it
+uses the artifacts where they already are. **CastleArq does not migrate, move,
+copy or delete models**, so you never need to edit manifests or relocate models
+by hand.
+
+`--model-store PATH` selects the store for one invocation only:
+
+```bash
+castlearq --model-store /path/to/store list
+```
 
 ## How this differs from using llama.cpp directly
 
@@ -728,6 +769,7 @@ flags.
 | `download MODEL_ID` | Explicitly fetch a GGUF artifact |
 | `import PATH` | Imports a **local** GGUF file into the model store |
 | `list` | Locally stored artifacts and their state |
+| `store` | Reports the model store in use: path, source, existence, legacy status |
 | `validate MODEL_ID` | Validates one stored artifact: filesystem, size, integrity |
 | `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
 | `execute MODEL_ID "PROMPT"` | Run a prompt (recommended; strict evaluation applies) |
@@ -750,8 +792,8 @@ read, as physical GGUF evidence. Use `--label NAME` to choose the storage and
 presentation label; the store sanitizes it, and it is never used as a model id.
 Importing does not run anything: run the artifact later with `execute`.
 
-`detect`, `runtime`, `models`, `list`, `compatibility`, `source` and `plan` are
-read-only: they change nothing.
+`detect`, `runtime`, `models`, `list`, `store`, `compatibility`, `source` and
+`plan` are read-only: they change nothing.
 
 `verify` checks **environment remediation** after a `diagnose`. It is not an
 artifact integrity check; for that, use `validate`, which reports what can be

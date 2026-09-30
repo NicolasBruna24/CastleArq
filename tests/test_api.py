@@ -394,7 +394,12 @@ class ServerLifecycleTests(unittest.TestCase):
         ):
             exit_code = cli_main()
         self.assertEqual(exit_code, 0)
-        serve_mock.assert_called_once_with(host="127.0.0.1", port=8000)
+        # B9.74: the CLI forwards the store it selected for this invocation.
+        # Without --model-store there is nothing to forward, so the server keeps
+        # the environment-resolved store it always used.
+        serve_mock.assert_called_once_with(
+            host="127.0.0.1", port=8000, model_store=None
+        )
 
     def test_cli_rejects_host_flag_for_non_serve_commands(self):
         argv = ["castlearq", "models", "--host", "127.0.0.1"]

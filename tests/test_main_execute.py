@@ -32,6 +32,7 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
+from app.evaluate_compatibility import EvaluateCompatibilityDependencies
 from app.execute_model import ExecuteAdmissionDeniedError, ExecutePreparationError
 from app.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
 
@@ -134,7 +135,7 @@ class RegistrationTests(unittest.TestCase):
             code, _, _ = _run_cli("execute", "m1", "hello")
         self.assertEqual(code, 0)
         caller.assert_called_once_with(
-            "m1", "hello", quantization=None, filename=None
+            "m1", "hello", quantization=None, filename=None, model_store=None
         )
 
 
@@ -239,8 +240,14 @@ class ApplicationCallTests(unittest.TestCase):
     def test_evaluation_result_is_projected_into_admission(self):
         code, _, _, _, execute, evaluate = _invoke("m1", "hi")
         self.assertEqual(code, 0)
+        # B9.74: the evaluation names its dependency holder explicitly so the
+        # store selected for this invocation reaches it; with no `--model-store`
+        # the holder is empty and the use case behaves exactly as before.
         evaluate.assert_called_once_with(
-            "m1", quantization=None, filename=None
+            "m1",
+            quantization=None,
+            filename=None,
+            dependencies=EvaluateCompatibilityDependencies(model_store=None),
         )
         admission = execute.call_args.kwargs["admission"]
         self.assertEqual(admission.status, "evaluated")
@@ -419,6 +426,10 @@ class StructuralBoundaryTests(unittest.TestCase):
             {
                 "application_wiring": {"compose_execute_model_dependencies"},
                 "evaluate_compatibility": {
+                    # B9.74 adds the use case's own dependency holder: the store
+                    # selected for the invocation has to reach the evaluation
+                    # through the ratified seam, not through a second one.
+                    "EvaluateCompatibilityDependencies",
                     "evaluate_model_compatibility",
                     "to_admission",
                 },

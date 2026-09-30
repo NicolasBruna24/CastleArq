@@ -45,7 +45,10 @@ from app.compatibility_domain import (
     EvidenceKind,
 )
 from app.compatibility_report import format_evaluation_report
-from app.evaluate_compatibility import EvaluateModelCompatibilityResult
+from app.evaluate_compatibility import (
+    EvaluateCompatibilityDependencies,
+    EvaluateModelCompatibilityResult,
+)
 from app.execution import (
     ExecutionErrorCode,
     ExecutionErrorInfo,
@@ -261,7 +264,9 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         with patch("app.main.compatibility_command", return_value=0) as caller:
             code, _, _ = _cli("compatibility", "m1")
         self.assertEqual(code, 0)
-        caller.assert_called_once_with("m1", quantization=None, filename=None)
+        caller.assert_called_once_with(
+            "m1", quantization=None, filename=None, model_store=None
+        )
 
     def test_missing_model_id_is_usage_error_without_evaluation(self):
         with patch("app.main.evaluate_model_compatibility") as evaluate:
@@ -289,7 +294,15 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         ) as execute, patch("app.main.run_model") as run:
             code = compatibility_command("m1", out=out, err=err)
         self.assertEqual(code, 0)
-        evaluate.assert_called_once_with("m1", quantization=None, filename=None)
+        # B9.74: the evaluation is handed the use case's dependency holder so
+        # the store selected for this invocation reaches it. With no
+        # `--model-store` the holder is empty and the use case is unchanged.
+        evaluate.assert_called_once_with(
+            "m1",
+            quantization=None,
+            filename=None,
+            dependencies=EvaluateCompatibilityDependencies(model_store=None),
+        )
         runner.assert_not_called()
         execute.assert_not_called()
         run.assert_not_called()

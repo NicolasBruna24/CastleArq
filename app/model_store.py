@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .compatibility import default_config_path
 from .models import ArtifactSpec, ArtifactState
 
 
@@ -58,33 +59,153 @@ _DEFAULT_MODELS_DIRECTORY = "~/.local/share/castlearq/models"
 LEGACY_MODELS_DIRECTORY = _LEGACY_MODELS_DIRECTORY
 DEFAULT_MODELS_DIRECTORY = _DEFAULT_MODELS_DIRECTORY
 
+#: B9.74: the ratified model-store selection sources. ``source`` names the
+#: INTENTION that selected the store, so an explicit selection is never
+#: confused with the compatibility fallback.
+STORE_SOURCE_CLI = "cli"
+STORE_SOURCE_CONFIG = "config"
+STORE_SOURCE_XDG = "xdg"
+STORE_SOURCE_DEFAULT = "default"
+STORE_SOURCE_LEGACY = "legacy-compatibility"
+
 
 def _expand(path: str) -> Path:
     return Path(os.path.expanduser(path))
 
 
-def default_models_directory(config_path: Path | None = None) -> Path:
-    """Resolve the model store root without creating filesystem entries."""
-    data_home = os.environ.get("XDG_DATA_HOME")
-    new_default = (Path(data_home).expanduser() / "castlearq" / "models" if data_home
-                   else _expand(DEFAULT_MODELS_DIRECTORY))
-    legacy_default = _expand(LEGACY_MODELS_DIRECTORY)
+@dataclass(frozen=True)
+class ModelStoreResolution:
+    """The single authoritative outcome of model-store selection (B9.74).
+
+    ``path`` is the store that must be used, ``source`` is the intention that
+    selected it (``cli`` / ``config`` / ``xdg`` / ``default`` /
+    ``legacy-compatibility``), ``legacy_detected`` reports whether the legacy
+    predecessor store exists on this machine at all, and ``legacy_used``
+    reports whether it is the store actually selected. Resolution is
+    read-only: it never creates the directory it names.
+    """
+
+    path: Path
+    source: str
+    legacy_detected: bool
+    legacy_used: bool
+
+
+def _models_directory_from_config(config_path: Path) -> str | None:
+    """Read ``[models] directory`` from a config file, or ``None``.
+
+    The minimal line parser is the pre-existing one, unchanged: B9.74 restores
+    its use in production, it does not introduce a new configuration system,
+    format or key.
+    """
     value: str | None = None
-    if config_path is not None:
-        try:
-            in_models = False
-            for line in config_path.read_text(encoding="utf-8").splitlines():
-                stripped = line.split("#", 1)[0].strip()
-                if stripped.startswith("["):
-                    in_models = stripped == "[models]"
-                elif in_models and stripped.startswith("directory") and "=" in stripped:
-                    value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-        except OSError:
-            pass
-    candidate = _expand(value) if value else new_default
-    if candidate == new_default and not candidate.exists() and legacy_default.exists():
-        return legacy_default
-    return candidate
+    try:
+        in_models = False
+        for line in config_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.split("#", 1)[0].strip()
+            if stripped.startswith("["):
+                in_models = stripped == "[models]"
+            elif in_models and stripped.startswith("directory") and "=" in stripped:
+                candidate = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                if candidate:
+                    value = candidate
+    except OSError:
+        pass
+    return value
+
+
+def resolve_model_store(
+    cli_path: str | Path | None = None,
+    *,
+    config_path: Path | None = None,
+) -> ModelStoreResolution:
+    """Select the model store for one invocation (B9.74, single source of truth).
+
+    Precedence, highest authority first:
+
+    ```text
+    1. --model-store PATH                     explicit CLI selection
+    2. config.toml [models] directory         explicit configuration
+    3. $XDG_DATA_HOME/castlearq/models        explicit environment selection
+    4. ~/.local/share/castlearq/models        CastleArq default
+    5. ~/.local/share/localai-hub/models      legacy compatibility fallback
+    ```
+
+    Selection follows the user's declared intention, never the filesystem: an
+    explicit source wins even when its directory does not exist, is empty, has
+    no artifact yet, or sits next to an existing legacy store. The legacy
+    store is selected only when no explicit source was declared at all, the
+    CastleArq default does not exist, and the legacy store does.
+
+    ``config_path`` names the configuration file to read; when omitted, the
+    user configuration path (``$XDG_CONFIG_HOME/castlearq/config.toml``,
+    falling back to ``~/.config/castlearq/config.toml``) is read. Neither this
+    function nor the value it returns creates, moves or deletes anything.
+    """
+    legacy = _expand(LEGACY_MODELS_DIRECTORY)
+    legacy_detected = legacy.exists()
+
+    def resolution(path: Path, source: str) -> ModelStoreResolution:
+        return ModelStoreResolution(
+            path=path,
+            source=source,
+            legacy_detected=legacy_detected,
+            legacy_used=source == STORE_SOURCE_LEGACY,
+        )
+
+    if cli_path is not None:
+        requested = str(cli_path).strip()
+        if not requested:
+            raise ValueError("--model-store requires a non-empty path")
+        return resolution(_expand(requested), STORE_SOURCE_CLI)
+
+    declared = _models_directory_from_config(
+        default_config_path() if config_path is None else config_path
+    )
+    if declared is not None:
+        return resolution(_expand(declared), STORE_SOURCE_CONFIG)
+
+    data_home = os.environ.get("XDG_DATA_HOME")
+    if data_home:
+        return resolution(
+            _expand(os.path.join(data_home, "castlearq", "models")), STORE_SOURCE_XDG
+        )
+
+    castlearq_default = _expand(DEFAULT_MODELS_DIRECTORY)
+    if not castlearq_default.exists() and legacy_detected:
+        return resolution(legacy, STORE_SOURCE_LEGACY)
+    return resolution(castlearq_default, STORE_SOURCE_DEFAULT)
+
+
+def default_models_directory(config_path: Path | None = None) -> Path:
+    """Resolve the model store root without creating filesystem entries.
+
+    A thin wrapper over :func:`resolve_model_store`, so the root a ``ModelStore``
+    defaults to and the store ``castlearq store`` reports can never diverge.
+    """
+    return resolve_model_store(config_path=config_path).path
+
+
+def legacy_store_notice(resolution: ModelStoreResolution) -> str | None:
+    """The stderr notice for a legacy-compatibility selection, or ``None``.
+
+    Returned rather than printed so resolution stays free of presentation and
+    of persistent state: the caller decides whether and where to show it, and
+    nothing remembers that it was shown. ``None`` covers every case where the
+    legacy store was not the selected store -- including the case where it was
+    detected but the user selected something else.
+    """
+    if not resolution.legacy_used:
+        return None
+    return (
+        "Notice: no explicit model store was selected (no --model-store, no "
+        "[models] directory in config.toml, no XDG_DATA_HOME), so CastleArq is "
+        "using the legacy predecessor store:\n"
+        f"  {resolution.path}\n"
+        "Artifacts are used where they already are: nothing is moved, copied "
+        "or deleted. Select a different store with --model-store PATH, "
+        "config.toml [models] directory, or XDG_DATA_HOME."
+    )
 
 
 class ModelStore:
