@@ -517,8 +517,7 @@ Allocation Date:
   2026-09-30
 
 Allocation Commit:
-  PENDING — set to this document's allocation commit in the next controlled
-  commit, by the same two-step discipline used for the §11 activation anchor
+  e6063e5a5589cb6b952ed84f91529eb52c4f3727
 
 Corpus/HEAD Anchor:
   61753e97f7a9ba65f939400a06aadd30ad96e236
