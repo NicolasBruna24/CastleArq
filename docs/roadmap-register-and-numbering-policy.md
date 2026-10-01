@@ -164,6 +164,7 @@ rationale or acceptance criterion.
 | B9.76.5 | `--json` for SHOULD-surface commands | IMPLEMENTED, RETROSPECTIVE | `fb1f67dc8ed53a6c60033c86892f270bfdd49137` | **v0.4.0** | NO | TEST + SRC |
 | B9.77 | *(scope not recoverable — see §5)* | IMPLEMENTED, RETROSPECTIVE | `2f9464ce860d6576b9ab528bb82b3d26295d8c92` | **v0.4.0** | NO | TEST |
 | B9.78 | Legacy Admission Cutover | IMPLEMENTED, DOCUMENTED, ALLOCATED (§14) | implementation `8955fc6d91745ef3685fff00c6c8a6b03ac9a28e` (§14.1 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
+| B9.79 | Runtime Artifact Evidence — Pre-Admission | DOCUMENTED, ALLOCATED (§15) | allocation PENDING (§15 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
 
 ### 4.0.1 Excluded from the register
 
@@ -187,6 +188,7 @@ B9.1, B9.3, B9.5, B9.7, B9.16, B9.18, B9.20, B9.21, B9.40
 | B9.53 | Partial — the §17 requirement is recoverable through `docs/B9.59` §2 and `tests/test_public_surface.py` | NOT RECOVERABLE |
 | **B9.77** | **NOT RECOVERABLE** (§5) | **NOT RECOVERABLE** |
 | **B9.78** | Defined — see §14.1 (cutover; not a legacy cleanup) | Defined — see §14.1 (12 explicit non-goals) |
+| **B9.79** | Defined — see §15.1 (pre-admission runtime/artifact evidence) | Defined — see §15.1 (18 explicit non-goals) |
 
 `Scope` and `Non-goals` are recorded by **reference** to the cited evidence, not
 restated. Restating a scope from a single sentence of test code would convert a
@@ -466,6 +468,7 @@ may be assigned only after this field names a real commit.
 
 ```text
 B9.78 = FORMALLY ALLOCATED — see section 14
+B9.79 = FORMALLY ALLOCATED — see section 15
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -500,7 +503,7 @@ It does not retroactively reinterpret the allocation of B9.59.
 It does not define what B9.78 will contain.
 ```
 
-The single allocation this document performs is `B9.78`, recorded in §14.
+The allocations this document performs are `B9.78` (§14) and `B9.79` (§15).
 
 ---
 
@@ -937,3 +940,430 @@ because B9.78 exists.
 the information; `NOT YET DEFINED` means it has not been decided. Only a
 subsequent decision can fill these fields, and nothing in this document decides
 them.
+
+---
+
+## 15. B9.79 — Number Allocation Record
+
+`B9.79` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection. This section is the §11 record for that assignment.
+
+```text
+Assigned Number:
+  B9.79
+
+Allocation Date:
+  2026-10-01
+
+Allocation Commit:
+  PENDING — established by the commit that introduces section 15
+  ("docs: define roadmap block B9.79"). As with the numbering-policy activation
+  anchor in section 11, a commit hash cannot be known before the commit exists,
+  so it is recorded as PENDING here and fixed in the next controlled commit
+  that sets it to that hash.
+
+Corpus/HEAD Anchor:
+  f8ddafc3cf162fa0e73bfb242e26a9d3d9d419c8
+  git tree object 61a7bc143eea789838a00c725879cbfa3c795a2c
+
+Corpus File Count:
+  203
+
+Corpus Integrity Evidence:
+  Reproducible, git-native procedure (an equivalent verifiable procedure under
+  section 7):
+    git rev-parse HEAD         -> f8ddafc3cf162fa0e73bfb242e26a9d3d9d419c8
+    git rev-parse HEAD^{tree}  -> 61a7bc143eea789838a00c725879cbfa3c795a2c
+    git ls-files | wc -l       -> 203
+  The versioned file set is fixed by the git tree object above: any change to
+  the file list changes the tree hash. The four SHA-256 digests recorded for
+  B9.78 depended on a hashing procedure that is not preserved in the corpus;
+  they are not reproduced here, and the git tree object is used in their place.
+
+Identifier Set:
+  107 distinct identifiers in 203 versioned files: 51 main
+  (B9.0-B9.6, B9.7-B9.16, B9.18-B9.24, B9.29-B9.31, B9.35-B9.37,
+  B9.39-B9.48, B9.50-B9.59, B9.66, B9.67, B9.74, B9.76, B9.77, B9.78) and
+  56 sub (B9.6.0/.1, B9.46.1-.29, B9.57.1-.8, B9.76.1-.5).
+
+Highest Verified Main Block:
+  B9.78 — allocated and implemented at
+  8955fc6d91745ef3685fff00c6c8a6b03ac9a28e, recorded in section 14, and
+  present in source and tests as an executable block.
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled Cline corpus inspection + formal registration
+
+Candidate Numbers Considered:
+  B9.79 — SELECTED (highest verified + 1)
+  B9.25, B9.26, B9.27, B9.28, B9.32, B9.33, B9.34, B9.38, B9.49, B9.60,
+  B9.61, B9.62, B9.63, B9.64, B9.65, B9.68, B9.69, B9.70, B9.71, B9.72,
+  B9.73, B9.75 — rejected: historical gaps, not reusable under section 9
+  B9.57.4 — rejected: sub-block, never raises the main floor (section 8)
+  B9.80, B9.81, B9.82, B9.83 — rejected: illustrative examples in section 8,
+  not allocations
+  B9.80.1, B9.80.2, B9.80.3 — rejected: example sub-blocks (section 8)
+  B9.76.1, B9.76.2, B9.76.3, B9.76.4, B9.76.5 — rejected: real sub-blocks;
+  a sub-block does not advance the main floor (section 8)
+
+Selected Number:
+  B9.79
+
+Validity Reason:
+  B9.78 is the highest verified allocated main block in the complete 203-file
+  corpus. Under the active rule, the next main block is therefore B9.79. No
+  allocated main identifier above B9.78 was found: B9.79 through B9.83 occur
+  only inside this document — in the section 14 candidate list, as negative
+  assertions, or as the section 8 illustrative example — and evidence no
+  allocation.
+```
+
+### 15.1 Register entry for B9.79
+
+```text
+Block ID:                 B9.79
+Name:                     Runtime Artifact Evidence — Pre-Admission
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 15
+Scope:                    see 15.2
+Non-goals:                see 15.12
+Dependencies:             see 15.13
+Current State:            DEFINED; architectural decision recorded;
+                          implementation pending — see 15.14
+Acceptance Criteria:      AC1-AC10 — see 15.15
+Evidence:                 see 15.13
+Evidence Type:            DOC
+Implementation Commit:    NOT YET IMPLEMENTED — PENDING
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 15
+Retrospective Record:     NO — a prospective allocation and decision record
+```
+
+### 15.1.1 Status vocabulary note
+
+`DEFINED` is **not** an allowed status in §3.1, so it was not invented here
+either. The closest existing documented status is **`DOCUMENTED`** ("a canonical
+block document exists under `docs/`"), which is accurate: this definition is
+recorded in this document. `ALLOCATED` is retained because §15 governs the
+number. **`IMPLEMENTED` is deliberately absent** — no production code for B9.79
+exists — and B9.79 is **not** marked `VERIFIED` or `CLOSED`. Only a subsequent
+implementation that satisfies AC1-AC10 (§15.15) may close the block.
+
+---
+
+### 15.2 Scope
+
+B9.79 establishes the architectural contract for producing
+`RuntimeArtifactEvidence` at the physical runtime/artifact observation boundary
+**before** admission, transporting it through the existing evaluation input, and
+allowing strict evaluation to use that evidence to characterize the concrete
+runtime's compatibility with the artifact.
+
+The implementation must preserve:
+
+```text
+1. admission as the sole authority;
+2. deny-only behavior;
+3. deny-by-default / fail-closed where applicable;
+4. `None` or absence of evidence must not become a positive assertion;
+5. the existing execution re-validation;
+6. the B9.66 and B9.67 contracts;
+7. the evaluation/execution separation established earlier.
+```
+
+---
+
+### 15.3 Architectural decision (recorded)
+
+The human architectural decision recorded for B9.79 is:
+
+```text
+Adopt option A of B9.46.23: obtain `RuntimeArtifactEvidence` through
+pre-admission observation of the runtime/artifact.
+```
+
+The intent is for CastleArq to obtain physical evidence, before execution is
+authorized, about whether the concrete runtime can receive/load the artifact.
+
+This decision does **not** mean that the runtime has demonstrated successful
+inference. The following are different properties and must not be conflated:
+
+```text
+- artifact received;
+- artifact opened/parsed;
+- artifact loaded;
+- backend initialized;
+- inference executed.
+```
+
+The preparatory experiment demonstrated evidence A-D for the current runtime
+through a load of the form:
+
+```text
+llama cli --simple-io --single-turn --model <artifact> --device <device>
+  --prompt hi -n 0 -lv 4
+```
+
+and established that:
+
+```text
+- `-n 0` allows loading without significant generation;
+- `--single-turn` avoids remaining in a REPL;
+- the model load can be observed through runtime output;
+- the process can open a local HTTP socket;
+- the operation is not a lightweight dry-run;
+- the observed cost for the experimental artifact was approximately 5.64 s
+  and ~11.9 GiB of process/environment memory, with ~7.17 GiB of KV cache.
+```
+
+These figures are experimental evidence of the tested environment and must
+**not** be turned into universal product requirements.
+
+---
+
+### 15.4 Evidence contract
+
+B9.79 evidence must respect the contract ratified for `RuntimeArtifactEvidence`
+in B9.46.23.
+
+```text
+runtime_identity        required
+runtime_version         required
+artifact_reference      required
+artifact_format         required
+artifact_architecture   optional
+backend                 optional
+observation             required
+provenance              required
+```
+
+Explicitly outside this contract:
+
+```text
+- model_id;
+- ModelArtifact.identifier;
+- manifest state;
+- generated text;
+- persistence schema;
+- event stream;
+- audit log.
+```
+
+The evidence is physical/observational and ephemeral in this phase. No
+persistence is introduced as part of B9.79.
+
+---
+
+### 15.5 Observation semantics
+
+```text
+- positive evidence  -> may be projected to PASSED;
+- negative evidence  -> may be projected to FAILED;
+- absence / unavailability / non-performance of the observation -> UNKNOWN;
+- producer error     -> a production/evaluation error, NOT silently converted
+                        into FAILED.
+```
+
+`UNKNOWN` remains a valid contractual state. B9.79 does **not** remove
+`UNKNOWN`.
+
+---
+
+### 15.6 Limit of the guarantee
+
+```text
+B9.79 does NOT guarantee that pre-admission RuntimeArtifactEvidence is
+equivalent to successful inference.
+```
+
+Pre-admission evidence establishes only what the observed runtime could
+demonstrate during the observation operation performed. In particular:
+
+```text
+- successful load is not successful inference;
+- backend initialization is not successful generation;
+- a process exit code of 0 is not proof of inference when no inference ran.
+```
+
+---
+
+### 15.7 Cost and known limitation
+
+```text
+The currently available experimental implementation requires a real artifact
+load, not a lightweight dry-run mechanism.
+```
+
+B9.79 therefore acknowledges:
+
+```text
+- possible significant time cost;
+- possible significant memory cost;
+- a possible additional process;
+- a possible local HTTP/socket side effect;
+- a possible double load if an independent execution is later performed.
+```
+
+These costs are part of the design context and must be considered during
+implementation. This formalization does **not** invent a caching, persistent
+runtime, process reuse, daemonization or new dry-run mechanism.
+
+---
+
+### 15.8 Transport
+
+```text
+B9.79 will, in principle, use the architectural seams already identified during
+the audit:
+- the `evidence_reader` / application-layer evidence seam;
+- `evaluate_strict`;
+- the existing evaluation input / physical evidence transport.
+```
+
+No new architectural layer is created by this formalization. The later
+implementation must verify whether these seams are sufficient before
+introducing new components.
+
+---
+
+### 15.9 Relationship with B9.78
+
+```text
+B9.79 depends conceptually on the admission architecture consolidated by B9.78.
+```
+
+B9.79 does **not** replace:
+
+```text
+- admission;
+- deny-only;
+- fail-closed;
+- execution re-validation.
+```
+
+B9.79 adds evidence for the evaluation performed before admission. The
+historical register entry and the closure of B9.78 are not modified.
+
+---
+
+### 15.10 Option B — post-execution evidence (deferred, not implemented)
+
+```text
+Post-execution evidence derived from `ExecutionResult` is a possible later
+evolution.
+```
+
+It is **not** part of the B9.79 implementation, no new identifier is assigned
+to it here, and it is **not** an immediate obligation. The architecture must
+avoid closing the door to a future coexistence of pre-admission evidence with
+post-execution evidence.
+
+---
+
+### 15.11 Option C — UNKNOWN
+
+```text
+UNKNOWN remains a valid result when there is insufficient evidence or the
+observation cannot be performed.
+```
+
+B9.79 does not turn absence of evidence into `PASSED` or into `FAILED`.
+
+---
+
+### 15.12 Non-goals
+
+Declared out of scope for B9.79:
+
+```text
+1.  implementing the probe / runtime observer;
+2.  changing production code yet;
+3.  changing the CLI;
+4.  changing the API;
+5.  creating evidence persistence;
+6.  creating evidence caching;
+7.  reusing runtime processes;
+8.  creating a daemon / runtime manager;
+9.  introducing a non-existent dry-run;
+10. implementing post-execution evidence;
+11. redefining inference success;
+12. modifying B9.78;
+13. modifying packaging/release/distribution;
+14. introducing Ollama;
+15. introducing multi-runtime;
+16. introducing multi-GPU / distributed execution;
+17. introducing a GUI / web UI;
+18. performing unrelated cleanup.
+```
+
+---
+
+### 15.13 Dependencies and evidence
+
+References preserved:
+
+```text
+B9.46.23 — RuntimeArtifactEvidence contract / architectural alternatives
+B9.46.25
+B9.46.26
+B9.47    — product identity / orchestration boundary
+B9.66    — imported artifact tolerance
+B9.67    — managed path requirements
+B9.78    — legacy admission cutover
+experimental runtime/artifact observation performed during B9.79 decision
+preparation
+```
+
+The decision was preceded by real experimental evidence against the local
+runtime and a real GGUF. The experiment is evidence of the tested environment,
+not a universal proof for all runtimes/artifacts.
+
+---
+
+### 15.14 Current state
+
+```text
+Formally allocated.
+Defined.
+Architectural decision taken.
+Implementation pending.
+```
+
+B9.79 is **not** `IMPLEMENTED`, `VERIFIED` or `CLOSED`. A later implementation
+may close the block only after satisfying its acceptance criteria (§15.15),
+which this documentation task does **not** claim to satisfy.
+
+---
+
+### 15.15 Acceptance criteria
+
+Contractual criteria (not an implementation):
+
+```text
+AC1  There is a formal definition of pre-admission RuntimeArtifactEvidence.
+AC2  The evidence is obtained at the physical runtime/artifact boundary before
+     admission.
+AC3  The evidence uses the B9.46.23 contract.
+AC4  UNKNOWN remains valid when there is no evidence.
+AC5  Positive/negative evidence does not remove the sole authority of
+     admission.
+AC6  The evaluation/admission/execution separation remains intact.
+AC7  B9.78 remains compatible with the decision.
+AC8  The limitation that the current observation may require a real artifact
+     load is documented.
+AC9  Post-execution evidence is explicitly outside the B9.79 implementation.
+AC10 No persistence, caching, process reuse, daemonization or dry-run is
+     introduced as part of this formalization.
+```
+
+**Important.** These acceptance criteria describe the B9.79 contract and must
+**not** be represented as satisfied by this documentation task. They become
+satisfiable only by the later implementation that B9.79 authorizes.
