@@ -437,7 +437,7 @@ and must not be cited as an allocated identifier in a later register entry.
 **Numbering Policy Activation Commit:**
 
 ```text
-PENDING — set to this document's implementation commit
+f77f00d6c0eee177a7b53c87584f391e460f11e3
 ```
 
 The activation anchor is this document's own implementation commit. A commit
