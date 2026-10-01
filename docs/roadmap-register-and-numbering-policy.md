@@ -468,7 +468,7 @@ may be assigned only after this field names a real commit.
 
 ```text
 B9.78 = FORMALLY ALLOCATED — see section 14
-B9.79 = FORMALLY ALLOCATED — see section 15
+B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -1029,17 +1029,21 @@ Validity Reason:
 ```text
 Block ID:                 B9.79
 Name:                     Runtime Artifact Evidence — Pre-Admission
-Status:                   DOCUMENTED, ALLOCATED
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED
 Origin:                   this document, section 15
 Scope:                    see 15.2
 Non-goals:                see 15.12
 Dependencies:             see 15.13
-Current State:            DEFINED; architectural decision recorded;
-                          implementation pending — see 15.14
-Acceptance Criteria:      AC1-AC10 — see 15.15
-Evidence:                 see 15.13
+Current State:            VERIFIED AND CLOSED — see 15.14 and 15.16
+Acceptance Criteria:      AC1-AC10 — see 15.15 (all PASS per 15.16)
+Evidence:                 see 15.13 and 15.16
 Evidence Type:            DOC
-Implementation Commit:    NOT YET IMPLEMENTED — PENDING
+Implementation Commit:    5f781e4674226492adeedb632097a503ef983d8d
+                          ("feat: implement B9.79 runtime artifact evidence")
+Verification Result:      B9.79 VERIFIED — READ-ONLY audit against the
+                          implementation commit; see 15.16
+Closure Commit:           recorded by the commit that introduces section 15.16
+                          ("docs: close B9.79 verification")
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
@@ -1053,9 +1057,20 @@ Retrospective Record:     NO — a prospective allocation and decision record
 either. The closest existing documented status is **`DOCUMENTED`** ("a canonical
 block document exists under `docs/`"), which is accurate: this definition is
 recorded in this document. `ALLOCATED` is retained because §15 governs the
-number. **`IMPLEMENTED` is deliberately absent** — no production code for B9.79
-exists — and B9.79 is **not** marked `VERIFIED` or `CLOSED`. Only a subsequent
-implementation that satisfies AC1-AC10 (§15.15) may close the block.
+number.
+
+**Superseded in part by the verification closure (§15.16).** The allocation-time
+sentence below is preserved deliberately as historical evidence:
+
+> `IMPLEMENTED` was deliberately absent at allocation time — no production code
+> for B9.79 existed then — and B9.79 was not marked `VERIFIED` or `CLOSED`. Only
+> a subsequent implementation satisfying AC1-AC10 (§15.15) could close the block.
+
+That implementation now exists at
+`5f781e4674226492adeedb632097a503ef983d8d` and the READ-ONLY verification audit
+recorded in §15.16 established `B9.79 VERIFIED`. The current authoritative
+status is therefore **`DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED`**
+(§15.1, §15.14, §15.16).
 
 ---
 
@@ -1330,6 +1345,9 @@ not a universal proof for all runtimes/artifacts.
 
 ### 15.14 Current state
 
+**Superseded in part by the verification closure (§15.16).** The allocation-time
+record below is preserved deliberately as historical evidence:
+
 ```text
 Formally allocated.
 Defined.
@@ -1337,9 +1355,14 @@ Architectural decision taken.
 Implementation pending.
 ```
 
-B9.79 is **not** `IMPLEMENTED`, `VERIFIED` or `CLOSED`. A later implementation
-may close the block only after satisfying its acceptance criteria (§15.15),
-which this documentation task does **not** claim to satisfy.
+B9.79 was **not** `IMPLEMENTED`, `VERIFIED` or `CLOSED` at allocation time. A
+later implementation could close the block only after satisfying its acceptance
+criteria (§15.15), which the allocation documentation task did **not** claim to
+satisfy.
+
+Current authoritative state: **IMPLEMENTED, VERIFIED AND CLOSED** — implemented
+at `5f781e4674226492adeedb632097a503ef983d8d` and verified by the READ-ONLY
+audit recorded in §15.16 (AC1-AC10 all PASS).
 
 ---
 
@@ -1364,6 +1387,85 @@ AC10 No persistence, caching, process reuse, daemonization or dry-run is
      introduced as part of this formalization.
 ```
 
-**Important.** These acceptance criteria describe the B9.79 contract and must
-**not** be represented as satisfied by this documentation task. They become
-satisfiable only by the later implementation that B9.79 authorizes.
+**Important.** These acceptance criteria describe the B9.79 contract and were
+**not** represented as satisfied by the allocation documentation task. They
+became satisfiable only through the implementation at
+`5f781e4674226492adeedb632097a503ef983d8d`, and §15.16 records them all PASS
+on the READ-ONLY verification audit.
+
+---
+
+### 15.16 Verification and closure record
+
+READ-ONLY verification audit of the implementation commit
+`5f781e4674226492adeedb632097a503ef983d8d`
+("feat: implement B9.79 runtime artifact evidence").
+
+```text
+Verification Result:
+  B9.79 VERIFIED
+
+Implementation Commit (verified contents — immutable, never rewritten):
+  5f781e4674226492adeedb632097a503ef983d8d
+
+Verification Scope (all established):
+  - RuntimeArtifactEvidence contract compliance (8 fields; no model_id,
+    ModelArtifact.identifier, manifest state, generated text, ExecutionResult,
+    persistence schema, event stream, or audit log; ephemeral)
+  - POSITIVE semantics (explicit load marker AND exit 0; exit 0 alone never
+    POSITIVE)
+  - NEGATIVE semantics (explicit rejection marker; non-zero exit alone never
+    NEGATIVE; explicit failure takes precedence)
+  - UNKNOWN semantics (insufficient evidence, timeout, missing
+    executable/path/device, no reliable signal; timeout never NEGATIVE)
+  - producer-error distinction (RuntimeObservationError propagates, never
+    folded into NEGATIVE)
+  - real executable resolution (absolute path from RuntimeCapability; observer
+    launches it directly, independent of PATH lookup)
+  - real local llama runtime execution
+  - real valid-GGUF POSITIVE observation
+  - real nonexistent-GGUF NEGATIVE observation
+  - UNKNOWN observation with successful process and no load marker
+  - admission integration (POSITIVE->PASSED->compatible;
+    NEGATIVE->FAILED->incompatible/denied; UNKNOWN->UNKNOWN->non-blocking)
+  - architecture boundary preservation (single execution pipeline; pure
+    evaluation layers subprocess-free)
+  - full regression compatibility
+  - scope integrity
+  - clean working tree
+
+Verified Runtime (externally resolved local runtime, not bundled with
+CastleArq):
+  /home/brunapc/.local/bin/llama
+  0.4.0-dev (build 10909, commit a2878d30d)
+
+Regression Result:
+  1847 passed / 2672 subtests passed / 0 failed / 0 errors / 0 skipped
+
+Real-Runtime Evidence (measured; concise, no raw logs):
+  POSITIVE probe:
+    - valid GGUF
+    - exit code 0
+    - explicit model-load markers observed
+    - supports_artifact = True
+    - approximately 5.63 s
+    - process terminated cleanly
+  NEGATIVE probe:
+    - nonexistent GGUF
+    - exit code 1
+    - explicit model-loading rejection markers observed
+    - supports_artifact = False
+  UNKNOWN probe:
+    - successful process
+    - no explicit model-load marker
+    - observation = UNKNOWN
+    - supports_artifact = None
+
+Acceptance Criteria:
+  AC1-AC10 all PASS.
+```
+
+The implementation commit above is the verified artifact and remains immutable.
+This closure record only attests that the verified implementation has been
+formally closed; it does not replace the implementation anchor. B9.79 is
+**CLOSED**. No B9.80 or any other identifier is allocated here.
