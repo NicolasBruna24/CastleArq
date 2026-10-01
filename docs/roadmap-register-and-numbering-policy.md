@@ -469,6 +469,7 @@ may be assigned only after this field names a real commit.
 ```text
 B9.78 = FORMALLY ALLOCATED — see section 14
 B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
+B9.80 = FORMALLY ALLOCATED — see section 16 (allocation only; implementation pending)
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -1469,3 +1470,214 @@ The implementation commit above is the verified artifact and remains immutable.
 This closure record only attests that the verified implementation has been
 formally closed; it does not replace the implementation anchor. B9.79 is
 **CLOSED**. No B9.80 or any other identifier is allocated here.
+
+---
+
+## 16. B9.80 — Number Allocation Record
+
+`B9.80` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. B9.80 is an allocation only: no implementation,
+verification, or closure is claimed here.
+
+```text
+Assigned Number:
+  B9.80
+
+Title:
+  Model Discovery Domain Contract
+
+Allocation Date:
+  2026-10-01
+
+Allocation Commit:
+  PENDING — established by the commit that introduces section 16
+  ("docs: allocate roadmap block B9.80").
+
+Corpus/HEAD Anchor:
+  a044e94f2d40bc3d629614776ca81b03fe078c53
+  (docs: close B9.79 verification; main ahead 3 of origin/main f8ddafc)
+
+Corpus File Count:
+  208 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  git rev-parse HEAD -> a044e94f2d40bc3d629614776ca81b03fe078c53
+  git rev-parse origin/main -> f8ddafc3cf162fa0e73bfb242e26a9d3d9d419c8
+  git status --porcelain=v1 --branch -> clean, main ahead 3
+  git tree object at HEAD -> 3e7ed979e41897c23857851ba120e471bac81318
+
+Identifier Set:
+  Main/sub families carried forward from section 15 (51 main through B9.79,
+  56 sub), plus illustrative-only strings B9.80, B9.80.1-B9.80.3, B9.81-B9.83
+  in sections 7.5, 8, 15. No identifier above B9.79 is in real use in code,
+  tests, docs, or configuration outside illustrative/rejection lists.
+
+Highest Verified Main Block:
+  B9.79 — allocated in section 15 (925cc46), implemented at 5f781e4,
+  verified and closed at a044e94 (15.14, 15.16).
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled Cline corpus inspection + formal registration
+
+Candidate Numbers Considered:
+  B9.80 — SELECTED (highest verified + 1)
+  Historical gaps — rejected: not reusable under section 9
+  B9.57.4 — rejected: sub-block, never raises the main floor (section 8)
+  B9.81, B9.82, B9.83 — rejected: illustrative examples in section 8
+  B9.80.1, B9.80.2, B9.80.3 — rejected: example sub-blocks (section 8)
+  B9.76.1-B9.76.5 — rejected: real sub-blocks, non-advancing (section 8)
+
+Selected Number:
+  B9.80
+
+Validity Reason:
+  B9.79 is the highest verified allocated main block at a044e94. The next
+  main block is therefore B9.80. No allocated main identifier above B9.79
+  was found: B9.80-B9.83 and B9.80.1-B9.80.3 occur only as the section 8
+  illustrative hierarchy, rejection lists, or negative assertions.
+```
+
+**Illustrative-reference note.** The `B9.80`/`B9.80.x`/`B9.81`-`B9.83`
+occurrences in section 8 and the section 7.5/15 rejection lists remain valid
+as abstract hierarchy illustrations and negative evidence. They are not
+modified by this assignment; this section 16 is the sole normative allocation
+of `B9.80`. No `B9.80.x` sub-block is assigned here.
+
+### 16.1 Register entry for B9.80
+
+```text
+Block ID:                 B9.80
+Name:                     Model Discovery Domain Contract
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 16
+Scope:                    see 16.2
+Non-goals:                see 16.3
+Dependencies:             see 16.4
+Current State:            ALLOCATED — implementation pending; NOT implemented,
+                          NOT verified, NOT closed
+Acceptance Criteria:      AC1-AC12 — see 16.5 (all PENDING at allocation time)
+Evidence:                 see 16.4 and prior READ-ONLY discovery audits
+Evidence Type:            DOC
+Implementation Commit:    NONE — no production code for B9.80 exists
+Verification Result:      NOT VERIFIED
+Closure Commit:           NONE
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 16
+Retrospective Record:     NO — prospective allocation record
+```
+
+### 16.2 Scope
+
+B9.80 introduces the domain contract for discovering remote models and
+representing remote candidates, variants, and declared remote artifacts,
+moving from acquisition of already-known artifacts toward future
+search/inspection, without mixing discovery with acquisition, evaluation,
+admission, or execution.
+
+```text
+ModelDiscovery
+ ├── search(query, limit?, cursor?) -> (candidates, next_cursor)
+ └── inspect(repository) -> remote artifacts / variants
+
+ModelCandidate        remote search hit: untrusted metadata only
+ModelVariant          remote declared grouping (declared_quantization)
+DiscoveredArtifact    remote declared/unverified artifact (L1 only)
+```
+
+Acquisition boundary (later reuse, not implemented here):
+
+```text
+DiscoveredArtifact
+    ↓
+
+### 16.3 Non-goals
+
+```text
+1.  GUI;  2. CLI;  3. automatic downloads;  4. ModelStore persistence;
+5.  evaluation;  6. admission;  7. execution;  8. LoRA;  9. datasets;
+10. fine-tuning;  11. multi-GPU;  12. clusters;  13. marketplace/accounts;
+14. recommendations/ranking;  15. telemetry;  16. verified quantization;
+17. replacement of ArtifactSpec;  18. replacement of DownloadPlan/Planner/
+    Downloader;  19. replacement of ModelStore;  20. changes to B9.79;
+21. provider implementation;  22. model_identity.py changes or fuzzy matching.
+```
+
+### 16.4 Dependencies and evidence
+
+```text
+B9.40 — download registration/persistence behavior, reused later
+B9.41 — derived ModelStore state, reused later
+B9.67 — local artifact/content-identity boundary, remains separate
+B9.74 — ModelStore resolution, remains reusable
+B9.78 — admission remains the sole execution authority
+B9.79 — runtime artifact evidence remains downstream and unchanged;
+        B9.79 does NOT depend on B9.80. Direction: B9.80 discovery →
+        future acquisition → future stored artifact → B9.79 evidence
+```
+
+Prior READ-ONLY audits: single-repo HuggingFaceSource flow, one-row identity
+map, and the complete plan→download→verify→store→resolve→evaluate→admit→
+execute pipeline verified present; search/candidate/variant/discovered
+concepts verified absent (zero corpus hits outside this record).
+
+### 16.5 Acceptance criteria
+
+Contractual criteria, all PENDING at allocation time (not satisfied by this
+allocation task; only a later implementation can satisfy them):
+
+```text
+AC1  ModelDiscovery exists as a conceptual/contractual boundary.
+AC2  search() is defined (query, limit?, cursor? -> candidates + cursor).
+AC3  inspect() is defined (repository -> remote artifacts / variants).
+AC4  ModelCandidate is defined as remote/untrusted metadata.
+AC5  ModelVariant is defined as a remote declared grouping.
+AC6  DiscoveredArtifact is defined as a remote/unverified artifact (L1).
+AC7  Discovery does not persist to ModelStore.
+AC8  Discovery performs no admission and no execution.
+AC9  declared_quantization is never treated as verified runtime evidence.
+AC10 No AcquisitionPlan duplicate of DownloadPlan is introduced.
+AC11 B9.79 remains out of scope and unmodified.
+AC12 DiscoveredArtifact → ArtifactSpec conversion sits at the acquisition
+     boundary (explicit mapper), not as self-promotion.
+```
+
+### 16.6 Current state
+
+```text
+Formally allocated.
+Defined.
+Architectural decision taken.
+Implementation pending.
+```
+
+B9.80 is NOT IMPLEMENTED, VERIFIED, or CLOSED. No B9.80.x sub-block is
+assigned. No B9.81 or other identifier is allocated here. B9.79 remains
+CLOSED and is not modified retrospectively.
+
+acquisition mapper (explicit, in acquisition)
+    ↓
+ArtifactSpec (existing type, unchanged by B9.80)
+```
+
+Decisions: ModelDiscovery is a port knowing no HF/filesystem/ModelStore/
+evaluation/admission/execution. ModelCandidate carries no file, local state,
+path, content identity, or verdict (no catalog_model_id field). Quantization
+is declared_quantization, never verified evidence. DiscoveredArtifact carries
+no state/content_id/paths/verdicts. No ArtifactSpec redefinition. No
+AcquisitionPlan (DownloadPlan/Planner/Downloader reused later).
+
+Trust: L1 Remote metadata (B9.80 ONLY) → L2 Downloaded+verified (future) →
+L3 Runtime evidence (B9.79, unchanged). Provider direction:
+HuggingFaceDiscoveryProvider implements ModelDiscovery; domain never depends
+on Hugging Face. model_identity.py unchanged (no rows, no fuzzy, no ranking).
+
+
