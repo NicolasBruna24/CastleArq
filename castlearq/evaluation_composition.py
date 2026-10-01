@@ -58,6 +58,7 @@ from .evaluation_adapter import resolve_runtime
 from .evaluation_pipeline import StrictEvaluation, evaluate_strict
 from .models import ArtifactSpec, ModelSpec
 from .observation_knowledge import IntegrationResult
+from .runtime_artifact_evidence import RuntimeArtifactEvidence
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from .runtimes import RuntimeCapability
@@ -73,6 +74,7 @@ def compose_evaluation(
     required_capabilities: tuple[str, ...] = (),
     scope: KnowledgeScope | None = None,
     physical_evidence: object | None = None,
+    runtime_artifact_evidence: RuntimeArtifactEvidence | None = None,
 ) -> StrictEvaluation:
     """Assemble one Evaluation from the Q-8 delivery and caller-declared values.
 
@@ -126,4 +128,5 @@ def compose_evaluation(
         required_capabilities=required_capabilities,
         scope=scope,
         physical_evidence=physical_evidence,
+        runtime_artifact_evidence=runtime_artifact_evidence,
     )

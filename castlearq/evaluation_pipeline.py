@@ -52,6 +52,7 @@ from .evaluation_adapter import build_evaluation_context, to_artifact, to_model
 from .knowledge_bridge import KnowledgeProjection
 from .model_domain import Model, ModelArtifact
 from .models import ArtifactSpec, ModelSpec
+from .runtime_artifact_evidence import RuntimeArtifactEvidence
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from .runtimes import RuntimeCapability
@@ -99,6 +100,7 @@ def evaluate_strict(
     required_capabilities: tuple[str, ...] = (),
     scope: KnowledgeScope | None = None,
     physical_evidence: object | None = None,
+    runtime_artifact_evidence: RuntimeArtifactEvidence | None = None,
 ) -> StrictEvaluation:
     """Run the strict B9.8 → B9.7 → B9.3 chain deterministically.
 
@@ -107,6 +109,14 @@ def evaluate_strict(
     context (which embeds the B9.7 projection) and evaluates with B9.3. The
     result is never interpreted, never translated to the legacy model and
     never used to decide execution.
+
+    ``runtime_artifact_evidence`` (B9.79) is ephemeral, pre-admission evidence
+    supplied by the application physical-observation boundary. When present it
+    is projected onto the strict check's tri-state input
+    (``RuntimeKnowledge.supports_artifact``) without touching the declarative
+    B9.7 projection: ``POSITIVE -> True``, ``NEGATIVE -> False``,
+    ``UNKNOWN -> None`` (B9.46.23 §11). Absence stays ``UNKNOWN``; it is never
+    promoted to a positive claim.
     """
     model = to_model(spec)
     if physical_evidence is not None and physical_evidence.architecture_raw is not None:
@@ -129,6 +139,14 @@ def evaluate_strict(
         required_capabilities=required_capabilities,
         scope=scope,
     )
+    if runtime_artifact_evidence is not None:
+        context = replace(
+            context,
+            runtime=replace(
+                context.runtime,
+                supports_artifact=runtime_artifact_evidence.supports_artifact,
+            ),
+        )
     result = evaluate(model, adapted_artifact, context)
     return StrictEvaluation(
         model=model,

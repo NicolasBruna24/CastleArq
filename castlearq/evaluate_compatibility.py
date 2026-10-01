@@ -37,6 +37,8 @@ from .model_store import ModelStore
 from .models import ArtifactSpec, ModelSpec
 from .observation_knowledge import IntegrationResult
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
+from .runtime_artifact_evidence import RuntimeArtifactEvidence
+from .runtime_artifact_observer import RuntimeArtifactObserver
 from .runtimes import detect_llama_capability
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -61,6 +63,7 @@ class EvaluateCompatibilityDependencies:
     integrate_fn: Callable[[], IntegrationResult] | None = None
     evaluate_fn: Callable[..., StrictEvaluation] | None = None
     evidence_reader: Callable[[Path], GGUFArchitectureEvidence] | None = None
+    runtime_artifact_observer: Callable[..., RuntimeArtifactEvidence] | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +239,7 @@ def evaluate_model_compatibility(
     evidence_reader: Any = deps.evidence_reader
     if evidence_reader is None:
         evidence_reader = read_architecture_evidence
+    artifact_path: Path | None = None
     try:
         artifact_path = store._artifact_directory(resolved.artifact) / resolved.artifact.filename
         architecture_evidence = evidence_reader(artifact_path)
@@ -243,6 +247,28 @@ def evaluate_model_compatibility(
         architecture_evidence = GGUFArchitectureEvidence(architecture_raw=None)
     except GGUFReadError:
         raise
+    # B9.79: produce ephemeral pre-admission runtime/artifact evidence at the
+    # physical observation boundary, next to the GGUF architecture reader. The
+    # observer is a separate read-only producer -- never the post-admission
+    # runner -- and it returns UNKNOWN without running anything when no concrete
+    # device/executable/artifact path was resolved, so absent context is never a
+    # positive claim. A producer error propagates; it is never folded into a
+    # NEGATIVE observation (B9.79 sections 4 and 7).
+    observer: Any = deps.runtime_artifact_observer
+    if observer is None:
+        observer = RuntimeArtifactObserver().observe
+    runtime_artifact_evidence = observer(
+        executable_path=capability.executable_path,
+        runtime_identity=capability.executable_path or capability.name,
+        runtime_version=capability.version,
+        artifact_path=artifact_path,
+        artifact_reference=resolved.artifact.artifact_id,
+        artifact_format=resolved.artifact.format,
+        artifact_architecture=architecture_evidence.architecture_raw,
+        device=(
+            capability.backend_argument(backend) if backend is not None else None
+        ),
+    )
     try:
         integration = integrate_fn()
     except Exception as error:
@@ -275,6 +301,7 @@ def evaluate_model_compatibility(
         required_capabilities=tuple(required_capabilities),
         scope=scope,
         physical_evidence=architecture_evidence,
+        runtime_artifact_evidence=runtime_artifact_evidence,
     )
     return EvaluateModelCompatibilityResult(
         model_id=resolved.model.model_id,

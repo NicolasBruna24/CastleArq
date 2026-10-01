@@ -45,9 +45,10 @@ from castlearq.runtimes import PromptInputMode, RuntimeCapability
 MODULE_PATH = Path("castlearq/evaluation_composition.py")
 PARAMETER_ORDER = ["result", "registry", "spec", "artifact", "capability",
                    "backend", "required_capabilities", "scope",
-                   "physical_evidence"]
+                   "physical_evidence", "runtime_artifact_evidence"]
 ALLOWED_IMPORTS = {"__future__", "typing", "compatibility_knowledge",
-                   "evaluation_pipeline", "models", "observation_knowledge"}
+                   "evaluation_pipeline", "models", "observation_knowledge",
+                   "runtime_artifact_evidence"}
 FORBIDDEN_CALLS = {"eval", "exec", "open", "__import__", "compile", "input",
                    "system", "popen", "run", "Popen", "socket", "urlopen",
                    "getenv", "environ", "listdir", "read_text", "read_bytes",
@@ -351,7 +352,8 @@ class BoundaryAndPurityTests(unittest.TestCase):
         self.assertEqual(
             list(inspect.signature(ep.evaluate_strict).parameters),
             ["registry", "spec", "artifact", "capability", "backend",
-             "required_capabilities", "scope", "physical_evidence"])
+             "required_capabilities", "scope", "physical_evidence",
+             "runtime_artifact_evidence"])
         self.assertEqual(
             list(StrictEvaluation.__dataclass_fields__),
             ["model", "artifact", "context", "projection", "result"])

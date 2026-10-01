@@ -26,7 +26,7 @@ from castlearq.runtimes import PromptInputMode, RuntimeCapability
 ALLOWED_IMPORTS = {"__future__", "dataclasses", "typing",
                    "compatibility_evaluator", "compatibility_knowledge",
                    "evaluation_adapter", "knowledge_bridge", "model_domain",
-                   "models"}
+                   "models", "runtime_artifact_evidence"}
 FORBIDDEN_IMPORTS = {"runtimes", "subprocess", "socket", "urllib", "os",
                      "pathlib", "shutil", "sys"}
 FORBIDDEN_CALLS = {"eval", "exec", "open", "__import__", "compile", "input",
