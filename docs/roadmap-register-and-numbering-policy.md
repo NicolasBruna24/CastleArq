@@ -163,6 +163,7 @@ rationale or acceptance criterion.
 | B9.76.4 | `castlearq import --json` | IMPLEMENTED, RETROSPECTIVE | `ed96da01c6d07f4cc874b26aa70958c9b2c9e359` | **v0.4.0** | NO | TEST |
 | B9.76.5 | `--json` for SHOULD-surface commands | IMPLEMENTED, RETROSPECTIVE | `fb1f67dc8ed53a6c60033c86892f270bfdd49137` | **v0.4.0** | NO | TEST + SRC |
 | B9.77 | *(scope not recoverable — see §5)* | IMPLEMENTED, RETROSPECTIVE | `2f9464ce860d6576b9ab528bb82b3d26295d8c92` | **v0.4.0** | NO | TEST |
+| B9.78 | NOT YET DEFINED | ALLOCATED (§14) | this document's §14 record | NOT YET DEFINED | YES (this document) | DOC |
 
 ### 4.0.1 Excluded from the register
 
@@ -185,6 +186,7 @@ B9.1, B9.3, B9.5, B9.7, B9.16, B9.18, B9.20, B9.21, B9.40
 | B9.48, B9.50, B9.52, B9.54, B9.57.1, B9.58 | NOT RECOVERABLE | NOT RECOVERABLE |
 | B9.53 | Partial — the §17 requirement is recoverable through `docs/B9.59` §2 and `tests/test_public_surface.py` | NOT RECOVERABLE |
 | **B9.77** | **NOT RECOVERABLE** (§5) | **NOT RECOVERABLE** |
+| **B9.78** | **NOT YET DEFINED** — the block is allocated; no scope has been decided | **NOT YET DEFINED** |
 
 `Scope` and `Non-goals` are recorded by **reference** to the cited evidence, not
 restated. Restating a scope from a single sentence of test code would convert a
@@ -463,27 +465,31 @@ may be assigned only after this field names a real commit.
 ## 12. Current allocation state
 
 ```text
-B9.78 = NOT ASSIGNED
+B9.78 = FORMALLY ALLOCATED — see section 14
 ```
 
-`B9.78` is **not** a register entry, **not** reserved, **not** named as the next
-block, and **not** pre-allocated by this document.
+`B9.78` was **not** a register entry when this document was written: at that
+moment it was an identifier named only in the negative assertions below, and
+§12 stated its status as the absence of an assignment. That is now superseded by
+§14, which allocates it through the §6 and §7 procedure and records the
+evidence under §11.
 
-Its status is simply the absence of an assignment. Any future number is computed
-by the procedure in §6 and §7 — through a corpus inspection recorded under §11 —
-and not by this document.
+Two figures remain distinct from any allocation:
 
-As recorded in §4, the highest main block identifier in use at the baseline
-commit is `B9.77`, and the highest **documented** one is `B9.59`. Neither figure
-is an allocation of `B9.78`, and neither is verified against an activation corpus
-until the activation anchor is set.
+- the highest main block identifier in use in the corpus is `B9.77`;
+- the highest **documented** block with a canonical `docs/` document is `B9.59`.
+
+Neither is an allocation of `B9.78`; they are the floor from which §14 computes.
+
+Any number after `B9.78` is computed by the procedure in §6 and §7 — through a
+corpus inspection recorded under §11 — and never by this document.
 
 ---
 
 ## 13. What this document does not do
 
 ```text
-It does not assign any B9 identifier, including B9.78.
+It does not assign any B9 identifier by itself.
 It does not modify docs/B9.57-*, docs/B9.58-*, docs/B9.59-*, docs/B9.29-*.
 It does not modify docs/release/*, any manifest, README, tag or release.
 It does not move, re-create or re-point the v0.4.0 tag.
@@ -491,4 +497,115 @@ It does not claim that any gap was abandoned, reserved, freed or erroneous.
 It does not claim that any sub-block rule was the historical rule.
 It does not attribute a scope to B9.77.
 It does not retroactively reinterpret the allocation of B9.59.
+It does not define what B9.78 will contain.
 ```
+
+The single allocation this document performs is `B9.78`, recorded in §14.
+
+---
+
+## 14. B9.78 — Number Allocation Record
+
+`B9.78` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection. This section is the §11 record for that assignment.
+
+```text
+Assigned Number:
+  B9.78
+
+Allocation Date:
+  2026-09-30
+
+Allocation Commit:
+  PENDING — set to this document's allocation commit in the next controlled
+  commit, by the same two-step discipline used for the §11 activation anchor
+
+Corpus/HEAD Anchor:
+  61753e97f7a9ba65f939400a06aadd30ad96e236
+  git tree object b44c27270afe3d5a28279cb362a5e84ecf4516ca
+
+Corpus File Count:
+  203
+
+Corpus Integrity Evidence:
+  paths SHA-256:
+    80212c1ac55b3e7bea09212798ca826474e97bddb4e4e7cbfda45a05e9a379c4
+  tree SHA-256:
+    528880bb29ad6f27b7ca57e47203ace8ab448674906038dab987845a028c1146
+  occurrence SHA-256:
+    91a02e80bd171ddd23be621ce8f36af1921c5a9475eb719e5b0bb57660afd90d
+  identifier-set SHA-256:
+    de455bbf61b77c6c4bda9cf23da2ba359f7b661f5e3a72241c80d1ff6d05dae7
+
+Identifier Set:
+  106 distinct identifiers over 2326 occurrences in 203 versioned files:
+  50 main (B9.0-B9.6, B9.7-B9.16, B9.18-B9.24, B9.29-B9.31, B9.35-B9.37,
+  B9.39-B9.48, B9.50-B9.59, B9.66, B9.67, B9.74, B9.76, B9.77) and 56 sub
+  (B9.6.0/.1, B9.46.1-.29, B9.57.1-.8, B9.76.1-.5).
+
+Highest Verified Main Block:
+  B9.77 — 10 occurrences; allocation-grade evidence at
+  tests/test_compatibility_report.py:657 and tests/test_execute_model_wiring.py:326,
+  both attributed by git blame to 2f9464ce.
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled Cline corpus inspection + formal registration
+
+Candidate Numbers Considered:
+  B9.78 — SELECTED (highest verified + 1)
+  B9.25, B9.26, B9.27, B9.28, B9.32, B9.33, B9.34, B9.38, B9.49, B9.60,
+  B9.61, B9.62, B9.63, B9.64, B9.65, B9.68, B9.69, B9.70, B9.71, B9.72,
+  B9.73, B9.75 — rejected: historical gaps, not reusable under section 9
+  B9.57.4 — rejected: sub-block, never raises the main floor (section 8)
+  B9.79 — rejected: not highest + 1
+  B9.80, B9.81, B9.82, B9.83 — rejected: illustrative examples in section 8,
+  not allocations
+  B9.80.1, B9.80.2, B9.80.3 — rejected: example sub-blocks (section 8)
+  B9.76.1, B9.76.2, B9.76.3, B9.76.4, B9.76.5 — rejected: real sub-blocks;
+  a sub-block does not advance the main floor (section 8)
+
+Selected Number:
+  B9.78
+
+Validity Reason:
+  B9.77 is the highest verified allocated main block in the complete 203-file
+  corpus. Under the active rule, the next main block is therefore B9.78. No
+  allocated main identifier above B9.77 was found: B9.78 through B9.83 occur
+  only inside this document, as negative assertions or as the section 8
+  illustrative example, and evidence no allocation.
+```
+
+### 14.1 Register entry for B9.78
+
+```text
+Block ID:                 B9.78
+Name:                     NOT YET DEFINED
+Status:                   ALLOCATED
+Origin:                   this document, section 14
+Scope:                    NOT YET DEFINED
+Non-goals:                NOT YET DEFINED
+Dependencies:             NOT YET DEFINED
+Evidence:                 section 14 record; section 7 corpus inspection at
+                          61753e97f7a9ba65f939400a06aadd30ad96e236
+Evidence Type:            DOC
+Implementation Commit:    NOT YET DEFINED — no implementation has occurred
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Current State:            formally allocated; no content decided
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 14
+Retrospective Record:     NO — this is a prospective allocation, not a record
+                          of past work
+```
+
+`NOT YET DEFINED` is used deliberately and is **not** interchangeable with
+`NOT RECOVERABLE`. `NOT RECOVERABLE` means the repository can no longer supply
+the information; `NOT YET DEFINED` means it has not been decided. Only a
+subsequent decision can fill these fields, and nothing in this document decides
+them.
