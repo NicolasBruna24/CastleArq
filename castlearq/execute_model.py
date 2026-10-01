@@ -28,7 +28,6 @@ from typing import Any, Callable
 from .compatibility import (
     CompatibilityConfig,
     CompatibilityResult,
-    CompatibilityStatus,
     assess_model,
 )
 from .execution import (
@@ -68,11 +67,8 @@ DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
 #: else (incompatible, insufficient_evidence, missing) denies by default.
 _ADMITTING_VERDICTS = frozenset({"compatible", "compatible_with_conditions"})
 
-#: Legacy compatibility outcomes that stop a run before preflight, matching
-#: the transitional gate in the legacy prepare sequence.
-_REJECTING_COMPATIBILITY = frozenset(
-    {CompatibilityStatus.INCOMPATIBLE, CompatibilityStatus.UNKNOWN}
-)
+# B9.78 removed ``_REJECTING_COMPATIBILITY``: the legacy INCOMPATIBLE/UNKNOWN
+# outcomes no longer stop a run. Strict admission is the only admission gate.
 
 
 @dataclass(frozen=True)
@@ -179,16 +175,24 @@ def _normalized_verdict(admission: Any) -> str:
 
 
 def _check_admission(admission: EvaluationAdmission | None) -> None:
-    """Advisory admission gate.
+    """Mandatory admission gate (B9.78 — legacy admission cutover).
 
-    ``None`` means the caller carries no evaluation signal, so the legacy gate
-    alone applies. Otherwise the signal may only deny: it must be an
-    ``evaluated`` outcome whose verdict is in the admitting set. ``blocked``
-    never authorizes, and ``insufficient_evidence`` (or anything unknown)
-    denies by default (B9.19 section 7).
+    B9.19 section 7 made this advisory: ``None`` meant "no evaluation signal",
+    so the legacy compatibility gate alone applied. That transitional rule is
+    the rule B9.78 completes and replaces, so ``None`` is no longer a way
+    through. Admission is now the sole authority for whether execution may
+    proceed, and an absent signal is a denial, never authorization.
+
+    The deny-only semantics are unchanged: the signal must be an ``evaluated``
+    outcome whose verdict is in the admitting set. ``blocked`` never
+    authorizes, and ``insufficient_evidence`` (or anything unknown) denies by
+    default.
     """
     if admission is None:
-        return
+        raise ExecuteAdmissionDeniedError(
+            "Execution denied: no evaluation admission was supplied; "
+            "deny-by-default applies"
+        )
     status = str(getattr(admission, "status", "")).strip().lower()
     if status != "evaluated":
         raise ExecuteAdmissionDeniedError(
@@ -310,19 +314,20 @@ def execute_model(
     # 2. Fresh capability, detected per invocation (never cached).
     capability = _invocable_capability(_fresh_capability(deps))
 
-    # 3. Admission: advisory only, denied before any validation work.
+    # 3. Admission: MANDATORY. Strict admission is the sole authority for
+    #    whether execution may proceed (B9.78). Denied before any validation
+    #    work, so no subprocess can be launched for a refused model.
     _check_admission(admission)
 
-    # 4. Transitional legacy gate: compatibility -> preflight -> selection, in
-    #    the legacy prepare order, always fully revalidated. Admission=None
-    #    means this gate is the only gate (B9.19 section 7).
+    # 4. Selection recommendation data. B9.78 (decision D1-A) keeps the legacy
+    #    compatibility result here ONLY as the source of
+    #    ``recommended_runtime`` / ``recommended_backend`` for the selector. Its
+    #    INCOMPATIBLE/UNKNOWN status is NOT an admission gate any more: the
+    #    legacy verdict can no longer refuse execution. It is still always
+    #    recomputed here, never cached, so a previous evaluation is never an
+    #    execution authority (B9.19 sections 11, 12, 13).
     compatibility = _compatibility(deps, model, capability)
     compatibility_warnings = tuple(compatibility.warnings)
-    if compatibility.status in _REJECTING_COMPATIBILITY:
-        raise ExecutePreparationError(
-            "Model compatibility does not permit execution",
-            warnings=compatibility_warnings,
-        )
 
     preflight = _preflight(deps, store)
     try:

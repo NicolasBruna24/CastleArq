@@ -161,6 +161,7 @@ class _Harness:
         selector=None,
         runner=None,
         resolution_error=None,
+        preflight_error=False,
         deps_overrides=None,
     ):
         self.order = []
@@ -182,7 +183,18 @@ class _Harness:
         self.preflight = (
             preflight
             if preflight is not None
-            else _FakePreflight(_executable(self.artifact), order=self.order)
+            else _FakePreflight(
+                _executable(self.artifact),
+                order=self.order,
+                error=(
+                    em.ArtifactPreflightError(
+                        PreflightErrorCode.MISSING_ARTIFACT,
+                        "preflight refused the artifact",
+                    )
+                    if preflight_error
+                    else None
+                ),
+            )
         )
         self.selector = (
             selector if selector is not None else _FakeSelector(order=self.order)
@@ -220,6 +232,11 @@ class _Harness:
 
     def run(self, **kwargs):
         call_kwargs = {"model_id": "m1", "prompt": "hello"}
+        # B9.78: admission is the mandatory gate, so a test exercising
+        # anything below it must supply an admitting signal by default.
+        call_kwargs.setdefault(
+            "admission", em.EvaluationAdmission(status="evaluated", verdict="compatible")
+        )
         call_kwargs.update(kwargs)
         with mock.patch.object(
             em, "ModelArtifactResolver", return_value=self.resolver
@@ -355,14 +372,18 @@ class CapabilityTests(unittest.TestCase):
 
 
 class AdmissionTests(unittest.TestCase):
-    def test_no_admission_means_legacy_gate_applies(self):
+    def test_no_admission_denies_by_default(self):
+        # B9.78: the B9.19 transitional rule is complete. An absent signal is a
+        # denial, never authorization, and no preparation work happens.
         h = _Harness()
-        result = h.run()
-        self.assertTrue(result.success)
-        self.assertEqual(len(h.compatibility_calls), 1)
-        self.assertEqual(len(h.preflight.calls), 1)
-        self.assertEqual(len(h.selector.calls), 1)
-        self.assertEqual(len(h.runner.calls), 1)
+        # Explicit ``None``: the harness would otherwise substitute an
+        # admitting signal for tests that do not care about the gate.
+        error = h.run_error(admission=None)
+        self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
+        self.assertEqual(len(h.compatibility_calls), 0)
+        self.assertEqual(len(h.preflight.calls), 0)
+        self.assertEqual(len(h.selector.calls), 0)
+        self.assertEqual(len(h.runner.calls), 0)
 
     def test_evaluated_compatible_proceeds(self):
         h = _Harness()
@@ -457,22 +478,34 @@ class LegacyCompatibilityGateTests(unittest.TestCase):
         h = _Harness(compatibility=_compat(CompatibilityStatus.MARGINAL))
         self.assertTrue(h.run().success)
 
-    def test_incompatible_status_stops_before_preflight(self):
+    def test_incompatible_status_does_not_refuse_execution(self):
+        # B9.78 (D1-A): the legacy verdict is selection recommendation data
+        # only. It can no longer refuse execution -- strict admission decides
+        # that. Its warnings still travel forward for presentation.
         h = _Harness(
             compatibility=_compat(
                 CompatibilityStatus.INCOMPATIBLE, warnings=("low memory",)
             )
         )
-        error = h.run_error()
-        self.assertIsInstance(error, em.ExecutePreparationError)
-        self.assertEqual(error.warnings, ("low memory",))
-        self.assertEqual(h.preflight.calls, [])
-        self.assertEqual(h.selector.calls, [])
-        self.assertEqual(h.runner.calls, [])
+        result = h.run()
+        self.assertTrue(result.success)
+        self.assertIn("low memory", result.warnings)
 
-    def test_unknown_status_stops_before_preflight(self):
+    def test_unknown_status_does_not_refuse_execution(self):
         h = _Harness(compatibility=_compat(CompatibilityStatus.UNKNOWN))
-        self.assertIsInstance(h.run_error(), em.ExecutePreparationError)
+        self.assertTrue(h.run().success)
+
+    def test_admission_still_refuses_before_preflight(self):
+        # The gate that does refuse is admission, and it refuses first.
+        h = _Harness(
+            compatibility=_compat(CompatibilityStatus.INCOMPATIBLE),
+        )
+        error = h.run_error(
+            admission=em.EvaluationAdmission(
+                status="evaluated", verdict="incompatible"
+            )
+        )
+        self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
         self.assertEqual(h.preflight.calls, [])
 
 
@@ -679,9 +712,8 @@ class RequestAndRunnerTests(unittest.TestCase):
 
     def test_preparation_error_warnings_are_unchanged(self):
         h = _Harness(
-            compatibility=_compat(
-                CompatibilityStatus.INCOMPATIBLE, warnings=("A", "A")
-            )
+            compatibility=_compat(warnings=("A", "A")),
+            preflight_error=True,
         )
         error = h.run_error()
         self.assertIsInstance(error, em.ExecutePreparationError)
@@ -689,7 +721,7 @@ class RequestAndRunnerTests(unittest.TestCase):
         self.assertEqual(h.runner.calls, [])
 
     def test_runner_is_not_touched_when_preparation_fails(self):
-        h = _Harness(compatibility=_compat(CompatibilityStatus.INCOMPATIBLE))
+        h = _Harness(preflight_error=True)
         h.run_error()
         self.assertEqual(h.runner.calls, [])
 

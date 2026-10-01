@@ -132,6 +132,12 @@ class _RecordingSelector:
 
 
 
+# B9.78: strict admission is the mandatory execution gate. Tests that exercise
+# the pipeline below this gate must supply an admitting signal, exactly as the
+# production callers now do.
+ADMITTING = EvaluationAdmission(status="evaluated", verdict="compatible")
+
+
 class _ExecutionCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -189,44 +195,44 @@ class _ExecutionCase(unittest.TestCase):
 class ImportedHappyPathTests(_ExecutionCase):
     def test_imported_artifact_reaches_the_runner(self):
         self._import()
-        result = execute_model("Local", "hello", dependencies=self._deps())
+        result = execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertTrue(result.success)
         self.assertEqual(len(self.runner.calls), 1)
 
     def test_runner_receives_the_managed_path(self):
         imported = self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         artifact, _, _ = self.runner.calls[0]
         self.assertEqual(artifact.path, imported.destination)
 
     def test_runner_path_is_inside_the_model_store(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         artifact, _, _ = self.runner.calls[0]
         self.assertTrue(str(artifact.path).startswith(str(self.store.root)))
 
     def test_runner_path_matches_the_resolver_path(self):
         self._import()
         resolved = ModelArtifactResolver(self.store, models=()).resolve("Local")
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         artifact, _, _ = self.runner.calls[0]
         self.assertEqual(artifact.path, resolved.path)
 
     def test_runner_receives_the_prompt(self):
         self._import()
-        execute_model("Local", "hola", dependencies=self._deps())
+        execute_model("Local", "hola", dependencies=self._deps(), admission=ADMITTING)
         _, _, request = self.runner.calls[0]
         self.assertEqual(request.prompt, "hola")
 
     def test_runner_receives_the_selected_target(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         _, target, _ = self.runner.calls[0]
         self.assertEqual(target.backend, "CPU")
 
     def test_managed_file_is_the_one_executed(self):
         imported = self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         artifact, _, _ = self.runner.calls[0]
         self.assertEqual(artifact.path.read_bytes(), MODEL)
         self.assertEqual(artifact.artifact.content_id, imported.content_id)
@@ -240,7 +246,7 @@ class ImportedHappyPathTests(_ExecutionCase):
         self._import()
         resolved = ModelArtifactResolver(self.store, models=()).resolve("Local")
         self.assertIsNone(resolved.model.id)
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertIsNone(self.compat_calls[0].id)
 
     def test_no_identity_laundering_to_allow_execution(self):
@@ -248,34 +254,34 @@ class ImportedHappyPathTests(_ExecutionCase):
         resolved = ModelArtifactResolver(self.store, models=()).resolve("Local")
         self.assertEqual(resolved.model.name, resolved.artifact.model_id)
         self.assertIsNone(resolved.model.id)
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 1)
 
 
 class CatalogRegressionTests(_ExecutionCase):
     def test_catalog_artifact_still_executes(self):
         artifact = self._seed_catalog()
-        result = execute_model(artifact.model_id, "hello", dependencies=self._deps())
+        result = execute_model(artifact.model_id, "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertTrue(result.success)
         self.assertEqual(len(self.runner.calls), 1)
 
     def test_catalog_runner_path_is_the_managed_file(self):
         artifact = self._seed_catalog()
-        execute_model(artifact.model_id, "hello", dependencies=self._deps())
+        execute_model(artifact.model_id, "hello", dependencies=self._deps(), admission=ADMITTING)
         managed, _, _ = self.runner.calls[0]
         self.assertTrue(str(managed.path).startswith(str(self.store.root)))
         self.assertEqual(managed.artifact, artifact)
 
     def test_catalog_compatibility_receives_the_real_id(self):
         artifact = self._seed_catalog()
-        execute_model(artifact.model_id, "hello", dependencies=self._deps())
+        execute_model(artifact.model_id, "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(self.compat_calls[0].id, artifact.model_id)
 
     def test_catalog_and_imported_use_the_same_pipeline(self):
         artifact = self._seed_catalog()
         self._import(label="Local")
-        execute_model(artifact.model_id, "a", dependencies=self._deps())
-        execute_model("Local", "b", dependencies=self._deps())
+        execute_model(artifact.model_id, "a", dependencies=self._deps(), admission=ADMITTING)
+        execute_model("Local", "b", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.selector.calls), 2)
         self.assertEqual(len(self.runner.calls), 2)
 
@@ -286,7 +292,7 @@ class ExternalPathTests(_ExecutionCase):
         self.importer.import_artifact(source, label="Local")
         resolved = ModelArtifactResolver(self.store, models=()).resolve("Local")
         self.assertNotEqual(resolved.path, source)
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         artifact, _, _ = self.runner.calls[0]
         self.assertNotEqual(artifact.path, source)
         self.assertNotEqual(artifact.path.resolve(), source.resolve())
@@ -295,7 +301,7 @@ class ExternalPathTests(_ExecutionCase):
         source = self._source("original.gguf")
         self.importer.import_artifact(source, label="Local")
         source.unlink()
-        result = execute_model("Local", "hello", dependencies=self._deps())
+        result = execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertTrue(result.success)
         artifact, _, _ = self.runner.calls[0]
         self.assertTrue(artifact.path.is_file())
@@ -306,7 +312,7 @@ class ExternalPathTests(_ExecutionCase):
         with self.assertRaises(ExecutePreparationError):
             execute_model(
                 str(self.external / "original.gguf"), "hello",
-                dependencies=self._deps(),
+                dependencies=self._deps(), admission=ADMITTING,
             )
         self.assertEqual(len(self.runner.calls), 0)
 
@@ -315,7 +321,7 @@ class ExternalPathTests(_ExecutionCase):
         with self.assertRaises(ExecutePreparationError):
             execute_model(
                 str(self.external / "loose.gguf"), "hello",
-                dependencies=self._deps(),
+                dependencies=self._deps(), admission=ADMITTING,
             )
         self.assertEqual(self.store.list_artifacts(), [])
         self.assertEqual(len(self.runner.calls), 0)
@@ -324,14 +330,14 @@ class ExternalPathTests(_ExecutionCase):
 class AdmissionTests(_ExecutionCase):
     def test_memory_unknown_imported_passes_as_marginal(self):
         self._import()
-        result = execute_model("Local", "hello", dependencies=self._deps())
+        result = execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertTrue(result.success)
         # MARGINAL carries its reason forward as a warning, never as a block.
         self.assertTrue(any("memory" in w.lower() for w in result.warnings))
 
     def test_marginal_is_not_treated_as_incompatible(self):
         self._import()
-        result = execute_model("Local", "hello", dependencies=self._deps())
+        result = execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 1)
         self.assertFalse(result.exit_code)
 
@@ -388,13 +394,13 @@ class AdmissionTests(_ExecutionCase):
 class PipelineOrderTests(_ExecutionCase):
     def test_compatibility_gate_runs_before_preflight(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.compat_calls), 1)
         self.assertEqual(len(self.selector.calls), 1)
 
     def test_backend_selector_is_traversed(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.selector.calls), 1)
         compatibility, _, artifact = self.selector.calls[0]
         self.assertEqual(compatibility.status, CompatibilityStatus.MARGINAL)
@@ -402,7 +408,7 @@ class PipelineOrderTests(_ExecutionCase):
 
     def test_selector_receives_the_imported_artifact(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         _, _, artifact = self.selector.calls[0]
         self.assertIsNone(artifact.artifact.sha256)
         self.assertIsNotNone(artifact.artifact.content_id)
@@ -434,14 +440,18 @@ class PipelineOrderTests(_ExecutionCase):
             )
         )
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps(selector=selector))
+            execute_model(
+                "Local", "hello",
+                dependencies=self._deps(selector=selector),
+                admission=ADMITTING,
+            )
         self.assertEqual(len(selector.calls), 1)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_empty_prompt_stops_before_the_runner(self):
         self._import()
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "   ", dependencies=self._deps())
+            execute_model("Local", "   ", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.selector.calls), 0)
         self.assertEqual(len(self.runner.calls), 0)
 
@@ -450,13 +460,13 @@ class PipelineOrderTests(_ExecutionCase):
         with self.assertRaises(ExecutePreparationError):
             execute_model(
                 "Local", "hello", backend_preference="CUDA",
-                dependencies=self._deps(),
+                dependencies=self._deps(), admission=ADMITTING,
             )
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_every_gate_precedes_the_runner(self):
         self._import()
-        execute_model("Local", "hello", dependencies=self._deps())
+        execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.compat_calls), 1)
         self.assertEqual(len(self.selector.calls), 1)
         self.assertEqual(len(self.runner.calls), 1)
@@ -467,7 +477,7 @@ class SecurityBlockTests(_ExecutionCase):
         imported = self._import()
         imported.destination.unlink()
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps())
+            execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_symlinked_managed_file_blocks_before_the_runner(self):
@@ -477,7 +487,7 @@ class SecurityBlockTests(_ExecutionCase):
         imported.destination.unlink()
         imported.destination.symlink_to(outside)
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps())
+            execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_partial_artifact_blocks_before_the_runner(self):
@@ -485,7 +495,7 @@ class SecurityBlockTests(_ExecutionCase):
         imported.destination.unlink()
         (imported.destination.parent / "local.gguf.part").write_bytes(MODEL)
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps())
+            execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_inconsistent_manifest_blocks_before_the_runner(self):
@@ -494,7 +504,7 @@ class SecurityBlockTests(_ExecutionCase):
             "{ broken", encoding="utf-8"
         )
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps())
+            execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_tampered_managed_file_blocks_before_the_runner(self):
@@ -502,13 +512,13 @@ class SecurityBlockTests(_ExecutionCase):
         imported = self._import()
         imported.destination.write_bytes(MODEL + b"tampered")
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Local", "hello", dependencies=self._deps())
+            execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_unknown_label_blocks_before_the_runner(self):
         self._import()
         with self.assertRaises(ExecutePreparationError):
-            execute_model("Nope", "hello", dependencies=self._deps())
+            execute_model("Nope", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertEqual(len(self.runner.calls), 0)
 
     def test_incompatible_capability_blocks_before_the_runner(self):
@@ -548,7 +558,7 @@ class ImportedPathRequiredTests(_ExecutionCase):
         em.ModelArtifactResolver.resolve = without_path
         try:
             with self.assertRaisesRegex(ExecutePreparationError, "managed path"):
-                execute_model("Local", "hello", dependencies=self._deps())
+                execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         finally:
             em.ModelArtifactResolver.resolve = original
         self.assertEqual(len(self.runner.calls), 0)
@@ -556,6 +566,6 @@ class ImportedPathRequiredTests(_ExecutionCase):
     def test_imported_with_managed_path_is_accepted(self):
         """The guard is narrow: a real managed path still executes."""
         self._import()
-        result = execute_model("Local", "hello", dependencies=self._deps())
+        result = execute_model("Local", "hello", dependencies=self._deps(), admission=ADMITTING)
         self.assertTrue(result.success)
         self.assertEqual(len(self.runner.calls), 1)

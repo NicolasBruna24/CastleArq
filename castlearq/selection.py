@@ -59,7 +59,12 @@ class RuntimeBackendSelector:
         *,
         allow_cpu_fallback: bool = False,
     ) -> RuntimeSelection:
-        self._validate_compatibility(compatibility)
+        # B9.78: the legacy INCOMPATIBLE/UNKNOWN verdict is no longer an
+        # admission gate. Strict admission already decided whether execution may
+        # proceed (B9.19 section 7) and is the sole authority. What remains here
+        # is selection only: which runtime and which backend. A marginal verdict
+        # still produces its resource-constrained warning, because that is
+        # advice about the target, not a decision about permission.
         if not capability.invocable:
             raise RuntimeSelectionError(
                 SelectionErrorCode.RUNTIME_UNAVAILABLE,
@@ -106,6 +111,10 @@ class RuntimeBackendSelector:
             "Recommended backend is not supported by the runtime",
         )
 
+    # B9.78: ``_validate_compatibility`` is retained for callers that still
+    # consult it, but it is no longer part of ``select()``. The legacy
+    # INCOMPATIBLE/UNKNOWN verdict may not refuse execution now that strict
+    # admission is the authority.
     @staticmethod
     def _validate_compatibility(result: CompatibilityResult) -> None:
         if result.status == CompatibilityStatus.INCOMPATIBLE:

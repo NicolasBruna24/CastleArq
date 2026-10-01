@@ -31,6 +31,7 @@ import castlearq.run_service as run_service_module
 from castlearq.chat import ChatProcessError
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
 from castlearq.execution import ExecutableArtifact
+from castlearq.execute_model import EvaluationAdmission
 from castlearq.main import chat_model
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec, Quantization
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
@@ -163,6 +164,19 @@ def pipeline(tmp_path, monkeypatch):
         lambda *args, **kwargs: compatibility,
     )
     monkeypatch.setattr(run_service_module, "ArtifactExecutionPreflight", FakePreflight)
+    # B9.78: the chat path now produces a strict admission before preparation.
+    # The pipeline fixture stubs the model store, so the real evaluator cannot
+    # run here; the admission seam itself is what this fixture exercises.
+    monkeypatch.setattr(
+        main_module,
+        "evaluate_model_compatibility",
+        lambda *args, **kwargs: SimpleNamespace(evaluation=SimpleNamespace(result=None)),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "to_admission",
+        lambda result: EvaluationAdmission(status="evaluated", verdict="compatible"),
+    )
     return SimpleNamespace(
         capability=capability,
         artifact=artifact,

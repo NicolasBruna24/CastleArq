@@ -93,20 +93,31 @@ class RuntimeBackendSelectorTests(unittest.TestCase):
         )
         self.assertTrue(result.warnings)
 
-    def test_incompatible_is_rejected(self):
-        with self.assertRaisesRegex(RuntimeSelectionError, "incompatible"):
-            self.selector.select(
-                compatibility(CompatibilityStatus.INCOMPATIBLE),
-                capability(),
-                executable(),
-            )
+    def test_incompatible_no_longer_refuses_selection(self):
+        # B9.78 (D1-A): the legacy verdict is recommendation data, not an
+        # admission gate. Admission already decided permission; selection only
+        # decides which runtime and backend. An INCOMPATIBLE verdict with a
+        # usable recommendation still selects.
+        result = self.selector.select(
+            compatibility(CompatibilityStatus.INCOMPATIBLE),
+            capability(),
+            executable(),
+        )
+        self.assertIsNotNone(result.target)
 
-    def test_unknown_is_rejected(self):
-        with self.assertRaises(RuntimeSelectionError) as context:
-            self.selector.select(
-                compatibility(CompatibilityStatus.UNKNOWN), capability(), executable()
-            )
-        self.assertEqual(context.exception.code, SelectionErrorCode.UNKNOWN_COMPATIBILITY)
+    def test_unknown_no_longer_refuses_selection(self):
+        result = self.selector.select(
+            compatibility(CompatibilityStatus.UNKNOWN), capability(), executable()
+        )
+        self.assertIsNotNone(result.target)
+
+    def test_marginal_still_warns_about_the_target(self):
+        # The marginal warning survives: it is advice about the target, not a
+        # decision about permission.
+        result = self.selector.select(
+            compatibility(CompatibilityStatus.MARGINAL), capability(), executable()
+        )
+        self.assertTrue(any("marginal" in w.lower() for w in result.warnings))
 
     def test_unavailable_runtime_is_rejected(self):
         with self.assertRaises(RuntimeSelectionError):

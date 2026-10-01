@@ -1236,6 +1236,10 @@ def _make_handler(
                         quantization=request.quantization,
                         filename=request.filename,
                         dependencies=chat_dependencies,
+                        # B9.78: forward the admission this handler already
+                        # minted and checked. No second evaluation, no second
+                        # to_admission, no second capability detection.
+                        admission=admission,
                     )
                 except ModelNotFoundError as error:
                     self._send_json(404, {"error": str(error)})

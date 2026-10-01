@@ -1442,6 +1442,61 @@ def run_download(
     return 1
 
 
+def _error_message(error: BaseException) -> str:
+    """B9.78: preparation and admission failures report through one accessor."""
+    return str(getattr(error, "message", None) or error)
+
+
+def _error_warnings(error: BaseException) -> tuple[str, ...]:
+    return tuple(getattr(error, "warnings", ()) or ())
+
+
+def _prepare_warnings(error: BaseException) -> tuple[str, ...]:
+    """B9.78: preparation failures may carry compatibility and selection warnings."""
+    return (
+        tuple(getattr(error, "compatibility_warnings", ()) or ())
+        + tuple(getattr(error, "selection_warnings", ()) or ())
+    )
+
+
+def _admit_for_preparation(
+    model_id: str,
+    capability: RuntimeCapability,
+    *,
+    quantization: str | None,
+    filename: str | None,
+    model_store: ModelStore,
+) -> EvaluationAdmission | None:
+    """B9.78 — one strict evaluation for the ``run``/``chat`` preparation paths.
+
+    Returns the admission to transport into ``run_service``, or ``None`` when
+    the evaluation itself raised. ``None`` is NOT authorization: it is handed
+    to a fail-closed gate, so a broken evaluation still refuses execution.
+
+    The capability detected immediately before preparation is injected, so no
+    second runtime detection happens (one request -> one evaluation).
+
+    B9.48 P0-2 is preserved: a raised evaluation is reported as an evaluation
+    error, never folded into a compatibility denial.
+    """
+    try:
+        result = evaluate_model_compatibility(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+            dependencies=EvaluateCompatibilityDependencies(
+                model_store=model_store, capability=capability
+            ),
+        )
+    except (ModelArtifactResolutionError, RuntimeError, ValueError, OSError) as error:
+        print(
+            f"Compatibility evaluation error: {type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
+        return None
+    return to_admission(result)
+
+
 def run_model(
     model_id: str | None,
     prompt: str | None,
@@ -1466,13 +1521,21 @@ def run_model(
         return 1
 
     capability = detect_llama_capability()
+    admission = _admit_for_preparation(
+        model_id,
+        capability,
+        quantization=quantization,
+        filename=filename,
+        model_store=model_store,
+    )
     try:
         preparation = _prepare(
-            resolved.model, resolved.artifact, capability, model_store
+            resolved.model, resolved.artifact, capability, model_store,
+            admission=admission,
         )
-    except PreparationError as error:
-        print(f"Run error: {error.message}", file=sys.stderr)
-        for warning in (*error.compatibility_warnings, *error.selection_warnings):
+    except (PreparationError, ExecuteAdmissionDeniedError) as error:
+        print(f"Run error: {_error_message(error)}", file=sys.stderr)
+        for warning in (*_error_warnings(error), *_prepare_warnings(error)):
             print(f"Warning: {warning}", file=sys.stderr)
         return 1
 
@@ -1548,13 +1611,21 @@ def chat_model(
         )
         return 1
 
+    admission = _admit_for_preparation(
+        model_id,
+        capability,
+        quantization=quantization,
+        filename=filename,
+        model_store=model_store,
+    )
     try:
         preparation = _prepare(
-            resolved.model, resolved.artifact, capability, model_store
+            resolved.model, resolved.artifact, capability, model_store,
+            admission=admission,
         )
-    except PreparationError as error:
-        print(f"Chat error: {error.message}", file=err)
-        for warning in (*error.compatibility_warnings, *error.selection_warnings):
+    except (PreparationError, ExecuteAdmissionDeniedError) as error:
+        print(f"Chat error: {_error_message(error)}", file=err)
+        for warning in _prepare_warnings(error):
             print(f"Warning: {warning}", file=err)
         return 1
 

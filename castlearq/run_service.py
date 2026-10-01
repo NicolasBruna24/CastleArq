@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model
+from .compatibility import CompatibilityConfig, assess_model
 from .execution import (
     ArtifactExecutionPreflight,
     ArtifactPreflightError,
@@ -44,6 +44,7 @@ from .execution import (
     ExecutableArtifact,
     ExecutionTarget,
 )
+from .execute_model import EvaluationAdmission, ExecuteAdmissionDeniedError
 from .hardware import detect_hardware
 from .model_catalog import get_catalog
 from .model_store import ModelStore
@@ -184,13 +185,62 @@ def detect_runtime_statuses(
     ]
 
 
+def _require_admission(admission: EvaluationAdmission | None) -> None:
+    """B9.78 — the mandatory strict admission gate for the run/chat path.
+
+    Mirrors ``execute_model._check_admission``: deny-only, and an absent signal
+    is a denial rather than authorization. ``blocked``, any non-``evaluated``
+    status, and any verdict outside the admitting set all deny; only
+    ``compatible`` and ``compatible_with_conditions`` admit.
+    """
+    if admission is None:
+        raise ExecuteAdmissionDeniedError(
+            "Execution denied: no evaluation admission was supplied; "
+            "deny-by-default applies"
+        )
+    status = str(getattr(admission, "status", "")).strip().lower()
+    if status != "evaluated":
+        raise ExecuteAdmissionDeniedError(
+            "Execution denied: evaluation did not produce an evaluated "
+            f"outcome (status={status!r})"
+        )
+    verdict = getattr(admission, "verdict", None)
+    value = getattr(verdict, "value", verdict)
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {"compatible", "compatible_with_conditions"}:
+        return
+    raise ExecuteAdmissionDeniedError(
+        "Execution denied by evaluation admission; deny-by-default applies "
+        f"(verdict={normalized or 'missing'!r})"
+    )
+
+
 def prepare(
     model: ModelSpec,
     artifact: ArtifactSpec,
     capability: "RuntimeCapability",
     model_store: ModelStore,
+    *,
+    admission: EvaluationAdmission | None = None,
 ) -> ExecutionPreparation:
-    """Resolve compatibility, preflight and selection without launching."""
+    """Resolve compatibility, preflight and selection without launching.
+
+    B9.78 — legacy admission cutover. ``admission`` is the strict evaluation
+    signal and is the MANDATORY gate for this path: it is checked before any
+    preparation work, exactly as B9.19 section 7 places admission before the
+    legacy prepare sequence. ``None`` is never authorization; an absent signal
+    fails closed.
+
+    The parameter is optional keyword-only so existing callers keep compiling
+    while the active product paths migrate. Every active path (``run``, ``chat``)
+    supplies a real admission.
+
+    The legacy compatibility result below is retained ONLY as selection
+    recommendation data (``recommended_runtime`` / ``recommended_backend``),
+    per B9.78 decision D1-A. It can no longer refuse execution.
+    """
+    _require_admission(admission)
+
     hardware = detect_hardware()
     runtimes = detect_runtime_statuses(capability)
     detected_gpu_backends = {
@@ -198,17 +248,11 @@ def prepare(
     }
     backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
 
+    # Selection recommendation data only (B9.78 D1-A): the legacy verdict is
+    # not an admission gate on this path any more.
     compatibility = assess_model(
         hardware, runtimes, backends, model, config=CompatibilityConfig()
     )
-    if compatibility.status in {
-        CompatibilityStatus.INCOMPATIBLE,
-        CompatibilityStatus.UNKNOWN,
-    }:
-        raise PreparationError(
-            "Model compatibility does not permit execution",
-            compatibility_warnings=compatibility.warnings,
-        )
 
     try:
         executable_artifact = ArtifactExecutionPreflight(
@@ -247,14 +291,18 @@ def run_once(
     filename: str | None = None,
     timeout_seconds: float | None = None,
     dependencies: RunDependencies | None = None,
+    admission: EvaluationAdmission | None = None,
 ) -> RunOutcome:
     """Execute one prompt through the shared pipeline.
 
     Same sequence CLI ``run`` uses (resolver -> ``prepare`` ->
     ``LlamaCppRunner``). Raises :class:`ModelNotFoundError` for unknown
-    model ids, :class:`RunPreparationFailedError` when selection/preflight
-    rejects the run, and :class:`RunExecutionFailedError` on runtime
+    model ids, :class:`RunPreparationFailedError` when admission, selection or
+    preflight rejects the run, and :class:`RunExecutionFailedError` on runtime
     failure. Never prints, never touches the CLI.
+
+    B9.78: ``admission`` is the strict evaluation signal and is mandatory for
+    this path. ``None`` is not authorization; it fails closed.
     """
     deps = dependencies or RunDependencies()
     store = deps.model_store if deps.model_store is not None else ModelStore()
@@ -276,11 +324,13 @@ def run_once(
 
     try:
         preparation = prepare(
-            resolved.model, resolved.artifact, capability, store
+            resolved.model, resolved.artifact, capability, store,
+            admission=admission,
         )
-    except PreparationError as error:
+    except (PreparationError, ExecuteAdmissionDeniedError) as error:
+        message = getattr(error, "message", None) or str(error)
         raise RunPreparationFailedError(
-            error.message, warnings=error.warnings
+            message, warnings=getattr(error, "warnings", ())
         ) from error
 
     runner = deps.runner if deps.runner is not None else LlamaCppRunner(capability)
@@ -348,14 +398,18 @@ def open_chat_session(
     quantization: str | None = None,
     filename: str | None = None,
     dependencies: ChatDependencies | None = None,
+    admission: EvaluationAdmission | None = None,
 ) -> ChatSessionOpened:
     """Resolve, prepare and launch one persistent interactive chat session.
 
     Same sequence CLI ``chat`` uses (resolver -> ``prepare`` ->
     ``start_chat_session``). Raises :class:`ModelNotFoundError` for unknown
-    model ids, :class:`RunPreparationFailedError` when selection/preflight
-    rejects the request, and :class:`ChatLaunchFailedError` when the runtime
-    subprocess cannot be started. Never prints, never touches the CLI.
+    model ids, :class:`RunPreparationFailedError` when admission, selection or
+    preflight rejects the request, and :class:`ChatLaunchFailedError` when the
+    runtime subprocess cannot be started. Never prints, never touches the CLI.
+
+    B9.78: ``admission`` is the strict evaluation signal and is mandatory for
+    this path. ``None`` is not authorization; it fails closed.
     """
     from .chat import ChatSessionError, start_chat_session
 
@@ -379,11 +433,13 @@ def open_chat_session(
 
     try:
         preparation = prepare(
-            resolved.model, resolved.artifact, capability, store
+            resolved.model, resolved.artifact, capability, store,
+            admission=admission,
         )
-    except PreparationError as error:
+    except (PreparationError, ExecuteAdmissionDeniedError) as error:
+        message = getattr(error, "message", None) or str(error)
         raise RunPreparationFailedError(
-            error.message, warnings=error.warnings
+            message, warnings=getattr(error, "warnings", ())
         ) from error
 
     factory = deps.session_factory or start_chat_session

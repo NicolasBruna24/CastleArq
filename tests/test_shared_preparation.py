@@ -24,6 +24,11 @@ from unittest.mock import Mock, patch
 
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
 from castlearq.execution import ExecutionResult, ExecutionTarget
+from castlearq.execute_model import EvaluationAdmission, ExecuteAdmissionDeniedError
+
+# B9.78: strict admission is the mandatory gate for the shared preparation
+# pipeline, so tests exercising preparation supply an admitting signal.
+ADMITTING = EvaluationAdmission(status="evaluated", verdict="compatible")
 from castlearq.main import PreparationError, _prepare
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
 from castlearq.resolver import ResolvedModelArtifact
@@ -109,7 +114,7 @@ class SharedPreparationTests(unittest.TestCase):
             "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
         ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
-            _prepare(self.model, self.artifact, self.capability, self.model_store)
+            _prepare(self.model, self.artifact, self.capability, self.model_store, admission=ADMITTING)
             assess_model.assert_called_once()
 
     def test_prepare_runs_preflight_once(self):
@@ -117,7 +122,7 @@ class SharedPreparationTests(unittest.TestCase):
             "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
         ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
-            _prepare(self.model, self.artifact, self.capability, self.model_store)
+            _prepare(self.model, self.artifact, self.capability, self.model_store, admission=ADMITTING)
             self.preflight.validate.assert_called_once_with(self.artifact)
 
     def test_prepare_runs_selection_once(self):
@@ -125,7 +130,7 @@ class SharedPreparationTests(unittest.TestCase):
             "castlearq.run_service.ArtifactExecutionPreflight", return_value=self.preflight
         ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
-            _prepare(self.model, self.artifact, self.capability, self.model_store)
+            _prepare(self.model, self.artifact, self.capability, self.model_store, admission=ADMITTING)
             self.selector.select.assert_called_once()
 
     def test_prepare_returns_same_target_for_run_and_chat(self):
@@ -134,7 +139,8 @@ class SharedPreparationTests(unittest.TestCase):
         ), patch("castlearq.run_service.RuntimeBackendSelector", return_value=self.selector):
             assess_model.return_value = _compatible(self.model)
             preparation = _prepare(
-                self.model, self.artifact, self.capability, self.model_store
+                self.model, self.artifact, self.capability, self.model_store,
+                admission=ADMITTING,
             )
             self.assertEqual(
                 preparation.target,
@@ -142,8 +148,20 @@ class SharedPreparationTests(unittest.TestCase):
             )
             self.assertIn("marginal", preparation.selection_warnings)
 
-    def test_prepare_refuses_incompatible_model(self):
-        with patch("castlearq.run_service.assess_model") as assess_model:
+    def test_prepare_refuses_without_admission(self):
+        # B9.78: the gate that refuses on this path is strict admission, not the
+        # legacy compatibility verdict.
+        with self.assertRaises(ExecuteAdmissionDeniedError):
+            _prepare(self.model, self.artifact, self.capability, self.model_store)
+
+    def test_legacy_incompatible_no_longer_refuses_preparation(self):
+        # B9.78 (D1-A): the legacy verdict is selection recommendation data only.
+        with patch("castlearq.run_service.assess_model") as assess_model, patch(
+            "castlearq.run_service.ArtifactExecutionPreflight",
+            return_value=self.preflight,
+        ), patch(
+            "castlearq.run_service.RuntimeBackendSelector", return_value=self.selector
+        ):
             assess_model.return_value = CompatibilityResult(
                 model=self.model,
                 status=CompatibilityStatus.INCOMPATIBLE,
@@ -156,10 +174,11 @@ class SharedPreparationTests(unittest.TestCase):
                 recommended_runtime=None,
                 recommended_backend=None,
             )
-            with self.assertRaises(PreparationError) as ctx:
-                _prepare(self.model, self.artifact, self.capability, self.model_store)
-            self.assertIn("compatibility", ctx.exception.message.lower())
-            self.assertIn("will not fit", ctx.exception.compatibility_warnings)
+            preparation = _prepare(
+                self.model, self.artifact, self.capability, self.model_store,
+                admission=ADMITTING,
+            )
+            self.assertIn("will not fit", preparation.compatibility_warnings)
 
     def test_run_and_chat_both_call_prepare(self):
         """run_model and chat_model must both delegate to the shared _prepare."""

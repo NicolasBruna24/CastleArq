@@ -412,6 +412,11 @@ class ComposedFeedTests(unittest.TestCase):
                     self.model.model_id,
                     "wiring prompt",
                     dependencies=deps,
+                    # B9.78: admission is the mandatory gate on the composed
+                    # pipeline, exactly as every production caller supplies it.
+                    admission=em.EvaluationAdmission(
+                        status="evaluated", verdict="compatible"
+                    ),
                 )
 
         # No process was spawned anywhere in the composed pipeline.
