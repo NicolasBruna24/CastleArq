@@ -585,17 +585,17 @@ Validity Reason:
 ```text
 Block ID:                 B9.78
 Name:                     Legacy Admission Cutover
-Status:                   DOCUMENTED, ALLOCATED
+Status:                   IMPLEMENTED
 Origin:                   this document, section 14
 Scope:                    see 14.2
 Non-goals:                see 14.3
 Dependencies:             see 14.4
-Current State:            IMPLEMENTATION NOT STARTED — see 14.5
+Current State:            IMPLEMENTED — see 14.5
 Acceptance Criteria:      AC1-AC12 — see 14.6
 Evidence:                 see 14.7
 Human decisions pending:  see 14.8
 Evidence Type:            DOC
-Implementation Commit:    NOT YET DEFINED — no implementation has occurred
+Implementation Commit:    8955fc6d91745ef3685fff00c6c8a6b03ac9a28e
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
@@ -689,13 +689,29 @@ preserve.
 ### 14.5 Current State
 
 ```text
-IMPLEMENTATION NOT STARTED.
+IMPLEMENTED at 8955fc6d91745ef3685fff00c6c8a6b03ac9a28e
+("refactor: complete B9.78 legacy admission cutover", parent bb209d7).
+
+Targeted verification:   148 passed.
+Full local verification: 1806 passed / 2665 subtests / 0 failed / 0 errors /
+                         0 skipped, on CPython 3.14.4.
+
+AC1-AC10 and AC12 verified PASS.
+AC11 remains PARTIAL: the declared Python 3.11-3.13 CI matrix has not been
+executed after this implementation. No 3.11-3.13 validation is claimed.
 ```
 
-B9.78 is formally defined but not yet implemented. The legacy `assess_model`
-gate remains active on the identified production paths. `main.py` and `api.py`
-already supply admission signals to `execute_model`. `ModelExecutionService` is
-not part of the active production path.
+Strict admission is now the sole execution-authority on every active path
+(`execute`, `serve`, `run`, `chat`). The legacy `assess_model` verdict survives
+only as selection recommendation data (`recommended_runtime`,
+`recommended_backend`) and as the input to `recommend_models`; it no longer
+refuses execution. `main.py` and `api.py` supply admission — `api.py` forwards
+the admission its chat handler had already minted rather than recomputing it.
+`ModelExecutionService` remains outside the production path.
+
+B9.78 is post-`v0.4.0` implementation work and created no release, so the
+Release Association stays `NOT YET DEFINED`.
+
 ---
 
 ### 14.6 Acceptance Criteria
@@ -781,6 +797,53 @@ Reachability audit (read-only, at 397231bbe25d05540037ff982e1348e7a736731b)
     no production reachability
     test-only reachability
     explicitly classified LEGACY
+```
+
+#### 14.7.1 Implementation evidence
+
+```text
+Implementation anchor:
+  8955fc6d91745ef3685fff00c6c8a6b03ac9a28e
+  "refactor: complete B9.78 legacy admission cutover"
+  parent bb209d734889e27f2b01921f27beecf423cd2403 (the formal definition)
+
+Files changed: 11 (5 production, 6 test). Nothing else.
+  production: execute_model.py, run_service.py, selection.py, main.py, api.py
+  tests:      test_execute_model.py, test_shared_preparation.py,
+              test_selection.py, test_execute_model_wiring.py,
+              test_b967_execute_imported.py, test_main_chat.py
+  untouched:  pyproject.toml, .github/, docs/, config/, LICENSE, README.md,
+              castlearq/compatibility.py, castlearq/application_wiring.py,
+              castlearq/execution_service.py, test_compatibility.py,
+              test_b966_imported_admission.py, test_execution_service.py,
+              test_execution_integration.py
+
+Architecture decisions implemented
+  D1-A  assess_model retained as the recommendation producer only; its
+        INCOMPATIBLE/UNKNOWN verdict no longer refuses execution
+  D2-A  optional keyword-only admission parameter on prepare(), run_once()
+        and open_chat_session(); None fails closed
+  D3-A  api.py forwards the admission its chat handler already minted;
+        no second evaluation, no second to_admission
+
+Verification:
+  148 targeted tests passed.
+  1806 full-suite tests passed / 2665 subtests / 0 failures / 0 errors /
+  0 skips.
+
+Acceptance criteria:
+  AC1-AC10 PASS, AC11 PARTIAL, AC12 PASS.
+
+Matrix limitation:
+  Verification was performed on CPython 3.14.4.
+  The declared Python 3.11-3.13 matrix has not yet been executed after this
+  implementation. No CI success and no 3.11-3.13 validation is claimed.
+
+Scope:
+  No scope creep found.
+
+Release:
+  None. B9.78 is post-v0.4.0 work; Release Association stays NOT YET DEFINED.
 ```
 
 ---
