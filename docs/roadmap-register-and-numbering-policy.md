@@ -163,7 +163,7 @@ rationale or acceptance criterion.
 | B9.76.4 | `castlearq import --json` | IMPLEMENTED, RETROSPECTIVE | `ed96da01c6d07f4cc874b26aa70958c9b2c9e359` | **v0.4.0** | NO | TEST |
 | B9.76.5 | `--json` for SHOULD-surface commands | IMPLEMENTED, RETROSPECTIVE | `fb1f67dc8ed53a6c60033c86892f270bfdd49137` | **v0.4.0** | NO | TEST + SRC |
 | B9.77 | *(scope not recoverable — see §5)* | IMPLEMENTED, RETROSPECTIVE | `2f9464ce860d6576b9ab528bb82b3d26295d8c92` | **v0.4.0** | NO | TEST |
-| B9.78 | NOT YET DEFINED | ALLOCATED (§14) | this document's §14 record | NOT YET DEFINED | YES (this document) | DOC |
+| B9.78 | Legacy Admission Cutover | DOCUMENTED, ALLOCATED (§14) | this document's §14 record | NOT YET DEFINED | YES (this document) | DOC |
 
 ### 4.0.1 Excluded from the register
 
@@ -186,7 +186,7 @@ B9.1, B9.3, B9.5, B9.7, B9.16, B9.18, B9.20, B9.21, B9.40
 | B9.48, B9.50, B9.52, B9.54, B9.57.1, B9.58 | NOT RECOVERABLE | NOT RECOVERABLE |
 | B9.53 | Partial — the §17 requirement is recoverable through `docs/B9.59` §2 and `tests/test_public_surface.py` | NOT RECOVERABLE |
 | **B9.77** | **NOT RECOVERABLE** (§5) | **NOT RECOVERABLE** |
-| **B9.78** | **NOT YET DEFINED** — the block is allocated; no scope has been decided | **NOT YET DEFINED** |
+| **B9.78** | Defined — see §14.1 (cutover; not a legacy cleanup) | Defined — see §14.1 (12 explicit non-goals) |
 
 `Scope` and `Non-goals` are recorded by **reference** to the cited evidence, not
 restated. Restating a scope from a single sentence of test code would convert a
@@ -584,24 +584,221 @@ Validity Reason:
 
 ```text
 Block ID:                 B9.78
-Name:                     NOT YET DEFINED
-Status:                   ALLOCATED
+Name:                     Legacy Admission Cutover
+Status:                   DOCUMENTED, ALLOCATED
 Origin:                   this document, section 14
-Scope:                    NOT YET DEFINED
-Non-goals:                NOT YET DEFINED
-Dependencies:             NOT YET DEFINED
-Evidence:                 section 14 record; section 7 corpus inspection at
-                          61753e97f7a9ba65f939400a06aadd30ad96e236
+Scope:                    see 14.2
+Non-goals:                see 14.3
+Dependencies:             see 14.4
+Current State:            IMPLEMENTATION NOT STARTED — see 14.5
+Acceptance Criteria:      AC1-AC12 — see 14.6
+Evidence:                 see 14.7
+Human decisions pending:  see 14.8
 Evidence Type:            DOC
 Implementation Commit:    NOT YET DEFINED — no implementation has occurred
 Release Association:      NOT YET DEFINED
 Supersession:             none
-Current State:            formally allocated; no content decided
 Documented?:              YES — this document
 Number Allocation Record: PRESENT — section 14
 Retrospective Record:     NO — this is a prospective allocation, not a record
                           of past work
 ```
+
+### 14.1.1 Status vocabulary note
+
+`DEFINED` is **not** an allowed status in §3.1, so it was not invented. The
+closest existing documented status is **`DOCUMENTED`** ("a canonical block
+document exists under `docs/`"), which is accurate here: the definition is
+recorded in this document. `ALLOCATED` is retained because it remains true —
+§14 still governs the number. `IMPLEMENTED` was **not** selected, because no
+implementation has occurred (§14.5).
+
+---
+
+### 14.2 Scope
+
+Make strict evaluation admission the mandatory execution gate on the currently
+active product paths that still depend on the legacy `assess_model` gate,
+completing the migration documented by `docs/B9.42` §14 and `docs/B9.59:118-119`.
+
+The cutover covers the active `execute_model.py`, `run_service.py`,
+`selection.py` and `application_wiring.py` surfaces identified by the
+historical migration contract, while preserving the existing admission,
+deny-only, execution re-validation, imported-artifact and evaluation-error
+contracts.
+
+`ModelExecutionService` is **explicitly outside** the B9.78 production migration
+boundary: the repository verifies no production reachability and explicitly
+classifies it as legacy/test-only.
+
+**This is a CUTOVER, not a legacy cleanup.** What changes is which gate decides
+execution, not whether legacy code still exists.
+
+---
+
+### 14.3 Non-goals
+
+```text
+1.  Deleting `assess_model` solely because it is no longer used by active
+    production paths.
+2.  Deleting or rewriting legacy-only tests solely because they exercise
+    `assess_model`.
+3.  Migrating `ModelExecutionService`; it has no production reachability and is
+    explicitly classified as legacy/test-only.
+4.  Redefining the semantics of `INSUFFICIENT_EVIDENCE`.
+5.  Changing the deny-only admission contract (B9.19 section 7).
+6.  Changing the `blocked` behavior (B9.19 section 7).
+7.  Changing the raised-evaluation/error distinction (B9.48 P0-2).
+8.  Changing B9.66 imported-artifact tolerance.
+9.  Changing B9.67 verified-managed-path requirements.
+10. Adding new CLI commands, runtime capabilities, model catalogs,
+    GUI/web functionality, Ollama integration, or multi-runtime support
+    (no authorization exists; B9.47:164,168 via B9.59:122-123, and B9.59:121).
+11. Merging, facading, renaming, moving, or extracting the two compatibility
+    engines — B9.42 section 14 item 4.
+12. Changing release/distribution packaging.
+```
+
+---
+
+### 14.4 Dependencies
+
+```text
+1. docs/B9.19 section 7 — the admission contract this cutover implements.
+2. docs/B9.42 section 14 — the migration boundary and the future cutover
+   decision that B9.78 constitutes.
+3. docs/B9.59:118-119 — the separate legacy admission cutover block.
+4. The existing `to_admission` and strict evaluation implementation
+   (castlearq/evaluate_compatibility.py, castlearq/api.py:1066,
+   castlearq/main.py:1680-1682).
+5. The existing deny-only and deny-by-default behavior
+   (castlearq/execute_model.py:67-69, :181-199).
+6. The existing B9.48 P0-2 evaluation-error contract
+   (castlearq/main.py:1664-1682).
+7. The existing B9.66 and B9.67 execution/admission contracts
+   (castlearq/execute_model.py:159-161, :299-308).
+8. The current tests covering execution, selection, admission, API and CLI
+   behavior.
+```
+
+None of these is a new capability; each is an existing contract B9.78 must
+preserve.
+
+---
+
+### 14.5 Current State
+
+```text
+IMPLEMENTATION NOT STARTED.
+```
+
+B9.78 is formally defined but not yet implemented. The legacy `assess_model`
+gate remains active on the identified production paths. `main.py` and `api.py`
+already supply admission signals to `execute_model`. `ModelExecutionService` is
+not part of the active production path.
+---
+
+### 14.6 Acceptance Criteria
+
+```text
+AC1  Strict gate
+     Strict evaluation admission is mandatory on all active B9.78 migration
+     paths.
+
+AC2  Legacy execution dependency removed
+     No active production execution path depends on `assess_model` as its
+     admission gate.
+
+AC3  Deny-only preserved
+     Admission remains deny-only: the admission signal cannot independently
+     authorize execution outside the established strict verdict contract.
+
+AC4  Blocked preserved
+     `blocked` never authorizes execution.
+
+AC5  Deny-by-default preserved
+     INSUFFICIENT_EVIDENCE continues to deny by default. B9.78 does not
+     redefine its semantics.
+
+AC6  Execution re-validation preserved
+     Execution continues to re-resolve and re-validate rather than treating a
+     prior evaluation as execution authority.
+
+AC7  Evaluation-error semantics preserved
+     An evaluation that raises remains distinct from a compatibility denial,
+     preserving the B9.48 P0-2 contract.
+
+AC8  Imported artifact contracts preserved
+     B9.66 and B9.67 behavior remains intact.
+
+AC9  No unrelated public-surface change
+     No unrelated CLI, API, runtime, model-catalog, GUI, or distribution
+     behavior is introduced by B9.78.
+
+AC10 Test integrity
+     Existing tests covering preserved behavior remain green. Tests that encode
+     intentionally removed legacy-path behavior may be migrated only where
+     required by the cutover. This is NOT authorization to delete legacy tests
+     automatically; test disposition remains the pending decision in 14.8.
+
+AC11 CI
+     The declared CI test matrix remains green after implementation.
+
+AC12 Legacy service exclusion
+     `ModelExecutionService` remains outside the production migration boundary.
+```
+
+---
+
+### 14.7 Evidence
+
+```text
+Contracts
+  docs/B9.19 section 7    admission contract (deny-only, deny-by-default)
+  docs/B9.19 section 8    legacy vs strict CompatibilityResult boundary
+  docs/B9.19 section 11   evaluation is point-in-time and goes stale
+  docs/B9.42 section 8 #5 the four reject-set consumers
+  docs/B9.42 section 14   the migration boundary and cutover decision
+  docs/B9.59:118-119      the separate legacy admission cutover block
+  docs/B9.23:163-165      ModelExecutionService classified LEGACY, not a
+                         product surface
+
+Production surfaces in scope
+  castlearq/execute_model.py
+  castlearq/run_service.py
+  castlearq/selection.py
+  castlearq/application_wiring.py
+
+Existing strict path
+  castlearq/evaluate_compatibility.py
+
+Boundary guards
+  tests/test_execute_model_wiring.py
+  tests/test_evaluation_policy.py
+
+Reachability audit (read-only, at 397231bbe25d05540037ff982e1348e7a736731b)
+  ModelExecutionService:
+    no production reachability
+    test-only reachability
+    explicitly classified LEGACY
+```
+
+---
+
+### 14.8 Human decisions preserved as future work
+
+B9.78 does not decide the following. Each remains open and is **not** settled by
+this definition:
+
+```text
+- whether `assess_model` should eventually be deleted;
+- whether legacy-only tests should eventually be removed;
+- whether any legacy compatibility API should eventually be removed;
+- whether future work should redefine INSUFFICIENT_EVIDENCE.
+```
+
+None of these is implied by the cutover, and none may be treated as decided
+because B9.78 exists.
 
 `NOT YET DEFINED` is used deliberately and is **not** interchangeable with
 `NOT RECOVERABLE`. `NOT RECOVERABLE` means the repository can no longer supply
