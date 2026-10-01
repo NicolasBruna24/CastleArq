@@ -469,7 +469,7 @@ may be assigned only after this field names a real commit.
 ```text
 B9.78 = FORMALLY ALLOCATED — see section 14
 B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
-B9.80 = FORMALLY ALLOCATED — see section 16 (allocation only; implementation pending)
+B9.80 = VERIFIED AND CLOSED — see section 16 (16.6, 16.7)
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -1555,19 +1555,20 @@ of `B9.80`. No `B9.80.x` sub-block is assigned here.
 ```text
 Block ID:                 B9.80
 Name:                     Model Discovery Domain Contract
-Status:                   DOCUMENTED, ALLOCATED
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED
 Origin:                   this document, section 16
 Scope:                    see 16.2
 Non-goals:                see 16.3
 Dependencies:             see 16.4
-Current State:            ALLOCATED — implementation pending; NOT implemented,
-                          NOT verified, NOT closed
-Acceptance Criteria:      AC1-AC12 — see 16.5 (all PENDING at allocation time)
-Evidence:                 see 16.4 and prior READ-ONLY discovery audits
+Current State:            VERIFIED AND CLOSED — see 16.6 and 16.7
+Acceptance Criteria:      AC1-AC12 — see 16.5 (all PASS per 16.7)
+Evidence:                 see 16.4 and 16.7
 Evidence Type:            DOC
-Implementation Commit:    NONE — no production code for B9.80 exists
-Verification Result:      NOT VERIFIED
-Closure Commit:           NONE
+Implementation Commit:    389f390c7aa5b154a697a6253dcc58b6ceec713e
+                          ("feat: implement B9.80 model discovery domain contract")
+Verification Result:      B9.80 VERIFIED — READ-ONLY audit against the
+                          implementation commit; see 16.7
+Closure Commit:           recorded by the commit that introduces section 16.7
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
@@ -1650,7 +1651,16 @@ AC12 DiscoveredArtifact → ArtifactSpec conversion sits at the acquisition
      boundary (explicit mapper), not as self-promotion.
 ```
 
+**Status after implementation.** These acceptance criteria were **not**
+represented as satisfied by the allocation documentation task. They became
+satisfiable only through the implementation at
+`389f390c7aa5b154a697a6253dcc58b6ceec713e`, and §16.7 records them all PASS on
+the READ-ONLY verification audit.
+
 ### 16.6 Current state
+
+**Superseded in part by the verification closure (§16.7).** The allocation-time
+record below is preserved deliberately as historical evidence:
 
 ```text
 Formally allocated.
@@ -1659,10 +1669,24 @@ Architectural decision taken.
 Implementation pending.
 ```
 
-B9.80 is NOT IMPLEMENTED, VERIFIED, or CLOSED. No B9.80.x sub-block is
-assigned. No B9.81 or other identifier is allocated here. B9.79 remains
-CLOSED and is not modified retrospectively.
+B9.80 was **not** `IMPLEMENTED`, `VERIFIED` or `CLOSED` at allocation time. A
+later implementation could close the block only after satisfying its acceptance
+criteria (§16.5), which the allocation documentation task did **not** claim to
+satisfy.
 
+Current authoritative state: **IMPLEMENTED, VERIFIED AND CLOSED** — implemented
+at `389f390c7aa5b154a697a6253dcc58b6ceec713e` and verified by the READ-ONLY
+audit recorded in §16.7 (AC1-AC12 all PASS).
+
+No B9.80.x sub-block is assigned. No B9.81 or other identifier is allocated
+here. B9.79 remains CLOSED and is not modified retrospectively.
+
+**Formatting repair (closure edit).** The allocation commit introduced the flow
+block below without its opening fence line, so this block and the two
+paragraphs after it rendered as code. The opening fence line is restored by this
+edit; no allocation-time wording is changed or removed.
+
+```text
 acquisition mapper (explicit, in acquisition)
     ↓
 ArtifactSpec (existing type, unchanged by B9.80)
@@ -1679,5 +1703,76 @@ Trust: L1 Remote metadata (B9.80 ONLY) → L2 Downloaded+verified (future) →
 L3 Runtime evidence (B9.79, unchanged). Provider direction:
 HuggingFaceDiscoveryProvider implements ModelDiscovery; domain never depends
 on Hugging Face. model_identity.py unchanged (no rows, no fuzzy, no ranking).
+
+### 16.7 Verification and closure record
+
+READ-ONLY verification audit of the implementation commit
+`389f390c7aa5b154a697a6253dcc58b6ceec713e`
+("feat: implement B9.80 model discovery domain contract").
+
+```text
+Verification Result:
+  B9.80 VERIFIED
+
+Implementation Commit (verified contents — immutable, never rewritten):
+  389f390c7aa5b154a697a6253dcc58b6ceec713e
+
+Committed Files (exclusively; exactly two new files):
+  castlearq/discovery.py                (new, 142 lines)
+  tests/test_b980_model_discovery.py    (new, 137 lines)
+
+Verification Scope (all established):
+  - ModelDiscovery domain port exists as an ABC in castlearq/discovery.py,
+    imported only from the standard library (abc, dataclasses); no Hugging
+    Face, provider, filesystem, network, ModelStore, acquisition,
+    evaluation, admission or execution reference in the module (AC1)
+  - search(query, *, limit, cursor) defined; returns (candidates,
+    next_cursor); cursor is opaque: accepted and returned without
+    interpretation; no pagination logic in the port (AC2)
+  - inspect(repository) defined; returns remote declared variants
+    (artifacts/variants) for the repository; no local resolution (AC3)
+  - ModelCandidate frozen dataclass of remote/untrusted metadata only
+    (provider_id, repository, display_name, author, description, tags,
+    declared_architecture, has_gguf); no local path, content identity,
+    state or verdict fields; no catalog_model_id (AC4)
+  - ModelVariant frozen dataclass: one ModelCandidate +
+    declared_quantization + at least one artifact held in an immutable
+    tuple; declared only, never a verified quantization claim (AC5)
+  - DiscoveredArtifact frozen dataclass of L1 declared remote metadata
+    (repository, filename, format, declared_quantization, declared_size,
+    declared_sha256, revision, download_url, source, model_id); no local
+    state, no content identity, no admission or execution verdict (AC6)
+  - no ModelStore import, persistence, caching or resolver interaction (AC7)
+  - no admission, evaluation or execution behavior in discovery (AC8)
+  - quantization surfaced only as declared_quantization and documented as
+    declared, never as verified runtime evidence (AC9)
+  - no AcquisitionPlan type and no download/acquisition behavior; no import
+    from the acquisition pipeline (AC10)
+  - B9.79 implementation contents unchanged by the commit; B9.79 remains
+    CLOSED (AC11)
+  - no DiscoveredArtifact -> ArtifactSpec or DiscoveredArtifact ->
+    DownloadPlan conversion in the domain; the mapper belongs to the future
+    acquisition boundary (AC12)
+  - error independence: DiscoveryError is a plain domain Exception,
+    independent from the infrastructure SourceError
+  - scope integrity: the commit touches only the two new files above; no
+    production wiring, CLI, API, packaging, release or roadmap change
+  - clean working tree after the commit; formatting and whitespace checked
+    with grep-based import inspection and git diff --check (ruff is not
+    available in this environment)
+
+Regression Result:
+  1862 passed / 2672 subtests passed / 0 failed / 0 errors / 0 skipped
+  (B9.80 tests: 15 passed)
+
+Acceptance Criteria:
+  AC1-AC12 all PASS.
+```
+
+The implementation commit above is the verified artifact and remains immutable.
+This closure record only attests that the verified implementation has been
+formally closed; it does not replace the implementation anchor. B9.80 is
+**CLOSED**. No B9.80.x sub-block is assigned, and no B9.81 or any other
+identifier is allocated here.
 
 
