@@ -618,8 +618,13 @@ That historical reasoning is preserved here deliberately. The current
 authoritative status is **`IMPLEMENTED`** (§14.1, §14.5, §14.7.1), following
 implementation at `8955fc6d91745ef3685fff00c6c8a6b03ac9a28e`; `DOCUMENTED` and
 `ALLOCATED` remain true and are retained. The §4.0 register row is synchronized
-to the same current state. AC11 remains `PARTIAL`: no Python 3.11-3.13 CI
-execution has occurred, and none is claimed here.
+to the same current state.
+
+**AC11 note superseded by CI run #19.** This note originally recorded AC11 as
+`PARTIAL` because no Python 3.11-3.13 execution had occurred. That is now
+superseded by observed CI evidence (§14.7.2): AC11 is `PASS`. The historical
+`PARTIAL` state above is retained deliberately as evidence of what was known
+before run #19, not as the current state.
 
 ---
 
@@ -705,8 +710,13 @@ Full local verification: 1806 passed / 2665 subtests / 0 failed / 0 errors /
                          0 skipped, on CPython 3.14.4.
 
 AC1-AC10 and AC12 verified PASS.
-AC11 remains PARTIAL: the declared Python 3.11-3.13 CI matrix has not been
-executed after this implementation. No 3.11-3.13 validation is claimed.
+AC11 was PARTIAL at this point: the declared Python 3.11-3.13 CI matrix had not
+yet been executed after this implementation.
+
+B9.78 verification: COMPLETE. AC1-AC12 all PASS. AC11 is now PASS on observed
+CI evidence — ci run #19 (see 14.7.2) executed the declared Python 3.11-3.13
+matrix against a descendant of 8955fc6 and all three jobs passed. This
+supersedes the limitation above, which is retained as historical evidence.
 ```
 
 Strict admission is now the sole execution-authority on every active path
@@ -839,19 +849,70 @@ Verification:
   1806 full-suite tests passed / 2665 subtests / 0 failures / 0 errors /
   0 skips.
 
-Acceptance criteria:
+Acceptance criteria (at this point):
   AC1-AC10 PASS, AC11 PARTIAL, AC12 PASS.
 
-Matrix limitation:
+Matrix limitation (superseded by 14.7.2):
   Verification was performed on CPython 3.14.4.
-  The declared Python 3.11-3.13 matrix has not yet been executed after this
+  The declared Python 3.11-3.13 matrix had not yet been executed after this
   implementation. No CI success and no 3.11-3.13 validation is claimed.
+  SUPERSEDED by ci run #19 — see 14.7.2. Retained as historical evidence.
 
 Scope:
   No scope creep found.
 
 Release:
   None. B9.78 is post-v0.4.0 work; Release Association stays NOT YET DEFINED.
+```
+
+#### 14.7.2 CI matrix evidence (AC11)
+
+The AC11 limitation recorded in 14.5 and 14.7.1 is resolved by observed CI
+execution. Every value below was read from the workflow run itself — the
+individual jobs and their logs — not inferred from `.github/workflows/ci.yml`
+and not from the workflow summary.
+
+```text
+Workflow:      ci
+Run number:    #19
+Run ID:        36808472633
+Conclusion:    success
+Event:         push
+Tested commit: 86da72cf0d143a9663d17b4a735fe430f50497eb
+               ("docs: synchronize B9.78 registry state")
+
+Matrix jobs — all actually executed, completed successfully, and were
+neither skipped nor cancelled. Each ran the real full pytest suite:
+
+  test (py3.11)  job 110197997345  success
+                 platform linux -- Python 3.11.16, pytest 9.1.1
+                 1806 passed
+  test (py3.12)  job 110197997067  success
+                 platform linux -- Python 3.12.14, pytest 9.1.1
+                 1806 passed
+  test (py3.13)  job 110197997255  success
+                 platform linux -- Python 3.13.15, pytest 9.1.1
+                 1806 passed
+
+B9.78 relevance:
+  The tested commit is a descendant of the B9.78 implementation commit
+  8955fc6d91745ef3685fff00c6c8a6b03ac9a28e. Only documentation commits
+  (96618bf, 86da72c) intervene, so the tested tree contains the B9.78
+  production code exactly as committed.
+
+Exclusion checks:
+  Declared matrix is ['3.11', '3.12', '3.13'] and all three versions
+  produced their own job: 3 declared, 3 executed, 3 passed.
+  No matrix exclusion, no `if:` condition, no `continue-on-error`, and
+  `fail-fast: false`. Collected item counts equal passed counts on every
+  job, so no test was deselected or bypassed.
+
+AC11:           PASS.
+
+Scope note:     This records exactly one CI execution (run #19). No other
+                CI run is claimed as B9.78 evidence.
+
+B9.78 verification: COMPLETE. AC1-AC12 all PASS.
 ```
 
 ---
