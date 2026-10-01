@@ -163,7 +163,7 @@ rationale or acceptance criterion.
 | B9.76.4 | `castlearq import --json` | IMPLEMENTED, RETROSPECTIVE | `ed96da01c6d07f4cc874b26aa70958c9b2c9e359` | **v0.4.0** | NO | TEST |
 | B9.76.5 | `--json` for SHOULD-surface commands | IMPLEMENTED, RETROSPECTIVE | `fb1f67dc8ed53a6c60033c86892f270bfdd49137` | **v0.4.0** | NO | TEST + SRC |
 | B9.77 | *(scope not recoverable — see §5)* | IMPLEMENTED, RETROSPECTIVE | `2f9464ce860d6576b9ab528bb82b3d26295d8c92` | **v0.4.0** | NO | TEST |
-| B9.78 | Legacy Admission Cutover | DOCUMENTED, ALLOCATED (§14) | this document's §14 record | NOT YET DEFINED | YES (this document) | DOC |
+| B9.78 | Legacy Admission Cutover | IMPLEMENTED, DOCUMENTED, ALLOCATED (§14) | implementation `8955fc6d91745ef3685fff00c6c8a6b03ac9a28e` (§14.1 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
 
 ### 4.0.1 Excluded from the register
 
@@ -610,8 +610,16 @@ Retrospective Record:     NO — this is a prospective allocation, not a record
 closest existing documented status is **`DOCUMENTED`** ("a canonical block
 document exists under `docs/`"), which is accurate here: the definition is
 recorded in this document. `ALLOCATED` is retained because it remains true —
-§14 still governs the number. `IMPLEMENTED` was **not** selected, because no
-implementation has occurred (§14.5).
+§14 still governs the number.
+
+**Superseded in part, `96618bf3a2334b50ff5c93ee8d20db96fbab67b1`.** The sentence
+above recorded the status *at allocation time*, when no implementation existed.
+That historical reasoning is preserved here deliberately. The current
+authoritative status is **`IMPLEMENTED`** (§14.1, §14.5, §14.7.1), following
+implementation at `8955fc6d91745ef3685fff00c6c8a6b03ac9a28e`; `DOCUMENTED` and
+`ALLOCATED` remain true and are retained. The §4.0 register row is synchronized
+to the same current state. AC11 remains `PARTIAL`: no Python 3.11-3.13 CI
+execution has occurred, and none is claimed here.
 
 ---
 
