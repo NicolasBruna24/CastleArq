@@ -920,6 +920,8 @@ diagnosed, not worked around. The suite needs no llama.cpp, no models and no
 GPU; tests that open a socket do so on `127.0.0.1` only. Working from a
 checkout is not required to use the installed package.
 
+**CastleArq is developed by [Nicolás Bruna](https://www.nicobrunaf.dev/projects/castlearq/).**
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for
