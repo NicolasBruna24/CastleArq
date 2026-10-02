@@ -2206,3 +2206,400 @@ implementation anchor above is the verified artifact and remains immutable; this
 closure record only attests that the verified implementation has been formally
 closed.
 
+
+---
+
+## 18. B9.82 — Number Allocation Record
+
+`B9.82` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. B9.82 is an allocation only: no implementation,
+verification, or closure is claimed here. This is a future implementation
+block, not completed work.
+
+```text
+Assigned Number:
+  B9.82
+
+Title:
+  Discovery-to-Acquisition Boundary
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — established by the commit that introduces section 18
+  ("docs: allocate roadmap block B9.82").
+
+Corpus/HEAD Anchor:
+  ef452b271ad41c97a47ca508354183aa98373b4c
+  (docs: close B9.81 verification; main == HEAD, four commits ahead of
+  origin/main 64848c7c3e78e876a62883eea6ddf130857bab3e)
+
+Corpus File Count:
+  212 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  git rev-parse HEAD -> ef452b271ad41c97a47ca508354183aa98373b4c
+  git tree object at HEAD -> 35085c28a212b0e2f9c1ce468e784c916479fd10
+  sorted path list SHA-256 ->
+    3af422d3f832d4dbe95f4414d304bb9bdf0f1295cc38cde446c0b2218f92fa50
+  sorted occurrence list SHA-256 ->
+    1ad077e73169a25a29639dc944b0e1eeeb4f2edf715285387cbf20476fea065f
+  identifier-set SHA-256 ->
+    efa732b8d6ec04548cad0700ab9580b64466d2db2ae2be585c5cfc2df213576c
+  mechanism: git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+    | LC_ALL=C sort [-u]; sha256sum over each sorted list
+
+Identifier Set:
+  131 distinct identifiers over 2798 occurrences in 212 versioned files.
+  Main-form identifiers above B9.81 present in the corpus: B9.82 (7
+  occurrences), B9.83 (13), B9.84 (2). Every one of those occurrences lies
+  inside this document, as the section 8 illustration or as rejection
+  evidence recorded in the section 14/15/16/17 candidate lists. Zero files
+  outside this document contain B9.82, B9.83 or B9.84, so none of them is an
+  allocation, a reservation or a proposal. The highest identifier in real
+  use outside this document is B9.81.
+
+Highest Verified Main Block:
+  B9.81 — allocated in section 17 (0a23708), implemented at ef9f9b9,
+  verified and closed at ef452b2 (17.9).
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration
+
+Candidate Numbers Considered:
+  B9.82 — SELECTED (highest verified + 1); its pre-existing occurrences are
+    the section 8 illustration (line 320) and the section 14/15/16/17
+    rejection lists (lines 570, 1010, 1533, 1830, 1861, 1880), none of which
+    is an allocation
+  B9.83, B9.84 — rejected: illustrative examples in section 8 and
+    time-anchored rejection evidence in this document; no allocation and no
+    reservation exists for either
+  B9.80.1, B9.80.2, B9.80.3 and every other sub-block — rejected: sub-blocks
+    do not raise the main-block floor (section 8)
+  Historical gaps (B9.25-B9.28, B9.32-B9.34, B9.38, B9.49, B9.60-B9.65,
+    B9.68-B9.73, B9.75, and every other main number below B9.81 that is not
+    allocated by sections 14-17) — rejected: historical gaps, not reusable
+    under section 9
+  B9.85 and above — rejected: no occurrence of any such identifier exists
+    in the corpus; never considered
+
+Selected Number:
+  B9.82
+
+Validity Reason:
+  B9.81 is the highest verified allocated main block at ef452b2: allocated in
+  section 17, implemented at ef9f9b9, verified and closed at ef452b2 (17.9).
+  No allocated main identifier above B9.81 exists: B9.82-B9.84 occur only as
+  section 8 illustration and as rejection evidence inside this document, and
+  no versioned file outside this document contains them. Sub-blocks never
+  raise the main floor (section 8) and historical gaps are not reusable
+  (section 9). The next main block is therefore B9.82.
+```
+
+### 18.1 Register entry for B9.82
+
+```text
+Block ID:                 B9.82
+Name:                     Discovery-to-Acquisition Boundary
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 18
+Scope:                    see 18.2
+Non-goals:                see 18.3
+Dependencies:             see 18.4
+Architectural Decisions:  see 18.5
+Current State:            ALLOCATED — implementation pending; NOT implemented,
+                           NOT verified, NOT closed
+Acceptance Criteria:      AC1-AC22 — see 18.6 (all PENDING at allocation time)
+Evidence:                 see 18.4 and the prior READ-ONLY B9.82 allocation
+                          and NAR decision audits
+Evidence Type:            DOC
+NAR Decision Reference:   READ-ONLY NAR decision audit preceding this
+                          allocation: O1 = B (identity resolver injected and
+                          required), O2 = C (revision not transported),
+                          O3 = future artifact-domain block, O4 =
+                          AcquisitionMappingError(Exception); recorded in 18.5
+Implementation Commit:    NONE — no production code for B9.82 exists
+Verification Result:      NOT VERIFIED
+Closure Commit:           NONE
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 18
+Retrospective Record:     NO — prospective allocation record
+```
+
+### 18.2 Scope
+
+B9.82 introduces an explicit, pure discovery-to-acquisition boundary: it
+converts the declared L1 output of B9.80/B9.81 into the existing acquisition
+domain type, without performing, planning, persisting or verifying anything.
+
+```text
+ModelDiscovery (B9.80)
+        ↓
+DiscoveredArtifact / ModelVariant (B9.80)
+        ↓
+B9.82 acquisition mapper        <- introduced here; pure, no I/O
+        ↓
+ArtifactSpec (existing, unchanged)
+        ↓
+DownloadPlanner (existing, reused, unchanged)
+        ↓
+DownloadPlan (existing, unchanged)
+```
+
+The mapper may perform:
+
+```text
+- pure translation of one DiscoveredArtifact into one ArtifactSpec, 1:1,
+  preserving input order;
+- declared-metadata preservation (quantization, size, SHA-256, download
+  locator) as DECLARED values, never as verified ones;
+- explicit rejection of artifacts whose identity the caller-supplied
+  resolver cannot supply;
+- translation of mapping failures into AcquisitionMappingError.
+```
+
+The mapper MUST NOT acquire, plan, download, persist or verify anything.
+
+### 18.3 Non-goals
+
+```text
+1.  modifying castlearq/discovery.py;                 2. modifying
+    HuggingFaceDiscoveryProvider;                     3. modifying
+    ModelSource;                                      4. modifying
+    HuggingFaceSource;                                5. migrating the CLI;
+    6. modifying main.py;                             7. modifying
+    model_identity.py;                                8. modifying
+    DownloadPlanner;                                  9. modifying the
+    Downloader;                                      10. modifying
+    ModelStore;                                      11. modifying manifests;
+    12. modifying manifest_migration;                 13. modifying
+    ArtifactSpec;                                    14. introducing an
+    AcquisitionPlan;                                 15. changing the
+    resolve/main download URL contract;              16. transporting
+    revision into ArtifactSpec;                      17. wiring the mapper
+    into production;                                 18. catalog; 19. ranking;
+    20. recommendations;                             21. fuzzy matching;
+    22. GUI;                                         23. admission; 24.
+    execution;                                       25. evaluation; 26.
+    runtime evidence;                                27. refactoring
+    HuggingFaceSource into a shared abstraction.
+```
+
+B9.82 is a **pure translation boundary**, not a migration of the existing
+system. The legacy `ModelSource.discover_artifacts -> list[ArtifactSpec]` path
+and its CLI consumers remain untouched; deprecating them is a separate block.
+
+### 18.4 Dependencies and evidence
+
+```text
+B9.80 — ModelDiscovery, ModelCandidate, ModelVariant, DiscoveredArtifact and
+        DiscoveryError; CLOSED and unchanged; B9.82 implements nothing in the
+        domain and never edits it
+B9.81 — HuggingFaceDiscoveryProvider, sibling of HuggingFaceSource; CLOSED
+        and unchanged; B9.82 consumes its declared output and never imports
+        the provider module
+ArtifactSpec / ArtifactState (castlearq/models.py) — existing acquisition
+        domain type, reused unchanged. It has no revision field and no runtime
+        invariant (no __post_init__); model_id is a required positional str
+        used as a path component by ModelStore._safe_model_id; sha256 is
+        already documented as an integrity DECLARATION, distinct from the
+        computed content_id (B9.67)
+DownloadPlanner / DownloadPlan — existing, reused, never reimplemented. Its
+        _validate_metadata already enforces source, repository, filename,
+        format, the resolve/main URL shape, size and SHA-256, so B9.82 must
+        not duplicate that validation
+model_identity — never imported by B9.82; identity arrives as input
+```
+
+Dependency direction (recorded):
+
+```text
+castlearq.discovery
+        ↓  (types only)
+B9.82 acquisition mapper
+        ↓
+castlearq.models (ArtifactSpec)
+        ↓
+castlearq.downloads.planner (existing, unchanged)
+```
+
+Rejected edges, unchanged from sections 16 and 17:
+
+```text
+discovery → ArtifactSpec
+discovery → DownloadPlanner
+discovery → Downloader
+discovery → ModelStore
+discovery → model_identity
+discovery → admission
+discovery → execution
+```
+
+The mapper imports `castlearq.discovery` (types) and `castlearq.models`
+(`ArtifactSpec`, `ArtifactState`) only. It must import nothing from
+`castlearq.downloads.*`, `castlearq.model_store`, `castlearq.sources.*` or
+`castlearq.model_identity`: importing `castlearq.downloads` or
+`castlearq.sources` today pulls ModelStore and the Hugging Face source into
+the import closure, which is exactly what the mapper must avoid.
+
+### 18.5 Architectural decisions (recorded)
+
+Recorded from the READ-ONLY NAR decision audit that preceded this allocation.
+
+```text
+Decision 1 — identity: injected, required resolver (audit option O1 = B).
+  identity_resolver is a REQUIRED keyword-only callable with no default.
+  The mapper never imports model_identity and never calls logical_model_id()
+  on its own account. It never fabricates an identity: neither model_id=None
+  nor model_id="Unknown" is ever produced. If the resolver returns None or an
+  unsafe identity, the mapping fails explicitly with AcquisitionMappingError.
+  This mirrors the existing injectable model_id_provider of
+  HuggingFaceSource and the importing.py precedent, where the caller supplies
+  identity. Identity resolution is therefore a policy of the caller, not a
+  hidden gate inside discovery and not a hidden gate inside the mapper.
+
+Decision 2 — revision: not transported (audit option O2 = C).
+  DiscoveredArtifact.revision remains declared discovery metadata (B9.81) but
+  is NOT carried into ArtifactSpec by B9.82, and ArtifactSpec is not extended.
+  Evidence: revision has zero consumers in production and tests; it does not
+  participate in artifact_id, in the model store layout, in manifests or in
+  integrity, which is content-hash based (the downloader verifies
+  artifact.sha256 and the store recomputes the digest to derive
+  VERIFIED/FAILED). A revision-pinned URL would additionally be rejected by
+  the existing planner URL contract (resolve/main), which section 17.5
+  decision C forbids changing. The discard is explicit and recorded, never a
+  silent loss.
+
+Decision 3 — revision ownership (audit option O3).
+  Revision-aware acquisition belongs to a FUTURE artifact-domain block, not to
+  B9.82. Such a block would have to change a shared domain type, the manifest
+  read/write path and the download URL contract as one coherent change. No
+  B9.8x identifier is allocated here for it.
+
+Decision 4 — error boundary (audit option O4).
+  AcquisitionMappingError, inheriting directly from Exception, is the single
+  public error of the discovery-to-acquisition boundary, following the
+  existing per-boundary pattern (DiscoveryError, SourceError,
+  ArtifactSelectionError). It is raised only for declared boundary data
+  conditions, chiefly an identity the resolver cannot supply. It does NOT
+  replace DiscoveryError or SourceError, and neither is imported or raised by
+  B9.82. Programming errors remain TypeError/ValueError.
+```
+
+Mapper contract (recorded):
+
+```text
+map_discovered_artifacts(artifacts, *, identity_resolver) -> tuple[ArtifactSpec, ...]
+
+  Input:   ModelVariant or an iterable of DiscoveredArtifact (B9.80 types),
+           plus the required identity_resolver
+  Output:  a 1:1 tuple of ArtifactSpec in input order:
+             model_id      <- identity_resolver(...)
+             source        <- source
+             repository    <- repository
+             filename      <- filename
+             format        <- format
+             quantization  <- declared_quantization   (renamed, value kept)
+             download_url  <- download_url            (declared locator)
+             size_bytes    <- declared_size           (renamed, value kept)
+             sha256        <- declared_sha256         (declaration, not proof)
+             state         <- ArtifactState.NOT_DOWNLOADED
+             content_id    <- None                    (computed later, B9.67)
+  Identity: input, never computed; never fabricated
+  Revision: not transported; the discard is documented at the boundary
+  Metadata: declared semantics preserved; no verified_*, no computed hash,
+            no URL access, no remote existence check, no filesystem access
+  Errors:   TypeError/ValueError for programming errors; AcquisitionMappingError
+            for boundary data conditions; partial metadata (absent
+            size/sha/url) is not an error and is represented as None
+  Purity:   no network, no filesystem, no download, no persistence, no
+            logging, no clock, no global state; deterministic
+  Imports:  castlearq.discovery and castlearq.models only
+```
+
+L1 trust boundary: the mapper translates declared remote metadata into the
+acquisition domain. It never produces verified content, computed digests,
+content identity, local paths, admission verdicts, execution verdicts or
+evaluation verdicts.
+
+### 18.6 Acceptance criteria
+
+Contractual criteria, all PENDING at allocation time (not satisfied by this
+allocation task; only a later implementation can satisfy them):
+
+```text
+AC1  A pure mapper DiscoveredArtifact -> ArtifactSpec exists.
+AC2  The mapping is 1:1 and order-preserving, and deterministic.
+AC3  identity_resolver is required; there is no default identity source.
+AC4  The module never imports castlearq.model_identity.
+AC5  A missing or unsafe identity raises AcquisitionMappingError.
+AC6  No identity is ever fabricated: neither None nor "Unknown".
+AC7  revision never appears in the mapper output.
+AC8  The revision discard is documented at the boundary.
+AC9  Declared metadata is preserved exactly, without value changes.
+AC10 Every produced ArtifactSpec has state == NOT_DOWNLOADED.
+AC11 Every produced ArtifactSpec has content_id is None.
+AC12 Absent size, SHA-256 or download URL are represented as None, not as
+     errors and not as invented values.
+AC13 No verified_* field, claim or verdict is produced.
+AC14 No network access occurs.
+AC15 No filesystem access occurs.
+AC16 No persistence occurs.
+AC17 No import of downloads.*, model_store, sources.* or model_identity.
+AC18 The planner's validations are not duplicated by the mapper.
+AC19 Future integration with DownloadPlanner is verifiable without
+     reimplementing the planner.
+AC20 discovery.py, sources/*, models.py, model_store.py and downloads/*
+     remain unmodified by the implementation commit.
+AC21 The complete repository test suite remains green.
+AC22 git diff --check is clean for the implementation commit.
+```
+
+### 18.7 Implementation surface
+
+Chosen location, recorded at allocation; no files are created by this task:
+
+```text
+castlearq/acquisition_mapping.py
+    pure discovery-to-acquisition mapper; imports castlearq.discovery and
+    castlearq.models only; no downloads.*, model_store, sources.* or
+    model_identity; no network, filesystem or persistence
+
+tests/test_b982_acquisition_mapping.py
+    mapper-specific tests covering at minimum: 1:1 order-preserving mapping;
+    determinism; required identity_resolver; no model_identity import;
+    AcquisitionMappingError on absent/unsafe identity; never fabricating
+    identity; revision absent from output and its discard documented;
+    declared-metadata preservation; state NOT_DOWNLOADED; content_id None;
+    partial metadata as None; absence of verified_*; no network; no
+    filesystem; no persistence; dependency-direction isolation; and
+    verifiable integration with the existing DownloadPlanner
+```
+
+Both files are planned surface only. This allocation creates neither.
+
+### 18.8 Verification and closure expectations
+
+```text
+Verification: PENDING — a later READ-ONLY verification audit against the
+  future implementation commit must evaluate AC1-AC22 and record the result in
+  a new subsection of this section; this allocation performs no verification.
+
+Closure: PENDING — closure requires AC1-AC22 all PASS plus the standard
+  closure record; this allocation creates no closure record and claims no
+  implementation, verification, or closure.
+```
+
+B9.82 is a future implementation block, not completed work. No mapper,
+catalog, CLI, or model-library functionality exists as a result of this
+section. B9.78, B9.79, B9.80 and B9.81 are not modified by this record.
