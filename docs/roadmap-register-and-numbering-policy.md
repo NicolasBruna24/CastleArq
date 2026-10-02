@@ -5075,6 +5075,23 @@ B9.86 = NOT VERIFIED
 B9.86 = NOT CLOSED
 ```
 
+> **SUPERSESSION (added by section 26, Closure Record).** The four lines above
+> state the position **as of section 25 alone** and remain the accurate
+> description of what this NAR did: it allocated a number and nothing more. They
+> are not rewritten by section 26. The current, authoritative state of B9.86 is:
+>
+> ```text
+> B9.86 = ALLOCATED   (this section)
+> B9.86 = IMPLEMENTED  (6cb9e1d8ab9c6f0790210a590ef48dcc11690822)
+> B9.86 = VERIFIED    (section 26.7)
+> B9.86 = CLOSED      (section 26)
+> ```
+>
+> The allocation evidence recorded in this section — the corpus anchor, the
+> corpus integrity digests, the identifier-set disposition, the candidate-number
+> rejections, the approved scope, the non-goals, the approved constraints and the
+> validity reason — is unchanged and is not rewritten by section 26.
+
 ### 25.8 Human approval reference
 
 ```text
@@ -5087,3 +5104,377 @@ IMPLEMENTATION: NOT STARTED
 Implementation is **not** authorized by this record. The next required step is a
 READ-ONLY implementation-design audit; no implementation file, test, surface or
 refactoring is authorized here.
+
+---
+
+## 26. B9.86 — Closure Record
+
+### 26.1 Closure status
+
+B9.86 is formally **CLOSED**. The allocation record (section 25) precedes this
+record and is not rewritten by it; where its status statements are superseded,
+that supersession is stated explicitly as a cross-reference inside section 25
+and recorded here. This section attests that the verified implementation
+exists, was published, and matches the allocated scope exactly.
+
+A READ-ONLY verification audit was performed before this closure and returned
+`READY FOR CLOSURE`. Its findings F1-F5 are dispositioned in 26.9 and none of
+them is blocking.
+
+### 26.2 Implementation identity
+
+```text
+Block ID:
+  B9.86
+
+Name:
+  Application Catalog / Query Boundary
+
+Implementation commit:
+  6cb9e1d8ab9c6f0790210a590ef48dcc11690822
+
+Commit message:
+  feat: implement B9.86 application catalog query boundary
+
+Branch:
+  main
+
+Publication state:
+  pushed to origin/main (HEAD == origin/main at closure time)
+
+Allocation commit:
+  a8be7ae33a477f39eb828bc8b5d9a39e6ec84840
+    ("docs: allocate roadmap block B9.86"; section 25 NAR)
+
+Parent commit:
+  a8be7ae33a477f39eb828bc8b5d9a39e6ec84840  (the section 25 NAR)
+
+Closure commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash,
+  per the two-step mechanism stated in section 11 and used identically by
+  sections 19, 21, 23 and 24. A commit hash cannot be known before the commit
+  exists, and writing a guessed value would be a fabricated identifier.
+```
+
+Committed files, exclusively:
+
+```text
+A  castlearq/catalog_query_service.py       (+204 / -0)
+M  castlearq/application_wiring.py           (+35  / -)  additive composition seam
+A  tests/test_b986_catalog_query_service.py  (+513 / -0)
+```
+
+The implementation commit contains no roadmap change: `docs/` does not appear in
+it. The closure of B9.86 is this separate documentation commit.
+
+### 26.3 Human architectural decision reference
+
+```text
+D1 = A        — the application catalog/query boundary is an architectural layer
+                DISTINCT from Model Library UX
+D2 = APPROVED  — the negative scope and boundary are fixed as recorded in
+                section 25.3 and 25.4
+```
+
+Neither decision was reopened, reinterpreted or amended by the implementation or
+by this closure.
+
+### 26.4 Allocation reference
+
+```text
+Allocation record:      section 25 (B9.86 — Number Allocation Record)
+Allocation commit:      a8be7ae33a477f39eb828bc8b5d9a39e6ec84840
+Allocated scope:        section 25.2
+Allocated non-goals:    section 25.3
+Approved constraints:   section 25.4
+Boundary invariant:     section 25.5
+Preserved records:      section 25.6
+```
+
+### 26.5 Implemented scope
+
+B9.86 implemented exactly the scope allocated in 25.2:
+
+```text
+- application service around ModelDiscovery.search()
+- application result contract
+- application error category
+- cause preservation
+- opaque next_cursor pass-through
+- composition-root wiring
+- focused tests
+```
+
+Realized as:
+
+```text
+castlearq/catalog_query_service.py
+  CatalogQueryErrorCategory(str, Enum)   DISCOVERY_FAILED, INVALID_CURSOR
+  CatalogQueryError(Exception)            .category, .message, .cause, .__cause__
+  CatalogQueryOutcome                     @dataclass(frozen=True)
+                                          candidates, next_cursor
+  ModelCatalogQueryService
+    __init__(discovery_provider: ModelDiscovery)
+    query(query, *, limit=20, cursor=None) -> CatalogQueryOutcome
+
+castlearq/application_wiring.py
+  compose_catalog_query_service(*, discovery_provider: ModelDiscovery | None = None)
+
+tests/test_b986_catalog_query_service.py
+  37 focused tests, local fakes only
+```
+
+The service imports only the discovery **port** plus standard-library
+constructs. It instantiates no provider, builds no collaborator, caches
+nothing, performs no network call and touches no filesystem.
+
+### 26.6 Explicit non-goals
+
+None of the following was implemented. None was partially implemented. None is
+claimed by this record.
+
+```text
+- Model Library UX
+- GUI
+- CLI browse/search surface
+- API catalog endpoint
+- ranking
+- scoring
+- recommendation
+- fuzzy matching
+- query rewriting
+- identity resolution
+- artifact selection
+- quantization selection
+- acquisition
+- ModelSource migration/deprecation
+- ModelStore changes
+- runtime/execution changes
+- evaluation/admission
+- fine-tuning
+- datasets/training
+- distribution/release redesign
+```
+
+No new identifier is created by this closure:
+
+```text
+B9.87:        NOT ALLOCATED
+B9.88+:       NOT ALLOCATED
+Model Library UX:      NOT ALLOCATED
+Model Library GUI:     NOT ALLOCATED
+GUI:                   NOT AUTHORIZED
+```
+
+This closure authorizes none of the capabilities above.
+
+### 26.7 Verification evidence
+
+Verified by a READ-ONLY verification audit executed before this closure, at
+`6cb9e1d8ab9c6f0790210a590ef48dcc11690822` with `HEAD == origin/main` and a
+clean working tree.
+
+```text
+B9.86 focused tests:
+  tests.test_b986_catalog_query_service — 37 passed
+
+B9.80-B9.85 regression:
+  249 passed
+
+Full suite:
+  python3 -m unittest discover -s tests -t . — 2070 passed
+
+Ruff:
+  PASS on both B9.86 new files
+  (castlearq/catalog_query_service.py, tests/test_b986_catalog_query_service.py)
+
+mypy:
+  11 pre-existing errors across 9 unrelated files
+  0 new B9.86 errors
+
+git diff --check:
+  PASS (exit 0)
+
+Working tree:
+  clean
+
+HEAD:
+  6cb9e1d8ab9c6f0790210a590ef48dcc11690822
+
+origin/main:
+  same commit
+```
+
+Closure criteria C1-C10 — allocation compliance, ADR compliance, contract
+correctness, cursor authority, dependency injection, acquisition isolation,
+presentation isolation, regression safety, commit integrity and repository
+integrity — were each evaluated and each returned PASS. No criterion returned
+FAIL. No failure is attributable to B9.86.
+
+The pre-existing mypy errors were **not** fixed by B9.86 and are **not**
+claimed as fixed by this record. The pre-existing Ruff findings in
+`castlearq/application_wiring.py` were **not** fixed and are **not** claimed as
+fixed.
+
+### 26.8 Architectural boundary compliance
+
+B9.86 realizes the dependency direction fixed by the approved ADR:
+
+```text
+ModelDiscovery.search()
+        ↓
+Application Catalog / Query Boundary      (B9.86)
+        ↓
+future presentation layer                 (NOT IMPLEMENTED, NOT AUTHORIZED)
+```
+
+Verified compliance:
+
+```text
+- ModelDiscovery remains the domain port; unchanged by B9.86
+- B9.81 remains the provider and cursor-validation authority
+- B9.86 does not become a presentation surface
+- B9.86 has no production caller, by design
+- acquisition continues to use inspect() and never search()
+- B9.86 does not depend on acquisition in any direction
+- the composition root remains the sole construction boundary
+```
+
+The load-bearing invariant of 25.5 is preserved verbatim:
+
+```text
+Application boundary != Model Library UX
+```
+
+and
+
+```text
+The application catalog/query boundary exposes discovery capability.
+It does not become a product surface.
+```
+
+Preserved closed records, confirmed unchanged by the implementation commit:
+
+```text
+B9.80 discovery domain        unchanged
+B9.81 HF discovery provider   unchanged (cursor authority intact)
+B9.82 acquisition mapping     unchanged
+B9.83 revision-aware acq.     unchanged
+B9.84 discovery selection     unchanged
+B9.85 acquisition boundary    unchanged (ModelSource coexistence preserved)
+ModelSource / HuggingFaceSource / resolver.py / ModelStore   unchanged
+execution boundary and evaluation/admission separation       unchanged
+```
+
+The B9.80 port now has two independent consumers, with no edge between them:
+
+```text
+B9.80 ModelDiscovery
+   |
+   +-- inspect() --> B9.85 Acquisition
+   |
+   +-- search()  --> B9.86 Catalog Query
+                        |
+                        +--> future presentation layer (not implemented)
+```
+
+### 26.9 Findings and disposition
+
+Recorded from the verification audit. None is blocking. None was repaired.
+
+```text
+F1  Pre-existing Ruff findings in castlearq/application_wiring.py
+    (I001, UP035, UP017)
+    -> PRE-EXISTING / OUT-OF-SCOPE
+    Identical at the pre-change baseline. Not repaired by B9.86 and not
+    repaired by this closure.
+
+F2  11 pre-existing mypy errors across 9 unrelated files
+    -> PRE-EXISTING / OUT-OF-SCOPE
+    Zero errors in B9.86 scope. Not repaired and not claimed as fixed.
+
+F3  _category() derives INVALID_CURSOR from the message text of an
+    already-raised, provider-originated DiscoveryError
+    -> ACCEPTED NON-BLOCKING CHARACTERISTIC
+    B9.86 does NOT validate the cursor. B9.81 remains the validation
+    authority and still performs all cursor decoding, syntax checks and
+    pagination rules. B9.86 only classifies an error that has already been
+    raised: it never receives the cursor value, never decodes or parses it,
+    and cannot manufacture a cursor error of its own. The classification is
+    a labeling of an already-known domain failure, not a second authority.
+    It cannot accept an invalid cursor, because the provider already
+    rejected it, and cannot reject a valid one, because the provider would
+    not have raised. Recorded as a characteristic of the boundary, not as a
+    defect, and not repaired.
+
+F4  application_wiring.__all__ does not include compose_catalog_query_service
+    -> PRE-EXISTING / OUT-OF-SCOPE
+    The same omission already applies to compose_acquisition_service from
+    B9.85. The function is reachable by direct import. Not repaired.
+
+F5  No production caller exists for B9.86
+    -> INTENTIONAL / OUT-OF-SCOPE BY DESIGN
+    Section 25.3 excludes every presentation surface. The absence is a
+    consequence of the approved scope, not a gap. No caller was added.
+```
+
+### 26.10 Repository state
+
+```text
+Implementation commit published successfully:  YES
+HEAD == origin/main at implementation time:     YES
+                        both 6cb9e1d8ab9c6f0790210a590ef48dcc11690822
+Implementation files remaining modified:       none
+Production code changed by the closure:        none
+Tests changed by the closure:                   none
+Generated files added:                          none
+```
+
+The implementation commit is the verified artifact and remains immutable; it is
+never rewritten or amended. This closure record only attests that it has been
+formally closed. Only
+`docs/roadmap-register-and-numbering-policy.md` is modified by the closure
+commit.
+
+### 26.11 State transition and history preservation
+
+Section 25 records the state of B9.86 **at allocation time** and is not
+rewritten. Those statements remain accurate for their own anchor:
+
+```text
+ORIGINAL ALLOCATION STATE (section 25, preserved):
+  B9.86 = ALLOCATED
+  B9.86 = NOT IMPLEMENTED
+  B9.86 = NOT VERIFIED
+  B9.86 = NOT CLOSED
+
+CURRENT CLOSURE STATE (this section, authoritative):
+  B9.86 = ALLOCATED     (section 25 NAR)
+  B9.86 = IMPLEMENTED    (6cb9e1d8ab9c6f0790210a590ef48dcc11690822)
+  B9.86 = VERIFIED       (section 26.7)
+  B9.86 = CLOSED         (this section)
+```
+
+B9.86 was not allocated as CLOSED, and no historical record has been rewritten
+to suggest that it was.
+
+### 26.12 Closure authorization
+
+```text
+B9.86 STATUS: CLOSED
+B9.86 IMPLEMENTATION: COMPLETE
+B9.86 VERIFICATION: COMPLETE
+B9.86 PUBLICATION: COMPLETE
+B9.86 CLOSURE: COMPLETE
+
+B9.87+: NOT ALLOCATED
+Model Library UX: NOT ALLOCATED
+Model Library GUI: NOT ALLOCATED
+GUI: NOT AUTHORIZED
+```
+
+The approved decisions D1 and D2 recorded in 25.2 were realized exactly as
+decided: an application-layer catalog/query boundary distinct from Model Library
+UX, with the negative scope fixed by the allocation. Neither was reopened,
+reinterpreted or amended. This closure allocates no successor identifier and
+authorizes no future capability.
