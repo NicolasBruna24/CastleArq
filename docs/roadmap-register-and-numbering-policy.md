@@ -2213,9 +2213,12 @@ closed.
 
 `B9.82` is allocated as the next main block under §6, on the evidence of a §7
 corpus inspection performed at allocation time. This section is the §11 record
-for that assignment. B9.82 is an allocation only: no implementation,
-verification, or closure is claimed here. This is a future implementation
-block, not completed work.
+for that assignment. At allocation time B9.82 was an allocation only: no
+implementation, verification, or closure was claimed by this section. The block
+has since been implemented, independently verified and formally closed; the
+authoritative state is the register entry in §18.1 and the verification and
+closure record in §18.9. The allocation-time facts recorded in this section are
+preserved unchanged as historical evidence.
 
 ```text
 Assigned Number:
@@ -2228,7 +2231,7 @@ Allocation Date:
   2026-10-02
 
 Allocation Commit:
-  PENDING — established by the commit that introduces section 18
+  a3f4d3e9e0e3ebb5fd7b335b58920b905db348b6
   ("docs: allocate roadmap block B9.82").
 
 Corpus/HEAD Anchor:
@@ -2309,26 +2312,30 @@ Validity Reason:
 ```text
 Block ID:                 B9.82
 Name:                     Discovery-to-Acquisition Boundary
-Status:                   DOCUMENTED, ALLOCATED
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED
 Origin:                   this document, section 18
 Scope:                    see 18.2
 Non-goals:                see 18.3
 Dependencies:             see 18.4
 Architectural Decisions:  see 18.5
-Current State:            ALLOCATED — implementation pending; NOT implemented,
-                           NOT verified, NOT closed
-Acceptance Criteria:      AC1-AC22 — see 18.6 (all PENDING at allocation time)
-Evidence:                 see 18.4 and the prior READ-ONLY B9.82 allocation
-                          and NAR decision audits
+Current State:            CLOSED — implemented, independently verified and
+                           formally closed; authoritative closure record in 18.9
+Acceptance Criteria:      AC1-AC22 — see 18.6; all PASS, recorded in 18.9
+Evidence:                 see 18.4, the prior READ-ONLY B9.82 allocation and
+                          NAR decision audits, and 18.9
 Evidence Type:            DOC
 NAR Decision Reference:   READ-ONLY NAR decision audit preceding this
                           allocation: O1 = B (identity resolver injected and
                           required), O2 = C (revision not transported),
                           O3 = future artifact-domain block, O4 =
                           AcquisitionMappingError(Exception); recorded in 18.5
-Implementation Commit:    NONE — no production code for B9.82 exists
-Verification Result:      NOT VERIFIED
-Closure Commit:           NONE
+Implementation Commit:    14adcb5fe5dfbd8474b5606fbed688d65866ed2e
+                          ("feat: implement B9.82 discovery acquisition boundary")
+Verification Result:      B9.82 VERIFIED — READ-ONLY audit against the
+                          implementation commit; see 18.9
+Closure Commit:           recorded by the commit that introduces the closure
+                          record in 18.9
+                          ("docs: close roadmap block B9.82")
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
@@ -2591,15 +2598,87 @@ Both files are planned surface only. This allocation creates neither.
 ### 18.8 Verification and closure expectations
 
 ```text
-Verification: PENDING — a later READ-ONLY verification audit against the
-  future implementation commit must evaluate AC1-AC22 and record the result in
-  a new subsection of this section; this allocation performs no verification.
+Verification: COMPLETED — the READ-ONLY verification audit required by this
+  section was performed against the B9.82 implementation commit and evaluated
+  AC1-AC22; the result is recorded in 18.9. This allocation section performed
+  no verification of its own.
 
-Closure: PENDING — closure requires AC1-AC22 all PASS plus the standard
-  closure record; this allocation creates no closure record and claims no
-  implementation, verification, or closure.
+Closure: COMPLETED — AC1-AC22 all PASS and the standard closure record is
+  18.9. B9.82 is CLOSED.
 ```
 
-B9.82 is a future implementation block, not completed work. No mapper,
-catalog, CLI, or model-library functionality exists as a result of this
-section. B9.78, B9.79, B9.80 and B9.81 are not modified by this record.
+B9.82 is a completed block: the discovery-to-acquisition mapper and its tests
+exist, as recorded in §18.9. No catalog, CLI, or model-library functionality
+was introduced by this block. B9.78, B9.79, B9.80 and B9.81 are not modified
+by this record.
+
+### 18.9 Verification and closure record
+
+READ-ONLY verification audit of the implementation commit
+`14adcb5fe5dfbd8474b5606fbed688d65866ed2e`
+("feat: implement B9.82 discovery acquisition boundary").
+
+```text
+Verification Result:
+  B9.82 VERIFIED
+
+Implementation Commit (verified contents — immutable, never rewritten):
+  14adcb5fe5dfbd8474b5606fbed688d65866ed2e
+
+Committed Files (exclusively; exactly two new files):
+  castlearq/acquisition_mapping.py          (new, 175 lines)
+  tests/test_b982_acquisition_mapping.py    (new, 586 lines)
+
+Verification Scope (established against production behavior, not merely
+against the presence of tests):
+  - map_discovered_artifacts(artifacts, *, identity_resolver) is the only
+    entry point; identity_resolver is keyword-only, has no default, and is
+    the sole source of model_id (AC1, AC3)
+  - the mapping is 1:1, order-preserving and deterministic (AC2)
+  - the module imports castlearq.discovery and castlearq.models only; a fresh
+    interpreter that loads it pulls exactly castlearq, castlearq.discovery,
+    castlearq.models and castlearq.acquisition_mapping; no downloads.*,
+    model_store, sources.* or model_identity is reachable (AC4, AC17)
+  - a missing, non-string or unsafe identity raises AcquisitionMappingError;
+    ".", "..", absolute paths, ".." segments, non-strings and None are all
+    rejected, and no identity is ever fabricated (AC5, AC6)
+  - revision is not transported: ArtifactSpec has no revision field, the
+    declared value is absent from the output, resolve/main is unchanged, and
+    the discard is documented at the boundary (AC7, AC8)
+  - declared quantization, size, SHA-256, locator and provenance are preserved
+    exactly; state is NOT_DOWNLOADED, content_id is None, absent metadata stays
+    None, and no verified_* field or claim is produced (AC9-AC13)
+  - a real mapping triggered no external effect: socket, builtins.open,
+    pathlib writers, urllib, ModelStore entry points and DownloadPlanner were
+    all intercepted and none was called (AC14-AC17)
+  - the planner's validations are not duplicated and the planner is never
+    executed, while the produced ArtifactSpec is accepted by the real
+    DownloadPlanner; "compatible with the planner" and "executes the planner"
+    were verified as separate facts (AC18, AC19)
+  - discovery.py, sources/*, models.py, model_store.py and downloads/* are
+    unmodified by the implementation commit (AC20)
+
+Test Sensitivity:
+  14 of 14 meaningful in-memory mutations were detected by the B9.82 suite:
+  identity fallback, unsafe identity accepted, computed content_id, promoted
+  state, hardcoded quantization, size invented from absent metadata, reversed
+  order, TypeError converted into AcquisitionMappingError, memoized resolver,
+  ignored resolver, dropped sha256, fabricated download URL.
+
+Regression Result:
+  1977 passed / 2672 subtests passed / 0 failed / 0 errors
+  (B9.82 tests: 56 passed; pre-existing tests: 1921 passed)
+  ruff check on both new files: all checks passed
+  git diff --check: clean
+
+Acceptance Criteria:
+  AC1-AC22 all PASS.
+```
+
+B9.82 is **CLOSED**. No B9.82.x sub-block is assigned, no new identifier is
+allocated here, and B9.78, B9.79, B9.80 and B9.81 are not modified by this
+record. The highest verified main block is now B9.82; any next main assignment
+is computed by the section 6 and section 7 procedure and is deliberately not
+made in this record. The implementation commit above is the verified artifact
+and remains immutable; this closure record only attests that the verified
+implementation has been formally closed.
