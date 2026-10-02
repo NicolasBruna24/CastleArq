@@ -83,6 +83,7 @@ import subprocess
 from typing import Callable, Sequence
 
 from .acquisition_service import ModelAcquisitionService
+from .catalog_query_service import ModelCatalogQueryService
 from .discovery import ModelDiscovery
 from .downloads.downloader import Downloader
 from .downloads.planner import DownloadPlanner
@@ -352,4 +353,38 @@ def compose_acquisition_service(
         downloader=downloader,
         store=store,
         locator_audit=source_repositories_for_logical_model,
+    )
+# ----------------------------------------------------------------------
+# Catalog / query composition (B9.86: application boundary, no surface)
+# ----------------------------------------------------------------------
+
+def compose_catalog_query_service(
+    *,
+    discovery_provider: ModelDiscovery | None = None,
+) -> ModelCatalogQueryService:
+    """Compose the B9.86 ``ModelCatalogQueryService`` from real collaborators.
+
+    This is the composition point for the catalog/query use case, in the same
+    spirit as ``compose_acquisition_service`` for the download use case.
+
+    One call is ONE service instance. The service is never cached between
+    invocations and holds no state: every ``query()`` call is one discovery
+    round-trip.
+
+    Scope (B9.86 section 25): this function wires an application boundary and
+    nothing else. It authorizes no CLI command, no API endpoint, no GUI and no
+    Model Library surface. B9.86 is deliberately allocated without a production
+    caller; that absence is a consequence of the approved scope, not a gap.
+
+    The service never instantiates a provider: it receives the injected
+    ``ModelDiscovery`` collaborator and imports only the port. No second
+    dependency-injection mechanism is introduced; collaborators are passed
+    explicitly, exactly as for the acquisition and execute use cases.
+    """
+    return ModelCatalogQueryService(
+        discovery_provider=(
+            discovery_provider
+            if discovery_provider is not None
+            else HuggingFaceDiscoveryProvider()
+        ),
     )
