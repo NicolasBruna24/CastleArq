@@ -164,7 +164,7 @@ rationale or acceptance criterion.
 | B9.76.5 | `--json` for SHOULD-surface commands | IMPLEMENTED, RETROSPECTIVE | `fb1f67dc8ed53a6c60033c86892f270bfdd49137` | **v0.4.0** | NO | TEST + SRC |
 | B9.77 | *(scope not recoverable — see §5)* | IMPLEMENTED, RETROSPECTIVE | `2f9464ce860d6576b9ab528bb82b3d26295d8c92` | **v0.4.0** | NO | TEST |
 | B9.78 | Legacy Admission Cutover | IMPLEMENTED, DOCUMENTED, ALLOCATED (§14) | implementation `8955fc6d91745ef3685fff00c6c8a6b03ac9a28e` (§14.1 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
-| B9.79 | Runtime Artifact Evidence — Pre-Admission | DOCUMENTED, ALLOCATED (§15) | allocation PENDING (§15 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
+| B9.79 | Runtime Artifact Evidence — Pre-Admission | DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED (§15) | implementation 5f781e4674226492adeedb632097a503ef983d8d (§15.1 is authoritative) | NOT YET DEFINED | YES (this document) | DOC |
 
 ### 4.0.1 Excluded from the register
 
@@ -467,7 +467,7 @@ may be assigned only after this field names a real commit.
 ## 12. Current allocation state
 
 ```text
-B9.78 = FORMALLY ALLOCATED — see section 14
+B9.78 = IMPLEMENTED — see section 14 (14.1, 14.5, 14.7.2)
 B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
 B9.80 = VERIFIED AND CLOSED — see section 16 (16.6, 16.7)
 ```
@@ -504,7 +504,7 @@ It does not retroactively reinterpret the allocation of B9.59.
 It does not define what B9.78 will contain.
 ```
 
-The allocations this document performs are `B9.78` (§14) and `B9.79` (§15).
+The allocations this document performs are `B9.78` (§14), `B9.79` (§15), and `B9.80` (§16).
 
 ---
 
