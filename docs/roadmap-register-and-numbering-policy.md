@@ -4684,3 +4684,406 @@ coexistence; D6 production integration through `cmd_download`; D7 dedicated
 application acquisition result; D8 scope limited to application acquisition
 orchestration and its real production integration. None was reopened,
 reinterpreted or amended.
+
+---
+
+## 25. B9.86 — Number Allocation Record
+
+`B9.86` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. At allocation time B9.86 is **an allocation only**: no
+implementation, no verification and no closure is claimed by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by a Human
+Architectural Decision Record that the project owner approved, preceded by a
+READ-ONLY roadmap allocation audit and a READ-ONLY Human Architectural Decision
+Audit. This section allocates the number that carries that scope; it does not
+widen, reinterpret or extend it.
+
+```text
+Assigned Number:
+  B9.86
+
+Title:
+  Application Catalog / Query Boundary
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash.
+
+  Recorded by the two-step mechanism already stated in section 11 for the
+  numbering policy activation anchor and used identically by sections 19, 21
+  and 23: at authoring time the hash did not exist and the field read "PENDING
+  — fixed by the next controlled commit that sets it to that hash"; a commit
+  hash cannot be known before the commit exists, and writing a guessed value
+  would be a fabricated identifier. The allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 24 — B9.85 Closure Record
+Section for this allocation:
+  section 25 — this record
+
+Corpus/HEAD Anchor:
+  c2eeb44cc31c9e605c5f877e6e62009002978c5b
+  ("docs: close roadmap block B9.85"; main == HEAD == origin/main, working tree
+  clean)
+
+Tree object at anchor:
+  b7c22c316d30191fee98a75d07b32bd58cdec098
+
+Branch:
+  main
+
+Working tree at anchor:
+  clean (no staged, modified or untracked files)
+
+Corpus File Count:
+  219 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  corpus integrity digest SHA-256 ->
+    680614800a94e841fd4dc1b9a12c9a36fb88385d590e2601ee42b86ecf5ac66d
+  identifier-set SHA-256 ->
+    ae6fe6b2498003e25a5d85f51fc9299d021a4d44fb96d929d268b60e21247e1a
+  identifier set: 135 distinct identifiers
+  mechanism:
+    git ls-tree -r HEAD --format='%(objectname)  %(path)' | sha256sum
+      -> corpus integrity digest
+    git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+      | LC_ALL=C sort -u | sha256sum
+      -> identifier-set digest
+
+Identifier Set:
+  Highest main identifier in real use: B9.85 (section 23 NAR, section 24
+  closure; implementation commit f2540dd022d1a3eb4ef2470265c25ac93d04a41f,
+  which is an ancestor of origin/main).
+  B9.86 — 9 occurrences before this record, every one of them inside this
+    document and every one of them a recorded rejection or an explicit
+    non-allocation statement: lines 3692, 3721, 4186, 4346, 4436, 4454, 4633
+    and 4656.
+    `git ls-files -z | xargs -0 grep -lnE 'B9\.8[67]'` returned exactly one
+    path: this document. Zero occurrences existed in castlearq/, tests/,
+    config/, .github/, README.md, pyproject.toml or any other versioned file.
+    Classification at this anchor: recorded rejection or explicit
+    non-allocation. None was an allocation, reservation, proposal, provisional
+    assignment or implementation/test label.
+  B9.87 and above — 1 occurrence (line 4347, "B9.87+: NOT ALLOCATED").
+    No allocation or reservation exists for any of them.
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.86.x sub-block
+    is assigned by this record.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+    v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+    no commit outside this document's history introduces a B9.86 allocation.
+    No competing, competing-pending or conflicting identifier was found.
+
+Preceding Block:
+  B9.85 — Application Acquisition Boundary + cmd_download Integration
+
+Preceding Block Status:
+  ALLOCATED (section 23), IMPLEMENTED (f2540dd), CLOSED (section 24),
+  published on origin/main
+
+Highest Verified Allocation:
+  B9.85
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Allocation Rule Applied:
+  highest_verified_allocated_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+  Human Architectural Decision Record and a READ-ONLY allocation audit
+
+Candidate Numbers Considered:
+  B9.86 — SELECTED. It is the integer immediately following the highest main
+    block already assigned and verified in the activation corpus (section 6).
+  B9.87 — CONSIDERED AND DECLINED. Section 6 requires the integer immediately
+    following the highest verified block; selecting 87 would leave 86
+    permanently unused and would contradict the prospective monotonic rule.
+  B9.88 and above — CONSIDERED AND DECLINED, for the same reason: each would
+    introduce a gap above the highest verified block.
+  B9.85.x and every other sub-block — CONSIDERED AND DECLINED. Section 6 states
+    that only integers of the form B9.x raise the floor; sub-blocks do not
+    raise the floor.
+  Any lower or gap-filling identifier (for example B9.17 or B9.86x) —
+    CONSIDERED AND DECLINED. Section 6 fixes the floor at the highest VERIFIED
+    allocated identifier, not at the first unused identifier.
+
+Selected Number:
+  B9.86
+
+Validity Reason:
+  B9.85 is the highest main block assigned and verified in the activation
+  corpus at the anchor recorded above. B9.86 is the integer immediately
+  following it, as section 6 requires. Every pre-existing occurrence of B9.86
+  in the corpus is a recorded rejection or an explicit non-allocation, so no
+  competing allocation exists. The number is therefore valid under the active
+  rule.
+
+Release Association:
+  NOT YET DEFINED
+
+Supersession:
+  none
+
+Documented?:
+  YES — this document
+
+Number Allocation Record:
+  PRESENT — section 25
+
+Retrospective Record:
+  NO — prospective allocation record
+
+Human decisions pending:
+  none — D1 and D2 both APPROVED
+```
+
+### 25.1 Register entry for B9.86
+
+```text
+Block ID:                 B9.86
+Name:                     Application Catalog / Query Boundary
+Status:                   ALLOCATED
+Origin:                   this document, section 25 (NAR)
+Scope:                    see 25.2 — approved by the ADR
+Non-goals:                see 25.3
+Architectural decision:   approved Human Architectural Decision Record
+                          (D1 = A, D2 = APPROVED), preceding this allocation
+Current State:            ALLOCATED — allocated by section 25
+Implementation Commit:    NONE — NOT IMPLEMENTED
+Verification Result:      NONE — NOT VERIFIED
+Closure Commit:           NONE — NOT CLOSED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 25
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none — D1 and D2 both APPROVED
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.86 = ALLOCATED
+B9.86 = NOT IMPLEMENTED
+B9.86 = NOT VERIFIED
+B9.86 = NOT CLOSED
+```
+
+> **SUPERSESSION NOTE.** Earlier records in this document state that B9.86 is
+> not allocated (section 23.5 line 4346, line 4347 for B9.87+, section 24.6
+> line 4633, and the recorded rejections at lines 3692, 3721, 4186, 4436 and
+> 4454). Those statements remain the accurate description of the corpus **at
+> their own anchors** and are **not** rewritten by this section. The current,
+> authoritative state of B9.86 is the one asserted above. The allocation
+> evidence recorded in earlier sections is unchanged.
+
+### 25.2 Scope attached to this allocation
+
+The scope was fixed by the approved ADR and is recorded here without
+reinterpretation.
+
+```text
+Application Catalog / Query Boundary
+```
+
+**Architectural purpose, as approved:**
+
+```text
+Introduce the application-level consumer boundary for
+ModelDiscovery.search(), providing an application contract
+for remote model candidates and opaque pagination without
+introducing any user-facing Model Library surface.
+```
+
+**Included:**
+
+```text
+- application service around ModelDiscovery.search()
+- application result contract
+- application error category
+- cause preservation
+- opaque next_cursor pass-through
+- composition-root wiring
+- focused tests
+```
+
+The approved architectural decisions carried by this allocation, recorded here
+for traceability and not restated as a re-decision:
+
+```text
+D1 = A       — the application catalog/query boundary is an architectural
+               layer DISTINCT from Model Library UX
+D2 = APPROVED — the negative scope and boundary are fixed as recorded in
+               25.3 and 25.4
+```
+
+**The intended dependency, as approved:**
+
+```text
+ModelDiscovery.search()
+        ↓
+Application Catalog / Query Boundary
+        ↓
+application result
+    ├── candidates
+    └── opaque next_cursor
+```
+
+**No presentation layer is authorized by this allocation.**
+
+### 25.3 Non-goals
+
+The scope was fixed by the approved ADR and is recorded here without
+reinterpretation.
+
+```text
+- Model Library UX
+- GUI
+- CLI browse/search command
+- API endpoint
+- ranking/scoring/recommendation
+- fuzzy matching
+- identity resolution
+- artifact selection
+- acquisition
+- ModelSource migration/deprecation
+- ModelStore changes
+- runtime/execution
+- evaluation/admission
+- fine-tuning
+- distribution/release redesign
+```
+
+These non-goals are carried forward unchanged from the closing record of B9.85
+(section 24.6), each of which remains in force independently of this
+allocation. This allocation does not authorize any of them, and does not open,
+reserve, imply or provisionally assign an identifier for any of them.
+
+### 25.4 Architectural constraints approved with this allocation
+
+Persisted without expansion or reinterpretation.
+
+```text
+- Inject ModelDiscovery as collaborator.
+- Invoke search() exactly once per application call.
+- Pass query, limit and cursor unchanged.
+- Preserve ModelCandidate metadata losslessly.
+- Preserve next_cursor verbatim and opaque.
+- Translate discovery failures to an application-level error category.
+- Preserve original cause and __cause__.
+- No blanket exception handling.
+- TypeError / ValueError caller-contract violations propagate.
+- Construct the service only through application_wiring.
+- No provider construction inside the service.
+- No caching.
+- No sorting.
+- No scoring.
+- No ranking.
+- No recommendation.
+- No persistence.
+- No network outside the injected provider.
+- Independent of ModelAcquisitionService.
+```
+
+### 25.5 Architectural boundary preserved by this allocation
+
+This allocation exists to separate the application layer from the product
+surface. The following distinction is normative and is recorded here so that no
+later record can silently collapse the two layers:
+
+```text
+Application boundary ≠ Model Library UX
+```
+
+The architectural invariant, as approved:
+
+```text
+The application catalog/query boundary exposes discovery capability.
+It does not become a product surface.
+```
+
+Consequences that are fixed by this allocation:
+
+- the boundary owns no screen, no command, no endpoint, no transport and no
+  persisted state;
+- Model Library / UX / GUI remains **NOT ALLOCATED** and **NOT AUTHORIZED**;
+- a future block requiring any presentation mechanism is a different block and
+  requires its own architectural decision;
+- B9.85's `ModelSource` coexistence (D5) is preserved: `ModelSource`,
+  `HuggingFaceSource`, `artifact_selection.select_artifact()` and `resolver.py`
+  are untouched, and the unnamed "separate block" for legacy source convergence
+  recorded in sections 18.3 and 19.3 remains unclaimed by this allocation;
+- B9.85's invariant that the acquisition service never calls `search()` remains
+  in force and is structurally guaranteed by section 25.3.
+
+### 25.6 Preservation of closed records
+
+This allocation changes no closed record. It is fixed by the following, all of
+which it consumes as-is:
+
+```text
+B9.80 — discovery domain; consumed as-is. No field, type or port change.
+        Identity stays out of L1 data.
+B9.81 — Hugging Face discovery provider; used as the injected discovery
+        collaborator, consumed as-is. Its cursor encoding, validation and
+        metadata-only constraint remain its sole ownership.
+B9.82 — acquisition mapping; untouched.
+B9.83 — revision-aware acquisition; untouched. OD-1 remains immutable.
+B9.84 — deterministic discovery-domain selection; untouched. Its four failure
+        categories remain distinguishable and `select_artifact()` is not
+        refactored into a shared abstraction.
+B9.85 — application acquisition boundary; untouched. Its error precedent,
+        result-contract pattern and composition-root discipline are followed,
+        not modified.
+```
+
+Architectural invariants carried by this allocation:
+
+```text
+ 1. Domain contracts remain unchanged; B9.86 consumes B9.80-B9.85.
+ 2. Identity remains outside discovery metadata and outside this boundary.
+ 3. Selection remains deterministic; no ranking, scoring, fuzzy matching or
+    recommendation is introduced.
+ 4. The application result is independent of any presentation.
+ 5. Evaluation and admission separation is not reopened.
+ 6. The legacy source architecture remains operational and is not retired,
+    deprecated or migrated by this allocation.
+ 7. No user-facing surface is created by this allocation.
+```
+
+### 25.7 Allocation versus implementation state
+
+The distinction is explicit and is not implied anywhere in this record:
+
+```text
+B9.86 = ALLOCATED
+B9.86 = NOT IMPLEMENTED
+B9.86 = NOT VERIFIED
+B9.86 = NOT CLOSED
+```
+
+### 25.8 Human approval reference
+
+```text
+ADR STATUS: APPROVED
+ARCHITECTURAL SCOPE: APPROVED
+NUMBER ALLOCATION: APPROVED BY THIS NAR
+IMPLEMENTATION: NOT STARTED
+```
+
+Implementation is **not** authorized by this record. The next required step is a
+READ-ONLY implementation-design audit; no implementation file, test, surface or
+refactoring is authorized here.
