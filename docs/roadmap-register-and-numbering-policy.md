@@ -1775,4 +1775,354 @@ formally closed; it does not replace the implementation anchor. B9.80 is
 **CLOSED**. No B9.80.x sub-block is assigned, and no B9.81 or any other
 identifier is allocated here.
 
+---
+
+## 17. B9.81 — Number Allocation Record
+
+`B9.81` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. B9.81 is an allocation only: no implementation,
+verification, or closure is claimed here. This is a future implementation
+block, not completed work.
+
+```text
+Assigned Number:
+  B9.81
+
+Title:
+  Hugging Face Discovery Provider
+
+Allocation Date:
+  2026-10-01
+
+Allocation Commit:
+  PENDING — established by the commit that introduces section 17
+  ("docs: allocate roadmap block B9.81").
+
+Corpus/HEAD Anchor:
+  64848c7c3e78e876a62883eea6ddf130857bab3e
+  (docs: correct roadmap consistency records; main == origin/main)
+
+Corpus File Count:
+  210 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  git rev-parse HEAD -> 64848c7c3e78e876a62883eea6ddf130857bab3e
+  git rev-parse origin/main -> 64848c7c3e78e876a62883eea6ddf130857bab3e
+  git status --porcelain=v1 --branch -> clean, main == origin/main
+  git tree object at HEAD -> 0ff620257ecb6aecaf349bd5c3567ed299852763
+  sorted path list SHA-256 ->
+    1491b101ea4e469f85b455a74703ef2198f51720194ea8e9597f0dde61170c52
+  sorted occurrence list SHA-256 ->
+    eaa1e59d37b459f35a4fb2fb6be347850ba013a2fe05d77176c82e376e9e9023
+  identifier-set SHA-256 ->
+    29e6a7c946e1b85674f8602d0a842be793fb4a704735a89c92be05b9c63ddbf7
+  mechanism: git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+  | LC_ALL=C sort [-u]; sha256sum over each sorted list
+
+Identifier Set:
+  130 distinct identifiers over 2700 occurrences in 210 versioned files:
+  83 main-form and 47 sub-form (B9.6.0/.1, B9.46.1-.29, B9.57.1-.8,
+  B9.76.1-.5, B9.80.1-.3). The highest main-form string in the corpus is
+  B9.83; every occurrence of B9.81, B9.82, B9.83 and B9.80.1-B9.80.3 lies
+  inside this document (section 8 illustration, sections 14/15/16
+  rejection lists, section 16 negative assertions). Zero files outside
+  this document contain B9.81-B9.84. The highest identifier in real use
+  outside this document is B9.80.
+
+Highest Verified Main Block:
+  B9.80 — allocated in section 16 (67459f8), implemented at 389f390,
+  verified and closed at d49a909 and 64848c7 (16.6, 16.7).
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled Cline corpus inspection + formal registration
+
+Candidate Numbers Considered:
+  B9.81 — SELECTED (highest verified + 1); its corpus occurrences are the
+    section 8 illustration, the sections 14/15/16 rejection lists, and the
+    section 16 "not allocated here" assertions — none of which is an
+    allocation; this section 17 is the sole normative allocation of B9.81
+  Historical gaps (B9.25-B9.28, B9.32-B9.34, B9.38, B9.49, B9.60-B9.65,
+    B9.68-B9.73, B9.75, and every other main number below B9.80 that is
+    not allocated by sections 14-16) — rejected: historical gaps, not
+    reusable under section 9
+  B9.80.1, B9.80.2, B9.80.3 — rejected: example sub-blocks (section 8)
+  B9.76.1-B9.76.5, B9.57.4 — rejected: real sub-blocks; a sub-block does
+    not advance the main floor (section 8)
+  B9.82, B9.83 — rejected: illustrative examples in section 8, not
+    allocations
+  B9.84 and above — rejected: no occurrence of any such identifier exists
+    in the corpus; never considered by any prior record
+
+Selected Number:
+  B9.81
+
+Validity Reason:
+  B9.80 is the highest verified allocated main block at 64848c7: allocated
+  in section 16, implemented at 389f390, verified and closed at d49a909
+  and 64848c7 (16.6, 16.7). The next main block is therefore B9.81. No
+  allocated main identifier above B9.80 was found: B9.81-B9.83 and
+  B9.80.1-B9.80.3 occur only as the section 8 illustrative hierarchy,
+  rejection lists in sections 14/15/16, or section 16 negative assertions
+  scoped to section 16. Sub-blocks never raise the main floor (section 8)
+  and historical gaps are not reusable (section 9).
+```
+
+**Illustrative-reference note.** The `B9.81`/`B9.82`/`B9.83` occurrences in
+section 8 and the rejection lists in sections 14-16 remain valid as abstract
+hierarchy illustrations and as time-anchored negative evidence for their
+respective allocation-time corpora. They are not modified by this assignment;
+this section 17 is the sole normative allocation of `B9.81`. No `B9.80.x`
+sub-block is assigned here.
+
+### 17.1 Register entry for B9.81
+
+```text
+Block ID:                 B9.81
+Name:                     Hugging Face Discovery Provider
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 17
+Scope:                    see 17.2
+Non-goals:                see 17.3
+Dependencies:             see 17.4
+Architectural Decisions:  see 17.5
+Current State:            ALLOCATED — implementation pending; NOT implemented,
+                          NOT verified, NOT closed
+Acceptance Criteria:      AC1-AC15 — see 17.6 (all PENDING at allocation time)
+Evidence:                 see 17.4 and prior READ-ONLY discovery audits
+Evidence Type:            DOC
+Implementation Commit:    NONE — no production code for B9.81 exists
+Verification Result:      NOT VERIFIED
+Closure Commit:           NONE
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 17
+Retrospective Record:     NO — prospective allocation record
+```
+
+### 17.2 Scope
+
+B9.81 introduces a concrete Hugging Face discovery provider implementing the
+CLOSED `ModelDiscovery` domain contract of B9.80, turning remote public
+metadata into search and inspection results, without acquiring, persisting,
+admitting, or executing anything.
+
+```text
+Hugging Face public metadata API
+            ↓
+HuggingFaceDiscoveryProvider
+            ↓
+ModelDiscovery            (B9.80 — CLOSED, unchanged)
+            ↓
+ModelCandidate
+ModelVariant
+DiscoveredArtifact
+```
+
+The provider may perform:
+
+```text
+- repository search (query, limit, opaque cursor translation);
+- repository inspection;
+- GGUF artifact discovery without downloading artifact content;
+- declared quantization extraction (declared only, never verified);
+- declared metadata extraction (declared size, declared SHA-256 where
+  available);
+- remote revision/reference extraction as declared information;
+- download locator metadata (URL construction) as declared information;
+- controlled transport/API error mapping into DiscoveryError.
+```
+
+The provider MUST NOT perform acquisition.
+
+### 17.3 Non-goals
+
+```text
+1.  DiscoveredArtifact → ArtifactSpec conversion;  2. acquisition mapper;
+3.  DownloadPlan;  4. AcquisitionPlan;  5. Downloader;  6. ModelStore;
+7.  admission;  8. execution;  9. evaluation;  10. runtime evidence;
+11. model_identity.py changes;  12. catalog registration;
+13. catalog persistence;  14. ranking;  15. recommendations;
+16. fuzzy matching;  17. CLI changes;  18. GUI;  19. model library UI;
+20. model marketplace/catalog UX;  21. automatic download;
+22. automatic installation;  23. model deletion;
+24. caching/persistence of discovery results;  25. verified content claims;
+26. modification of B9.80 domain types;  27. modification of B9.79 runtime
+    evidence;  28. modification of B9.78 admission;  29. refactoring
+    HuggingFaceSource into a shared abstraction;  30. introducing a new
+    ArtifactSpec or acquisition-domain type.
+```
+
+The block must NOT become the model library. It establishes the real remote
+discovery backend that a future model-library surface can consume.
+
+### 17.4 Dependencies and evidence
+
+```text
+B9.80 — ModelDiscovery contract (search, inspect, ModelCandidate,
+        ModelVariant, DiscoveredArtifact, DiscoveryError), CLOSED and
+        unchanged; B9.81 implements the port and never edits it
+B9.78 — admission remains the sole execution authority, out of scope
+B9.79 — runtime evidence remains downstream and unchanged; B9.79 does NOT
+        depend on B9.81. Direction: B9.81 discovery → future acquisition
+        mapper → future stored artifact → B9.79 evidence
+B9.40/B9.41/B9.67/B9.74 — acquisition/store behavior, unchanged; reused
+        only by later blocks, never imported by the provider
+HuggingFaceSource — sibling infrastructure adapter; shared pure helpers
+        may be reused where safe (decision A), the source itself remains
+        functionally unchanged (AC13)
+
+Dependency direction (recorded):
+
+        castlearq.discovery
+                ↑
+                │ implements
+                │
+        HuggingFaceDiscoveryProvider
+                │
+                └── Hugging Face public metadata API
+
+Rejected edges:
+        discovery → ArtifactSpec
+        discovery → DownloadPlanner
+        discovery → Downloader
+        discovery → ModelStore
+        discovery → admission
+        discovery → execution
+```
+
+The provider is an infrastructure-side implementation of the domain port; the
+domain never depends on Hugging Face.
+
+Prior READ-ONLY audits: the complete plan→download→verify→store→resolve
+pipeline (ArtifactSpec → DownloadPlan → Downloader → ModelStore), the
+single-repository HuggingFaceSource flow, unmapped-repository rejection at
+the source, and the B9.80 contract isolation tests all verified present; the
+absence of any production ModelDiscovery implementation and of any
+HuggingFaceDiscoveryProvider verified by zero corpus hits outside this
+record.
+
+### 17.5 Architectural decisions (recorded)
+
+```text
+Decision A — reuse strategy: A-now / C-later.
+  Reuse existing pure Hugging Face helpers where safe (validators,
+  extractors, transport patterns). Do NOT refactor HuggingFaceSource into
+  a shared abstraction in this block; do NOT modify HuggingFaceSource
+  merely to prepare for the provider; defer extraction of a shared Hugging
+  Face infrastructure layer until duplication becomes justified by
+  evidence. The provider remains a sibling of HuggingFaceSource: not a
+  subclass, not a wrapper, not a replacement, and it never returns
+  ArtifactSpec.
+
+Decision B — discovery vs catalog identity.
+  The provider MUST NOT require a repository to exist in
+  castlearq/model_identity.py. Unknown/unmapped repositories remain
+  discoverable. DiscoveredArtifact.model_id may remain None. No
+  modification to model_identity.py is part of this block; model_identity
+  is never a discovery gate.
+
+Decision C — revision.
+  The provider exposes the remote revision/reference available from Hugging
+  Face metadata (for example a model commit SHA or equivalent immutable
+  reference) as declared discovery information in
+  DiscoveredArtifact.revision. It is never reinterpreted as verified
+  content identity. The existing downloader/planner URL contract is not
+  modified, and revision-aware acquisition is not solved in this block.
+
+Decision D — cursor.
+  The ModelDiscovery cursor contract stays: cursor = opaque. Any Hugging
+  Face-specific pagination mechanism is translated behind the provider
+  boundary; no Hugging Face pagination type may leak into ModelDiscovery.
+
+Decision E — L1 trust boundary.
+  All provider output is DECLARED / UNTRUSTED REMOTE METADATA. The provider
+  never produces verified_sha256, verified_quantization, content_id,
+  local_path, ArtifactState, admission verdicts, execution verdicts, or
+  evaluation verdicts. declared_sha256 remains a remote declaration; it is
+  NOT runtime evidence.
+```
+
+### 17.6 Acceptance criteria
+
+Contractual criteria, all PENDING at allocation time (not satisfied by this
+allocation task; only a later implementation can satisfy them):
+
+```text
+AC1  A concrete HuggingFaceDiscoveryProvider exists and implements
+     ModelDiscovery.
+AC2  search(query, limit, cursor) returns valid ModelCandidate values plus
+     the opaque cursor contract required by ModelDiscovery.
+AC3  inspect(repository) returns valid ModelVariant values.
+AC4  Inspection identifies GGUF artifacts without downloading artifact
+     content.
+AC5  Artifacts are grouped into valid ModelVariant values with non-empty
+     artifact tuples.
+AC6  Declared quantization, size, SHA-256, revision and download locator
+     information are represented only as declared remote metadata.
+AC7  A repository does not need to exist in model_identity.py to be
+     discoverable.
+AC8  Transport/API failures surface as DiscoveryError, not SourceError.
+AC9  Repository, filename, URL and host handling follow the existing
+     validated Hugging Face security constraints without permitting unsafe
+     paths or hosts.
+AC10 The provider does not depend on ModelStore, Downloader,
+     DownloadPlanner, ArtifactSpec, admission, execution, evaluation, or
+     runtime evidence.
+AC11 No download, persistence, installation, deletion or acquisition
+     planning occurs.
+AC12 castlearq/discovery.py remains unchanged.
+AC13 HuggingFaceSource remains functionally unchanged.
+AC14 The existing relevant test suites and the complete repository suite
+     remain green.
+AC15 The provider is a sibling infrastructure adapter to HuggingFaceSource,
+     not a subclass, wrapper, or replacement.
+```
+
+### 17.7 Implementation surface
+
+Chosen location, recorded at allocation; no files are created by this task:
+
+```text
+castlearq/sources/huggingface_discovery.py
+    concrete provider module — sibling of sources/huggingface.py; imports
+    castlearq.discovery and pure helpers only, never imports acquisition
+    modules
+
+tests/test_b981_huggingface_discovery.py
+    provider-specific tests covering at minimum: search; opaque cursor
+    behavior; inspect; GGUF detection; variant grouping; declared
+    quantization; declared size; declared SHA-256; revision; unmapped
+    repository discovery; malformed metadata; HTTP/API errors;
+    timeout/transport errors; host/repository/filename validation;
+    L1 isolation.
+```
+
+If repository inspection at implementation time demonstrates a more
+appropriate location, the implementing block must record the actual chosen
+location in this section.
+
+### 17.8 Verification and closure expectations
+
+```text
+Verification: PENDING — a later READ-ONLY verification audit against the
+  future implementation commit must evaluate AC1-AC15 and record the result
+  in a new subsection of this section; this allocation performs no
+  verification.
+
+Closure: PENDING — closure requires AC1-AC15 all PASS plus the standard
+  closure record; this allocation creates no closure record and claims no
+  implementation, verification, or closure.
+```
+
+B9.81 is a future implementation block, not completed work. No provider,
+mapper, CLI, GUI, catalog, or model-library functionality exists as a result
+of this section.
 
