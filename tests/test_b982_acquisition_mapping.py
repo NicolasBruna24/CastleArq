@@ -40,7 +40,11 @@ MODULE_PATH = Path("castlearq/acquisition_mapping.py")
 REPO = "owner/repository"
 SHA = "ab" * 32
 REVISION = "0" * 40
+# B9.83: the declared locator must correspond to the declared revision. A
+# revision-aware acquisition flow pins the exact upstream reference; the
+# unpinned `/resolve/main/` form remains the contract when none is declared.
 URL = f"https://huggingface.co/{REPO}/resolve/main/model-Q4_K_M.gguf"
+REVISION_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/model-Q4_K_M.gguf"
 MODEL_ID = "test-model"
 
 
@@ -64,12 +68,16 @@ def artifact(**over):
         "declared_quantization": "Q4_K_M",
         "model_id": None,
         "source": "huggingface",
-        "download_url": URL,
+        "download_url": REVISION_URL,
         "declared_size": 1234,
         "declared_sha256": SHA,
         "revision": REVISION,
     }
     base.update(over)
+    if base["revision"] is None:
+        # No declared revision means the unpinned `main` locator; the two
+        # must never disagree.
+        base.setdefault("download_url", URL)
     return DiscoveredArtifact(**base)
 
 
@@ -192,7 +200,12 @@ class FieldMappingTests(unittest.TestCase):
         self.assertEqual(self.spec.sha256, SHA)
 
     def test_download_url_preserved(self):
-        self.assertEqual(self.spec.download_url, URL)
+        # B9.83: the declared locator is preserved exactly. The fixture
+        # declares a revision, so its locator is the revision-pinned form.
+        (source,) = [artifact()]
+        (self.spec,) = mapped([source])
+        self.assertEqual(self.spec.download_url, source.download_url)
+        self.assertEqual(self.spec.download_url, REVISION_URL)
 
     def test_values_are_not_rewritten(self):
         for source in (artifact(), artifact(declared_size=0), artifact(
@@ -287,34 +300,64 @@ class IdentityContractTests(unittest.TestCase):
         self.assertFalse(issubclass(AcquisitionMappingError, DiscoveryError))
 
 
-class RevisionDiscardTests(unittest.TestCase):
-    """Revision is declared metadata that stops at this boundary (AC7, AC8)."""
+class RevisionTransportTests(unittest.TestCase):
+    """B9.83 supersedes the B9.82 revision-discard contract (AC1, AC2, AC9).
 
-    def test_artifact_spec_has_no_revision_field(self):
-        self.assertNotIn("revision", ArtifactSpec.__dataclass_fields__)
-        self.assertFalse(hasattr(ArtifactSpec, "revision"))
+    B9.82 asserted that the declared revision stopped at this boundary. That
+    contract is deliberately superseded here, not silently deleted: the
+    revision is now transported verbatim, while its trust level and its
+    exclusion from artifact identity (OD-1) are asserted explicitly.
+    """
 
-    def test_revision_is_not_transported(self):
+    def test_artifact_spec_supports_an_optional_revision(self):
+        self.assertIn("revision", ArtifactSpec.__dataclass_fields__)
+        fields = ArtifactSpec.__dataclass_fields__["revision"]
+        self.assertTrue(fields.default is None)
+        # Absence must be representable as None and never fabricated.
+        self.assertIsNone(
+            ArtifactSpec(
+                model_id="m", source="huggingface", repository=REPO,
+                filename="f.gguf",
+            ).revision
+        )
+
+    def test_revision_is_transported_verbatim(self):
         source = artifact(revision=REVISION)
         self.assertEqual(source.revision, REVISION)
         (spec,) = mapped([source])
-        self.assertFalse(hasattr(spec, "revision"))
-        self.assertNotIn(REVISION, repr(spec))
-        self.assertNotIn("revision", {f.name for f in dataclasses.fields(spec)})
+        self.assertEqual(spec.revision, REVISION)
+        self.assertIn("revision", {f.name for f in dataclasses.fields(spec)})
 
-    def test_revision_discard_is_documented_in_the_module(self):
+    def test_absent_revision_stays_absent(self):
+        (spec,) = mapped([artifact(revision=None, download_url=URL)])
+        self.assertIsNone(spec.revision)
+        # Absence is never invented and never defaulted to "main".
+        self.assertNotIn("main", repr(spec.revision or ""))
+
+    def test_revision_is_never_promoted_to_content_or_integrity(self):
+        (spec,) = mapped([artifact(revision=REVISION)])
+        # A declared revision is not content identity and not an integrity
+        # proof: content_id stays None and sha256 stays the declared value.
+        self.assertIsNone(spec.content_id)
+        self.assertEqual(spec.sha256, SHA)
+        self.assertNotEqual(spec.revision, spec.sha256)
+        self.assertIs(spec.state, ArtifactState.NOT_DOWNLOADED)
+
+    def test_mapping_documents_the_supersession(self):
         source = module_source()
         self.assertIn("revision", source)
-        self.assertIn("NOT transported", source)
+        self.assertIn("transported verbatim", source)
         self.assertIn("B9.82 decision 2", source)
 
-    def test_mapping_is_unaffected_by_revision_value(self):
-        without = mapped([artifact(revision=None)])[0]
-        with_sha = mapped([artifact(revision=REVISION)])[0]
-        self.assertEqual(without, with_sha)
-
-    def test_download_url_contract_is_not_rewritten(self):
+    def test_download_url_is_preserved_and_revision_correspondent(self):
         (spec,) = mapped([artifact(revision=REVISION)])
+        # The declared locator is preserved exactly; the mapper does not
+        # rewrite it. It corresponds to the declared revision.
+        self.assertEqual(spec.download_url, REVISION_URL)
+        self.assertIn(f"/resolve/{REVISION}/", spec.download_url)
+
+    def test_no_revision_keeps_the_unpinned_locator(self):
+        (spec,) = mapped([artifact(revision=None, download_url=URL)])
         self.assertIn("/resolve/main/", spec.download_url)
         self.assertNotIn(REVISION, spec.download_url)
 

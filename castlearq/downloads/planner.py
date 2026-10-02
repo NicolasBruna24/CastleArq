@@ -208,7 +208,12 @@ class DownloadPlanner:
             raise ValueError("Only GGUF artifacts are supported")
         if not artifact.download_url:
             raise ValueError("Artifact download URL is required")
-        _validate_url(artifact.download_url, artifact.repository, artifact.filename)
+        _validate_url(
+            artifact.download_url,
+            artifact.repository,
+            artifact.filename,
+            artifact.revision,
+        )
         if artifact.size_bytes is not None and (
             isinstance(artifact.size_bytes, bool)
             or not isinstance(artifact.size_bytes, int)
@@ -240,7 +245,23 @@ class DownloadPlanner:
         )
 
 
-def _validate_url(url: str, repository: str, filename: str) -> None:
+def _validate_url(
+    url: str,
+    repository: str,
+    filename: str,
+    revision: str | None = None,
+) -> None:
+    """Validate the download URL against repository, filename and revision.
+
+    B9.83: when a declared ``revision`` is present the expected path segment
+    is that revision; when it is absent the existing ``resolve/main``
+    contract is enforced unchanged. Every other guarantee — HTTPS only, the
+    huggingface.co host, no credentials, no port, no query or fragment, and
+    the exact repository/filename correspondence — is preserved and not
+    weakened. A declared revision is never accepted from an undeclared
+    artifact, and the default ``main`` form is never accepted for an artifact
+    that declares a different revision.
+    """
     parsed = urlparse(url)
     if (
         parsed.scheme != "https"
@@ -253,7 +274,7 @@ def _validate_url(url: str, repository: str, filename: str) -> None:
     ):
         raise ValueError("Artifact URL must be an HTTPS Hugging Face URL")
     expected_path = (
-        f"/{repository}/resolve/main/{filename}"
+        f"/{repository}/resolve/{revision or 'main'}/{filename}"
     )
     if unquote(parsed.path) != expected_path:
         raise ValueError("Artifact URL does not match repository and filename")

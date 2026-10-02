@@ -2682,3 +2682,525 @@ is computed by the section 6 and section 7 procedure and is deliberately not
 made in this record. The implementation commit above is the verified artifact
 and remains immutable; this closure record only attests that the verified
 implementation has been formally closed.
+
+---
+
+## 19. B9.83 — Number Allocation Record
+
+`B9.83` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. At allocation time B9.83 is **an allocation only**: no
+implementation, verification, or closure is claimed by this section.
+
+The scope was selected by a READ-ONLY NAR decision audit and a human
+architectural decision record that preceded this allocation, in the same form
+recorded for B9.82 in §18.5. The decision does not modify B9.82: that block's
+implementation commit remains immutable, and the revision-discard behaviour
+closed in §18.9 is preserved as historical evidence.
+
+```text
+Assigned Number:
+  B9.83
+
+Title:
+  Revision-Aware Acquisition
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash,
+  per the two-step mechanism already stated in section 11 for the numbering
+  policy activation anchor. A commit hash cannot be known before the commit
+  exists and writing a guessed value would be a fabricated identifier.
+
+Corpus/HEAD Anchor:
+  3cd9f3ac48c275c713c7abcc94854e9640a24059
+  (docs(castlearq): add project attribution; main == HEAD, working tree
+  clean, 0 ahead / 0 behind origin/main)
+
+Corpus File Count:
+  214 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  git rev-parse HEAD -> 3cd9f3ac48c275c713c7abcc94854e9640a24059
+  git tree object at HEAD -> 486d14c0adf7634f88ed39fd0c5904458d6ead75
+  sorted path list SHA-256 ->
+    40a84021be0e067694dedc54127a722be2f25e031d634d84004aea900af2148e
+  identifier-set SHA-256 ->
+    106ac7edf92c98e7742be3666a94e1121fe632c607b9f1dc1137042167540240
+  mechanism: git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+    | LC_ALL=C sort [-u]; sha256sum over each sorted list
+
+Identifier Set:
+  132 distinct identifiers over 2893 occurrences in 214 versioned files.
+  B9.83 — 20 occurrences, every one of them inside this document: the
+  section 8 illustration (line 321), the section 14/15/16/17 candidate
+  rejection lists, the section 16/17 illustrative-reference notes, and the
+  section 18 rejection evidence. Classification at this anchor: illustrative
+  example, rejected candidate, or historical reference. None of them is an
+  allocation, a reservation, a proposal, a provisional assignment, or an
+  implementation/test label. Zero occurrences exist in castlearq/, tests/,
+  config/, .github/, README.md, pyproject.toml, requirements.txt, LICENSE, or
+  any other versioned file outside this document.
+  B9.84 — 2 occurrences, both inside this document; rejected. B9.85 and
+  above — no occurrence anywhere in the corpus.
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3 — illustrative
+  only, per the section 8 rule.
+  The highest identifier in real use outside this document is B9.81.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+  v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+  no commit outside this document's history introduces a B9.83 allocation.
+  No competing, competing-pending or conflicting identifier was found.
+
+
+Highest Verified Main Block:
+  B9.82 — allocated in section 18 (a3f4d3e), implemented at 14adcb5,
+  verified and closed at ef9e57f (18.9); published on origin/main.
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a
+  READ-ONLY NAR decision audit and a human architectural decision record
+
+Candidate Numbers Considered:
+  B9.83 — SELECTED. highest_verified_main_block + 1 = B9.82 + 1 = B9.83.
+    No actual allocation, reservation, provisional allocation or competing
+    higher main identifier exists for it
+  B9.84 — rejected: not highest_verified + 1; selecting it would skip the
+    required next main identifier and create a gap contrary to section 6. No
+    allocation or reservation exists for it
+  B9.85 and above — rejected: no occurrence of any such identifier exists in
+    the corpus; never considered
+  B9.80.1, B9.80.2, B9.80.3, B9.81.x, B9.82.x and every other sub-block —
+    rejected: sub-blocks do not raise the main-block floor and do not consume
+    B9.83 (section 8). B9.80, B9.81 and B9.82 each record that no sub-block is
+    assigned
+  Historical gaps (B9.25-B9.28, B9.32-B9.34, B9.38, B9.49, B9.60-B9.65,
+    B9.68-B9.73, B9.75, and every other main number below B9.82 that is not
+    allocated by sections 14-18) — rejected: historical gaps, not reusable
+    under section 9 (NOT REUSED, prospective declaration). No gap is claimed
+    abandoned, freed, reserved or erroneous (section 13)
+
+Selected Number:
+  B9.83
+
+Validity Reason:
+  B9.82 is the highest verified allocated main block at 3cd9f3a: allocated in
+  section 18, implemented at 14adcb5, verified and closed at ef9e57f (18.9),
+  and published on origin/main. A fresh section 7 corpus inspection at this
+  anchor found no allocated main identifier above B9.82: B9.83 and B9.84
+  occur only inside this document as the section 8 illustration and as
+  recorded rejection evidence, and no versioned file outside this document
+  contains them. No branch, tag or commit outside this document's history
+  establishes an allocation. Sub-blocks never raise the main floor (section 8)
+  and historical gaps are not reusable (section 9). The next main block is
+  therefore B9.83.
+```
+
+### 19.1 Register entry for B9.83
+
+```text
+Block ID:                 B9.83
+Name:                     Revision-Aware Acquisition
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED
+Origin:                   this document, section 19
+Scope:                    see 19.2
+Non-goals:                see 19.3
+Dependencies:             see 19.4
+Architectural decision:   see 19.5
+Current State:            IMPLEMENTED — implementation recorded; not verified
+                          and not closed. Verification and closure remain
+                          PENDING and are performed by a separate READ-ONLY
+                          audit
+Acceptance Criteria:      AC1-AC14 — see 19.6; all PENDING, none yet
+                          independently verified
+Evidence:                 see 19.4, the READ-ONLY B9.83 allocation audit and
+                          the preceding decision audit, and 19.5
+Evidence Type:            DOC
+Decision Reference:       READ-ONLY NAR decision audit and human
+                          architectural decision record preceding this
+                          allocation: SELECT A — Revision-aware acquisition
+Implementation Commit:    recorded by the commit containing this
+                          implementation-state update
+                          ("feat: implement B9.83 revision-aware acquisition")
+Verification Result:      NONE — not verified
+Closure Commit:           NONE — not closed
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 19
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  see 19.7
+```
+
+
+### 19.2 Scope
+
+B9.83 establishes revision-aware acquisition: the revision already declared by
+B9.81 is preserved and transported by the acquisition domain instead of being
+discarded at the B9.82 mapping boundary. It is a coherent change across the
+three acquisition contracts named by §18.5 Decision 3:
+
+```text
+DiscoveredArtifact.revision (B9.80 / B9.81, declared)
+        ↓
+B9.82 acquisition mapper (boundary; the discard happens here today)
+        ↓
+ArtifactSpec (shared artifact domain type)          <- change 1
+        ↓
+manifest read/write path (ModelStore)               <- change 2
+        ↓
+download URL contract (DownloadPlanner)             <- change 3
+```
+
+The normative basis is §18.5 Decision 3, quoted verbatim:
+
+> Revision-aware acquisition belongs to a FUTURE artifact-domain block, not to
+> B9.82. Such a block would have to change a shared domain type, the manifest
+> read/write path and the download URL contract as one coherent change.
+
+B9.83 is that block. The three changes are **one coherent change**; a partial
+implementation does not satisfy this scope.
+
+Revision is *declared remote metadata*. A revision is an immutable reference
+(B9.81 validates it as a 40-hexadecimal commit reference), never verified
+content, never a content identity and never a verified quantization claim.
+This preserves the L1 trust boundary recorded in §17.5 Decision E and
+restated in §18.5.
+
+### 19.3 Non-goals
+
+```text
+1.  production wiring of the B9.82 mapper into the CLI, the API or any
+    production path;                      2. legacy ModelSource deprecation,
+    removal or migration;                 3. model library, catalog,
+    marketplace or search UX;             4. GUI;                  5. any new
+    discovery provider;                   6. modifying the B9.80 domain
+    types;                                7. modifying the B9.81
+    HuggingFaceDiscoveryProvider;         8. runtime execution;     9.
+    evaluation;                          10. admission;           11.
+    unrelated CLI work;                  12. ModelStore redesign;
+    13. unrelated migration work, including manifest_migration;
+    14. changing B9.82 retroactively;    15. introducing a new
+    acquisition type duplicating DownloadPlan;  16. resolving the B9.78
+    open human decisions (section 14.8);  17. any claim of verified content,
+    content identity or verified quantization derived from a revision.
+```
+
+Production integration is expressly **not** part of this block. §18.3 records
+that the legacy `ModelSource.discover_artifacts -> list[ArtifactSpec]` path and
+its CLI consumers remain untouched and that *"deprecating them is a separate
+block"*; that separate block is neither named nor numbered here.
+
+
+### 19.4 Dependencies and evidence
+
+```text
+B9.80 — ModelDiscovery, ModelCandidate, ModelVariant, DiscoveredArtifact and
+        DiscoveryError; CLOSED and unchanged. B9.83 changes nothing in the
+        discovery domain and never edits it
+B9.81 — HuggingFaceDiscoveryProvider; CLOSED and unchanged. It already
+        produces the declared revision and already queries the remote tree at
+        that revision, so the metadata B9.83 must transport already exists
+B9.82 — map_discovered_artifacts; CLOSED and unchanged. It currently discards
+        revision as a recorded decision (18.5 Decision 2). B9.83 supersedes
+        that boundary behaviour forward, never by rewriting B9.82
+ArtifactSpec / ArtifactState (castlearq/models.py) — the shared artifact
+        domain type; to be extended. Its artifact_id and content_id semantics
+        are preserved subject to the open question in 19.7
+ModelStore — the single manifest read/write path; the persisted revision must
+        round-trip through it without disturbing the B9.41 rule that state and
+        verified are derived, never persisted as authority
+DownloadPlanner — the existing download URL contract and its validated
+        Hugging Face security constraints; they are respected, not weakened
+        and not duplicated
+B9.67 — content identity boundary remains separate; integrity remains
+        content-hash based
+B9.40/B9.41/B9.74 — acquisition, derived-state and store-resolution behaviour
+        remain unchanged and are reused, never reimplemented
+```
+
+Dependency direction (recorded):
+
+```text
+B9.80  ModelDiscovery
+B9.81  HuggingFaceDiscoveryProvider
+B9.82  acquisition mapper
+B9.83  revision-aware acquisition      <- this block
+          ↓
+future   production integration of the B9.80 -> B9.81 -> B9.82 chain
+          ↓
+future   stored artifact -> B9.79 runtime evidence
+```
+
+This is a **dependency order recorded by the repository**, not a priority
+claim. The register contains no priority, ranking or ordering rule (section
+13: the document *"does not assign any B9 identifier by itself"*). B9.83 is
+next because section 6 fixes the number and a human architectural decision
+selected the scope; no statement is made here that B9.83 is the most
+important or most preferred work.
+
+Prior READ-ONLY audits: the complete B9.80/B9.81/B9.82 discovery-to-acquisition
+chain, the single-repository HuggingFaceSource flow, the plan->download->
+verify->store->resolve pipeline, the manifest read/write path, the `resolve/main`
+URL contract and the absence of any production caller for the B9.82 mapper were
+all verified present at the corpus anchor. They are recorded here as evidence;
+this record re-verifies no implementation.
+
+### 19.5 Architectural decision (recorded)
+
+Recorded from the READ-ONLY NAR decision audit and the human architectural
+decision record that preceded this allocation.
+
+```text
+Decision A (SELECTED) — revision-aware acquisition.
+  The revision discovered and declared by B9.81 is preserved by the
+  acquisition domain rather than discarded at the B9.82 boundary, as one
+  coherent change across the shared domain type, the manifest read/write
+  path and the download URL contract. This is the scope §18.5 Decision 3
+  named; the decision records it and does not extend it.
+
+Decision B (NOT SELECTED, DEFERRED) — production integration of the
+  B9.80 -> B9.81 -> B9.82 chain into the existing production download flow.
+  This remains a future architectural step. The production flow still uses
+  the legacy ModelSource path (B9.40 registration, planner, downloader and
+  store), and B9.82 expressly deferred wiring its mapper. It is deferred
+  until the acquisition-domain contract can represent the required revision
+  semantics coherently. Deferred is not rejected: the repository records it
+  as "a separate block" and no terminal judgement is made.
+
+Not selected: ModelStore redesign; standalone CLI acquisition work; Hugging
+  Face model-library or catalog UX; GUI; legacy deprecation as an isolated
+  block; CI/lint work; and the B9.78 open human decisions. None of these is
+  implied, decided or resolved by this record.
+```
+
+
+### 19.6 Acceptance criteria
+
+Contractual criteria, all **PENDING** at allocation time. They are **not**
+satisfied by this allocation; only a later implementation can satisfy them,
+exactly as recorded for B9.78, B9.79, B9.80, B9.81 and B9.82.
+
+```text
+AC1  ArtifactSpec can represent the declared revision B9.81 produces,
+     without changing the B9.80 discovery domain types.
+AC2  A missing or absent revision remains representable as such and is
+     never fabricated, defaulted or invented.
+AC3  Revision survives the manifest write -> read round-trip through the
+     existing ModelStore read/write path.
+AC4  The B9.41 rule is preserved: state and verified remain derived and are
+     never persisted as authority by the revision change.
+AC5  The download URL contract can respect a declared revision instead of
+     implicitly hard-coding resolve/main.
+AC6  The existing validated Hugging Face URL security constraints remain
+     intact: HTTPS scheme, huggingface.co host, no credentials, no port,
+     and the repository/filename correspondence.
+AC7  Existing artifacts and manifests that carry no revision remain
+     readable and behave exactly as before.
+AC8  Existing identity semantics (artifact_id, content_id) are preserved,
+     subject to the open architectural decision recorded in 19.7.
+AC9  Revision drift is never silently accepted: a mismatch between the
+     declared revision and the acquired content is detected or refused.
+AC10 A declared revision is never treated as verified content, a content
+     identity, or a verified quantization claim (L1 trust boundary).
+AC11 The B9.82 revision-discard contract tests are deliberately superseded
+     or replaced with a recorded rationale, never silently deleted.
+AC12 The B9.80, B9.81 and B9.82 verified implementations remain untouched
+     in their verified parts.
+AC13 No discovery, admission, execution or evaluation dependency is
+     introduced: discovery never gains a dependency on the store, planner,
+     downloader, model_identity, admission, execution or evaluation.
+AC14 The complete repository test suite remains green and git diff --check
+     is clean for the implementation commit.
+```
+
+### 19.7 Human architectural decision (recorded)
+
+OD-1 was opened by this record as an open question. It has since been settled
+by a **human architectural decision**, preceded by a READ-ONLY OD-1
+inspection. The decision below is a human decision and **not** an inference
+drawn from implementation, and it decides only the identity question: it
+confers no implementation authorization.
+
+```text
+OD-1  Does `revision` participate in `ArtifactSpec.artifact_id`?
+
+      Decision Status: DECIDED
+      Human Decision:  OPTION B
+
+Decision:
+  `revision` does NOT participate in `ArtifactSpec.artifact_id`.
+```
+
+#### 19.7.1 Decision rationale (recorded)
+
+```text
+Identity stability.
+  `artifact_id` remains the existing provenance-derived identity for
+  downloaded/catalog artifacts, computed from source, repository, filename
+  and quantization exactly as it is today. `content_id` continues to
+  short-circuit `artifact_id` for imported, content-derived artifacts, as
+  B9.67 established. `revision` enters neither identity calculation.
+
+B9.67 compatibility.
+  Option B preserves the existing invariant that the provenance-derived
+  identity of downloaded/catalog artifacts remains unchanged and that
+  existing stores remain valid. B9.67 is not extended, weakened or
+  reinterpreted by this decision: B9.67 did not decide the B9.83 revision
+  question, and this decision preserves rather than reopens it.
+
+Storage compatibility.
+  Keeping `revision` outside `artifact_id` prevents a revision field from
+  changing the directory identity of existing downloaded artifacts.
+  B9.83 therefore does not require artifact-directory migration.
+
+Manifest compatibility.
+  `revision` may be persisted independently as declared metadata while
+  `artifact_id` remains derived under the existing identity contract.
+  Existing manifests that carry no revision must remain readable, with an
+  absent revision represented as absent and never invented.
+
+Trust boundary.
+  revision            != content_id
+  revision            != verified content
+  revision            != integrity proof
+  `revision` remains declared remote provenance metadata. Content integrity
+  continues to depend on content hashing and on verification performed over
+  the acquired bytes. A declared revision is never an integrity proof.
+```
+
+#### 19.7.2 The four identity concepts, kept separate
+
+```text
+artifact_id  = addressing identity (content-derived when `content_id` is
+               present; otherwise provenance-derived from
+               source|repository|filename|quantization)
+revision     = declared remote provenance pointer (optional; L1; untrusted)
+content_id   = digest CastleArq computed itself from observed bytes
+verified     = derived verification outcome (inspect_manifest recomputes the
+               digest and compares)
+```
+
+A Hugging Face revision is a 40-hexadecimal upstream repository commit
+reference. It is **not** the SHA-256 of the GGUF file and is never treated as
+one. No concept above may be substituted for another.
+
+#### 19.7.3 Recorded consequence — multi-revision limitation
+
+This consequence is **not** hidden and is recorded as a known limitation of
+Option B.
+
+```text
+With the current ModelStore design, two downloaded artifacts having the same
+`source`, `repository`, `filename` and `quantization` but different revisions
+still resolve to the same `artifact_id` and therefore to the same storage
+directory.
+```
+
+Consequences, recorded without scope expansion:
+
+```text
+1. B9.83 does NOT introduce simultaneous multi-revision storage.
+2. A later revision can replace the stored artifact for the same identity
+   slot.
+3. This does NOT mean B9.83 is required to redesign ModelStore; that remains
+   an explicit non-goal (19.3 item 12).
+4. Multi-revision coexistence is a separate future architectural question.
+   No identifier is allocated for it here, no new block is opened, and
+   B9.83's scope is not expanded to cover it.
+```
+
+#### 19.7.4 Alternatives considered and not selected
+
+Kept factual. Neither alternative is characterized as bad or incorrect; each
+is simply **not selected under the current CastleArq constraints and the
+B9.83 scope as allocated**.
+
+```text
+Option A — `revision` participates in `artifact_id`. NOT SELECTED.
+  It would:
+  1. change the existing provenance-derived `artifact_id` for revision-less
+     downloaded artifacts;
+  2. alter existing ModelStore directory identity;
+  3. make existing stored artifacts inaccessible through the current
+     artifact-id addressing path, including execution preflight, download
+     inspection and cleanup;
+  4. cause old manifests to recompute an identity that no longer matches
+     their containing directory;
+  5. imply artifact identity migration and/or ModelStore changes;
+  6. conflict with B9.83's current non-goals concerning migration and
+     ModelStore redesign (19.3 items 12 and 13);
+  7. conflict with the B9.67 requirement to preserve existing
+     downloaded-artifact identity and keep existing stores valid.
+
+Option C — `revision` participates only when present. NOT SELECTED.
+  It would make artifact identity depend on whether the discovery source
+  happened to supply revision metadata:
+
+    revision absent  -> legacy identity
+    revision present -> a different identity
+
+  Identity semantics would then depend on metadata availability rather than
+  solely on the established artifact identity contract. Not implemented and
+  not allocated here.
+```
+
+#### 19.7.5 Effect on the acceptance criteria
+
+No acceptance criterion in 19.6 is satisfied, removed or altered by this
+decision. All remain **PENDING**. The decision only removes the ambiguity
+that AC8 previously deferred:
+
+```text
+AC8  Existing identity semantics (artifact_id, content_id) are preserved,
+     subject to the open architectural decision recorded in 19.7.
+```
+
+AC8's dependency on an open question is now settled: `revision` does not
+participate in `artifact_id`. The future implementation must still establish,
+and this decision proves nothing about, every one of the following:
+
+```text
+- revision representation on the artifact domain type;
+- an absent revision remains representable, and is never fabricated;
+- manifest write/read round-trip for the declared revision;
+- revision-aware download URL handling within the existing security
+  constraints;
+- preservation of the existing identity semantics decided above;
+- that `revision` does not participate in `artifact_id`;
+- that no revision is ever invented or defaulted;
+- that no artifact, directory or manifest is migrated;
+- that content verification is never conflated with a declared revision;
+- that the B9.82 revision-discard tests are deliberately superseded or
+  replaced with a recorded rationale, never silently deleted.
+```
+
+B9.82 is untouched by this decision. Its scope, implementation, closure,
+commit references and tests remain immutable historical evidence; its
+revision-discard behaviour is superseded **prospectively** by B9.83.
+
+B9.83 allocation plus this decision define the identifier, the scope and the
+identity contract only. The implementation that followed does not reopen any
+of them: it realizes the scope exactly as allocated and preserves OD-1
+unchanged.
+
+```text
+IMPLEMENTATION AUTHORIZED: NO
+```
+
+The line above records the state of the *allocation and decision* record
+itself: neither of them authorized implementation, and neither may be read as
+doing so. Implementation was performed in a separate controlled step, whose
+authorization came from the operator and not from this record.
+
+B9.83 is now `IMPLEMENTED`. It is **not** verified and **not** closed: the
+acceptance criteria in 19.6 remain PENDING, and a separate READ-ONLY
+verification audit plus a closure record are still required. B9.78, B9.79,
+B9.80, B9.81 and B9.82 are not modified by the B9.83 implementation.

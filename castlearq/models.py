@@ -60,6 +60,23 @@ class ArtifactSpec:
     # `inspect_manifest` compare a digest against itself and report
     # VERIFIED, manufacturing a verification that never happened.
     content_id: str | None = None
+    # B9.83: the optional declared remote revision the artifact was observed
+    # at (a Hugging Face repository commit reference, or an equivalent
+    # immutable upstream reference).
+    #
+    # It is *declared provenance metadata*, not an identity and not an
+    # integrity proof. By the OD-1 human architectural decision recorded in
+    # the roadmap register (19.7), it deliberately does NOT participate in
+    # `artifact_id`: the addressing identity remains `content_id` when
+    # present, otherwise the provenance-derived digest of
+    # source|repository|filename|quantization. Two artifacts that differ
+    # only by revision therefore share an identity, and no existing stored
+    # artifact is relocated.
+    #
+    # A revision is NOT the SHA-256 of the downloaded bytes and never
+    # promotes `sha256` to a verified claim. Absence is `None`; it is never
+    # fabricated and never defaulted to "main".
+    revision: str | None = None
 
     @property
     def artifact_id(self) -> str:

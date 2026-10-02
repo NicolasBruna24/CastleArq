@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, replace
+from pathlib import PurePosixPath
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
@@ -144,8 +145,6 @@ def _validate_repository(repository: str) -> None:
 
 
 def _validate_filename(filename: str) -> None:
-    from pathlib import PurePosixPath
-
     path = PurePosixPath(filename)
     if (
         not filename
@@ -171,8 +170,41 @@ def _tree_metadata_url(api_base: str, repository: str) -> str:
     return f"{api_base.rstrip('/')}/models/{quote(repository, safe='/')}/tree/main?recursive=true"
 
 
-def _download_url(repository: str, filename: str) -> str:
-    url = f"https://huggingface.co/{quote(repository, safe='/')}/resolve/main/{quote(filename)}"
+def _validate_revision(revision: str) -> None:
+    """Validate a declared upstream revision used as a URL path segment.
+
+    B9.83: a revision is a declared, immutable upstream reference. It is
+    carried in the URL path, so it is constrained to a single, safe path
+    segment. It is never a filesystem path and never an integrity proof.
+    """
+    if (
+        not isinstance(revision, str)
+        or not revision
+        or len(revision) > 128
+        or "\\" in revision
+        or "/" in revision
+        or revision in {".", ".."}
+        or revision.strip() != revision
+        or any(part in {"", ".", ".."} for part in PurePosixPath(revision).parts)
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", revision)
+    ):
+        raise SourceError("Invalid declared revision")
+
+
+def _download_url(repository: str, filename: str, revision: str | None = None) -> str:
+    """Build the resolve URL for ``filename``.
+
+    B9.83: when a declared ``revision`` is supplied, the URL pins that exact
+    upstream reference (``/resolve/<revision>/``). When none is declared the
+    existing ``/resolve/main/`` behavior is preserved exactly. The revision
+    is validated as a safe single path segment; the host and scheme
+    guarantees are unchanged.
+    """
+    ref = "main"
+    if revision is not None:
+        _validate_revision(revision)
+        ref = revision
+    url = f"https://huggingface.co/{quote(repository, safe='/')}/resolve/{quote(ref, safe='')}/{quote(filename)}"
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.netloc != "huggingface.co":
         raise SourceError("Invalid Hugging Face download URL")

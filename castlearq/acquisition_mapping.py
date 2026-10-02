@@ -34,11 +34,14 @@ Contract (section 18.5):
   produced.
 - Programming errors (a non-callable resolver, an unsupported input shape, a
   non-``DiscoveredArtifact`` element) keep their natural ``TypeError``.
-- ``DiscoveredArtifact.revision`` is deliberately NOT transported.
-  ``ArtifactSpec`` has no revision field, and the existing planner URL
-  contract is ``resolve/main``, so a declared revision has no destination at
-  this boundary. The discard is explicit here; revision-aware acquisition
-  belongs to a future artifact-domain block.
+- ``DiscoveredArtifact.revision`` is transported verbatim by B9.83. B9.82
+  discarded it as a recorded decision (decision 2); B9.83 supersedes that
+  boundary behaviour prospectively. The value stays *declared* metadata: it
+  is never converted into ``content_id`` or ``sha256``, it never becomes a
+  verified claim, and by the OD-1 human architectural decision recorded in
+  the roadmap register (19.7) it does **not** participate in
+  ``ArtifactSpec.artifact_id``. An absent revision stays ``None``; it is
+  never fabricated and never defaulted to ``"main"``.
 - Everything else is preserved exactly as declared: ``declared_quantization``,
   ``declared_size`` and ``declared_sha256`` keep their values and their
   declared meaning. ``sha256`` remains an integrity *declaration*, distinct
@@ -130,8 +133,13 @@ def _map_artifact(
         size_bytes=artifact.declared_size,
         # Integrity declaration, kept as declared; never computed here.
         sha256=artifact.declared_sha256,
-        # B9.82 decision 2: `revision` is deliberately not transported. The
-        # discard is explicit at this boundary.
+        # B9.83 supersedes B9.82 decision 2 prospectively: the declared
+        # revision is now transported verbatim instead of discarded. It is
+        # declared provenance metadata, NOT content identity and NOT an
+        # integrity proof, and by the OD-1 decision (roadmap register 19.7)
+        # it does not participate in `artifact_id`. Absence stays `None`; it
+        # is never fabricated and never defaulted to "main".
+        revision=artifact.revision,
         state=ArtifactState.NOT_DOWNLOADED,
         # B9.67: content_id is a computed identity and is never available to
         # declared remote metadata.

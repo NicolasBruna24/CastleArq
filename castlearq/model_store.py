@@ -306,6 +306,14 @@ class ModelStore:
             "download_url": artifact.download_url,
             "size_bytes": artifact.size_bytes,
             "sha256": artifact.sha256,
+            # B9.83: the optional declared upstream revision, persisted as
+            # declared provenance metadata only. It is not part of artifact
+            # identity (OD-1, roadmap register 19.7), it is never a verified
+            # claim, and it is not derived state. An absent revision is stored
+            # as null rather than being fabricated or defaulted to "main".
+            # B9.41 still applies: `state` and `verified` remain derived and
+            # are never persisted here.
+            "revision": artifact.revision,
             # B9.67: content identity for imported artifacts. Absent (``None``)
             # for every catalog/downloaded artifact, whose ``artifact_id``
             # remains provenance-derived, so existing manifests keep their
@@ -501,6 +509,15 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256)
     ):
         raise ValueError("Invalid manifest sha256")
+    # B9.83: `revision` is declared provenance metadata, read back only when
+    # present. A manifest written before B9.83 has no such key and still
+    # loads with exactly the same behavior, reconstructing `revision=None`.
+    # It is never defaulted to "main" and never invented.
+    revision = payload.get("revision")
+    if revision is not None and (
+        not isinstance(revision, str) or not revision.strip()
+    ):
+        raise ValueError("Invalid manifest revision")
     return ArtifactSpec(
         model_id=str(payload["model_id"]),
         source=_optional_str(payload, "source"),
@@ -513,6 +530,7 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         sha256=sha256,
         state=state,
         content_id=_optional_str(payload, "content_id"),
+        revision=revision,
     )
 
 
