@@ -4097,3 +4097,325 @@ B9.84 VERIFICATION: COMPLETE
 B9.84 PUBLICATION: COMPLETE
 B9.84 CLOSURE: COMPLETE
 ```
+---
+
+## 23. B9.85 — Number Allocation Record
+
+`B9.85` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. At allocation time B9.85 is **an allocation only**: no
+implementation, no verification and no closure is claimed by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by a
+Human Architectural Decision Record that the project owner approved, preceded by
+a READ-ONLY roadmap allocation audit and a READ-ONLY Human Architectural
+Decision Audit. This section allocates the number that carries that scope; it
+does not widen, reinterpret or extend it.
+
+```text
+Assigned Number:
+  B9.85
+
+Title:
+  Application Acquisition Boundary + cmd_download Integration
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash, per
+  the two-step mechanism already stated in section 11 for the numbering policy
+  activation anchor and used identically by sections 19 and 21. A commit hash
+  cannot be known before the commit exists, and writing a guessed value would
+  be a fabricated identifier.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 22 — B9.84 Closure Record
+Section for this allocation:
+  section 23 — this record
+
+Corpus/HEAD Anchor:
+  5a40421d188b8dc4dd4fb3669c6aea831c6b1f54
+  ("docs: close roadmap block B9.84"; main == HEAD == origin/main, working tree
+  clean)
+
+Tree object at anchor:
+  64644233cee6631983661e9b8a1de9574a409f5e
+
+Branch:
+  main
+
+Working tree at anchor:
+  clean (no staged, modified or untracked files)
+
+Corpus File Count:
+  217 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  sorted path list SHA-256 ->
+    731ae96f8979dac69ff840815992adcf36628734e66f222f086b5438b0410e6d
+  identifier-set SHA-256 ->
+    f269adb2c3142666ff3485f699f669406444de2fd25ed0636b2a09c30274c3a6
+  identifier set: 134 distinct identifiers over 3271 occurrences in 217
+    versioned files
+  mechanism: git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+    | LC_ALL=C sort [-u]; sha256sum over each sorted list
+
+Identifier Set:
+  Highest main identifier in real use: B9.84 (section 21 NAR, section 22
+  closure; implementation commit cb69c854c771121ea05c3abd8b15ba7cdd25a755,
+  which is an ancestor of origin/main).
+  B9.85 — 12 occurrences before this record, every one of them a negative or
+    rejected reference inside this document: lines 2294, 2746, 2778, 3367,
+    3561, 3570, 3690, 3719, 3921, 3947 and 4089 (2294/2746/2778/3690/3719/
+    3947 are recorded candidate rejections; 3367/3561/3570/3921/4089 are
+    explicit negative assertions such as "B9.85 CREATED: NO").
+    `git ls-files -z | xargs -0 grep -ln 'B9\.85'` returned exactly one path:
+    this document. Zero occurrences existed in castlearq/, tests/, config/,
+    README.md, pyproject.toml or any other versioned file.
+    Classification at this anchor: rejected candidate or negative assertion.
+    None was an allocation, reservation, proposal, provisional assignment or
+    implementation/test label.
+  B9.86 and above — 2 occurrences, both recorded rejections (lines 3692 and
+    3721). No allocation or reservation exists for any of them.
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3 — illustrative only,
+    per the section 8 rule. No B9.85.x sub-block is assigned.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+    v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+    no commit outside this document's history introduces a B9.85 allocation.
+    No competing, competing-pending or conflicting identifier was found.
+
+Preceding Block:
+  B9.84 — Discovery-Domain Deterministic Artifact Selection
+
+Preceding Block Status:
+  ALLOCATED (section 21), IMPLEMENTED (cb69c85), CLOSED (section 22),
+  published on origin/main
+
+Highest Verified Allocation:
+  B9.84
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Allocation Rule Applied:
+  highest_verified_allocated_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+### 23.1 Register entry for B9.85
+
+```text
+Block ID:                 B9.85
+Name:                     Application Acquisition Boundary + cmd_download Integration
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 23
+Scope:                    see 23.2 — approved by the ADR
+Non-goals:                see 23.3
+Architectural decision:   approved Human Architectural Decision Record
+                          (D1-D8 all APPROVED), preceding this allocation
+Current State:            ALLOCATED — no implementation, no verification, no
+                          closure
+Implementation Commit:    NONE — no implementation exists
+Verification Result:      NOT VERIFIED — no implementation to verify
+Closure Commit:           NONE — B9.85 is not closed
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 23
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none — D1-D8 all APPROVED
+```
+
+### 23.2 Scope attached to this allocation
+
+The scope was fixed by the approved ADR and is recorded here without
+reinterpretation.
+
+```text
+Application Acquisition Boundary
++
+Real production integration through cmd_download
+```
+
+**Included:**
+
+```text
+ 1. application acquisition service;
+ 2. dependency injection;
+ 3. discovery orchestration;
+ 4. deterministic discovery selection;
+ 5. acquisition mapping;
+ 6. identity resolver supply;
+ 7. application-level error semantics;
+ 8. dedicated application acquisition result;
+ 9. integration into cmd_download;
+10. tests required for the new application contract;
+11. CLI regression preservation.
+```
+
+The approved architectural decisions carried by this allocation, recorded here
+for traceability and not restated as a re-decision:
+
+```text
+D1 = A — one block: application boundary + production wiring
+D2 = A — service class with injected collaborators
+D3 = A — resolver backed by logical_model_id
+D4 = A — application-level error category + preserved causes
+D5 = A — ModelSource coexistence
+D6 = B — main.py cmd_download as first production caller
+D7 = B — dedicated application acquisition result
+D8 = approved application-boundary + cmd_download scope
+```
+
+### 23.3 Non-goals
+
+```text
+ - Model Library
+ - Model Library GUI
+ - Model Library UX
+ - catalog / search UX
+ - ranking
+ - recommendations
+ - fuzzy matching
+ - multi-revision storage redesign
+ - B9.80 redesign
+### 23.4 Dependencies and preserved contracts
+
+B9.85 **composes** the following closed contracts; it does not redesign any of
+them.
+
+```text
+B9.80 — discovery domain; consumed as-is, no field/type/port change, identity
+        stays out of L1 data
+B9.81 — Hugging Face discovery provider; used as the injected discovery
+        provider, its variant grouping and declared revision consumed as-is
+B9.82 — acquisition mapping + caller-supplied
+        IdentityResolver = Callable[[str], str | None]; signature unchanged
+B9.83 — revision-aware ArtifactSpec/acquisition; DiscoveredArtifact is passed
+        through unmodified, revision reaches ArtifactSpec exactly as B9.83
+        specifies, and OD-1 remains immutable
+B9.84 — deterministic discovery-domain selection; called once by the boundary
+        upstream of B9.82, its four failure categories remain distinguishable,
+        and the legacy select_artifact() is not refactored into a shared
+        abstraction
+```
+
+Architectural invariants carried by this allocation:
+
+```text
+ 1. Domain contracts remain unchanged; B9.85 consumes B9.80-B9.84.
+ 2. Identity remains outside discovery metadata; the Hugging Face discovery
+    provider does not become the owner of logical model identity.
+ 3. The resolver signature remains
+    IdentityResolver = Callable[[str], str | None].
+ 4. Selection remains deterministic; no ranking, scoring, fuzzy matching or
+    recommendation is introduced.
+ 5. Revision semantics remain B9.83's responsibility.
+ 6. The CLI is an adapter; cmd_download must not retain application
+    orchestration logic after B9.85.
+ 7. ModelSource remains operational; B9.85 does not retire or deprecate the
+    legacy source architecture.
+ 8. The application result is independent of CLI presentation.
+ 9. The Model Library is downstream; it may consume the application boundary
+    but is not implemented by B9.85.
+```
+
+### 23.5 Explicit non-allocation
+
+```text
+B9.86: NOT ALLOCATED
+B9.87+: NOT ALLOCATED
+Model Library: NOT ALLOCATED BY B9.85
+ModelSource retirement: NOT ALLOCATED BY B9.85
+API integration: NOT ALLOCATED BY B9.85
+Multi-revision storage: NOT ALLOCATED BY B9.85
+```
+
+No other block and no B9.85.x sub-block is allocated by this record.
+
+### 23.6 Allocation versus implementation state
+
+The distinction is explicit and is not implied anywhere in this record:
+
+```text
+B9.85 = ALLOCATED
+B9.85 = NOT IMPLEMENTED
+B9.85 = NOT VERIFIED
+B9.85 = NOT CLOSED
+```
+
+### 23.7 Human approval reference
+
+```text
+ADR STATUS: APPROVED
+ARCHITECTURAL SCOPE: APPROVED
+NUMBER ALLOCATION: APPROVED BY THIS NAR
+IMPLEMENTATION: NOT STARTED
+```
+
+This record allocates a number and attaches an already-approved scope. It
+confers **no implementation authorization**. Implementation planning and
+execution are a separate step, which has not begun.
+
+```text
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+VERIFICATION AUTHORIZED:    NO
+CLOSURE AUTHORIZED:         NO
+```
+
+B9.78 through B9.84 are not modified by this record.
+ - B9.81 redesign
+ - B9.82 redesign
+ - B9.83 redesign
+ - B9.84 redesign
+ - resolver signature redesign
+ - provider-supplied identity
+ - ModelStore redesign
+ - runtime redesign
+ - evaluation
+ - admission
+ - fine-tuning
+ - LoRA/QLoRA
+ - API adapter integration
+ - unrelated CLI redesign
+ - ModelSource removal / deprecation
+```
+  roadmap allocation audit, a Human Architectural Decision Audit, and an
+  approved Human Architectural Decision Record
+
+Candidate Numbers Considered:
+  B9.85 — SELECTED. highest_verified_allocated_block + 1 = B9.84 + 1 = B9.85.
+    No allocation, reservation, provisional assignment or competing higher
+    main identifier exists for it
+  B9.86 and above — rejected: present only as recorded rejections at lines 3692
+    and 3721; never considered
+  B9.85.x and every other sub-block — rejected: sub-blocks do not raise the
+    main-block floor and do not consume B9.85 (section 8)
+  B9.78 through B9.84 — rejected: already allocated by sections 14-21 and
+    closed; not reusable
+  Historical gaps (every main number below B9.85 not allocated by sections
+    14-21) — rejected: historical gaps, not reusable under section 9 (NOT
+    REUSED, prospective declaration). No gap is claimed abandoned, freed,
+    reserved or erroneous (section 13)
+
+Selected Number:
+  B9.85
+
+Validity Reason:
+  B9.84 is the highest verified allocated block at 5a40421: allocated in section
+  21, implemented at cb69c85, verified and closed in section 22, and published on
+  origin/main. A fresh section 7 corpus inspection at this anchor found no
+  allocated main identifier above B9.84: B9.85 and B9.86 occur only as recorded
+  rejections and negative assertions inside this document, and in no other
+  versioned file. No branch, tag or commit outside this document's history
+  establishes an allocation. Sub-blocks never raise the main floor (section 8)
+  and historical gaps are not reusable (section 9). The next main block is
+  therefore B9.85.
+```
