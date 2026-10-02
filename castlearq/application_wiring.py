@@ -80,18 +80,28 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import shutil
 import subprocess
-from typing import Sequence
+from typing import Callable, Sequence
 
+from .acquisition_service import ModelAcquisitionService
+from .discovery import ModelDiscovery
+from .downloads.downloader import Downloader
+from .downloads.planner import DownloadPlanner
 from .execute_model import ExecuteModelDependencies
 from .execution import ArtifactExecutionPreflight
 from .initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
 from .model_catalog import get_catalog
+from .model_identity import (
+    downloadable_locator,
+    logical_model_id,
+    source_repositories_for_logical_model,
+)
 from .model_store import ModelStore
 from .observation_knowledge import IntegrationResult, integrate
 from .observation_probe import CommandResult, EnvironmentObserver
 from .runner import LlamaCppRunner
 from .runtimes import RuntimeCapability, detect_llama_capability
 from .selection import RuntimeBackendSelector
+from .sources.huggingface_discovery import HuggingFaceDiscoveryProvider
 
 __all__ = ["compose_and_integrate", "compose_execute_model_dependencies"]
 
@@ -280,4 +290,66 @@ def compose_execute_model_dependencies(
         preflight_factory=ArtifactExecutionPreflight,
         selector=RuntimeBackendSelector(),
         runner=LlamaCppRunner(capability),
+    )
+
+
+# ----------------------------------------------------------------------
+# Acquisition composition (B9.85: application boundary + production wiring)
+# ----------------------------------------------------------------------
+
+def compose_acquisition_service(
+    *,
+    source: str = "huggingface",
+    discovery_provider: ModelDiscovery | None = None,
+    model_store: ModelStore | None = None,
+    planner_factory: Callable[[], DownloadPlanner] | None = None,
+    downloader_factory: Callable[[ModelStore], Downloader] | None = None,
+) -> ModelAcquisitionService:
+    """Compose the B9.85 ``ModelAcquisitionService`` from real collaborators.
+
+    This is the composition point for the download use case, in the same
+    spirit as ``compose_execute_model_dependencies`` for the execute use case.
+
+    One call is ONE use-case invocation. The service is never cached between
+    invocations: the store is resolved by the caller (B9.22 rule — the value
+    the CLI resolved is the value bound), and the single ``ModelStore``
+    instance it owns drives planning, transfer and registration so the planned
+    destination always belongs to the store that persists the artifact.
+
+    Identity (D3): ``logical_model_id`` stays the single authority. It is bound
+    HERE, into a resolver of B9.82's exact contract —
+    ``Callable[[str], str | None]`` — and the service receives only that bound
+    callable. The service therefore has no ``source`` value, no identity table
+    and no way to fabricate an identity.
+
+    No second dependency-injection mechanism is introduced: collaborators are
+    passed explicitly, exactly as for the execute use case.
+    """
+    store = model_store if model_store is not None else ModelStore()
+
+    def identity_resolver(repository: str) -> str | None:
+        """B9.82 IdentityResolver bound to this composition's source."""
+        return logical_model_id(source, repository)
+
+    planner = (
+        planner_factory() if planner_factory is not None
+        else DownloadPlanner(model_store=store)
+    )
+    downloader = (
+        downloader_factory(store) if downloader_factory is not None
+        else Downloader(store)
+    )
+
+    return ModelAcquisitionService(
+        discovery_provider=(
+            discovery_provider
+            if discovery_provider is not None
+            else HuggingFaceDiscoveryProvider()
+        ),
+        identity_resolver=identity_resolver,
+        locator_resolver=downloadable_locator,
+        planner=planner,
+        downloader=downloader,
+        store=store,
+        locator_audit=source_repositories_for_logical_model,
     )

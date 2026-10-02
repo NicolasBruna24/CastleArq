@@ -105,7 +105,18 @@ from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
 from .chat import ChatSessionError, start_chat_session
 from .artifact_selection import ArtifactSelectionError, select_artifact
-from .application_wiring import compose_execute_model_dependencies
+from .application_wiring import (
+    compose_acquisition_service,
+    compose_execute_model_dependencies,
+)
+from .acquisition_service import (
+    AcquisitionError,
+    AcquisitionErrorCategory,
+    AcquisitionOutcome,
+    AcquisitionStatus,
+    ModelAcquisitionService,
+)
+from .discovery import DiscoveryError, ModelDiscovery
 from .execute_model import (
     ExecuteAdmissionDeniedError,
     ExecutePreparationError,
@@ -1279,19 +1290,33 @@ def run_download(
     model_store: ModelStore | None = None,
     out=None,
     err=None,
+    service: "ModelAcquisitionService | None" = None,
 ) -> int:
     """Download exactly one explicit artifact for a logical model ID.
 
-    Selection policy (explicit, no guessing):
+    Since B9.85 this function is a CLI adapter only and holds no business
+    orchestration. Discovery, deterministic selection, acquisition mapping,
+    identity resolution, planning, transfer and manifest registration are
+    performed by :class:`ModelAcquisitionService`, which this command composes
+    through :func:`castlearq.application_wiring.compose_acquisition_service`.
+    The service composes the B9.80-B9.84 chain: B9.80/B9.81 discovery, then
+    B9.84 deterministic selection, then B9.82 acquisition mapping, then
+    planning, transfer and B9.40 registration.
+
+    CLI responsibility (unchanged): argument validation, presentation of the
+    :class:`AcquisitionOutcome`, and the exit status.
+
+    Selection policy (explicit, no guessing), now enforced by the application
+    boundary:
     - the logical ID must resolve to exactly one (source, repository)
       via :mod:`castlearq.model_identity`;
-    - ``HuggingFaceSource.discover_artifacts`` returns available GGUF artifacts;
-    - ``select_artifact`` selects exactly one artifact deterministically if
-      no ambiguity exists or matching the given selectors;
+    - deterministic selection selects exactly one discovered artifact, or fails
+      with an ambiguity that this command presents to the user;
     - ``DownloadPlanner.plan`` then owns all destination/state/space
       validation and the ``Downloader`` performs the transfer.
 
-    Registration policy (B9.40): a successful transfer is not the end of the
+    Registration policy (B9.40), now performed by the application boundary: a
+    successful transfer is not the end of the
     flow. The orchestrator persists the artifact manifest through
     :meth:`ModelStore.save_manifest` so the artifact becomes discoverable and
     resolvable by the store and the resolver. Persistence happens only after
@@ -1306,140 +1331,223 @@ def run_download(
         print("Usage: python3 -m castlearq.main download <model-id>", file=err)
         return 2
 
-    locator = downloadable_locator(model_id)
-    if locator is None:
-        locators = source_repositories_for_logical_model(model_id)
-        if len(locators) == 1:
-            print(f"Download error: unsupported source: {locators[0][0]}", file=err)
-        else:
-            print(
-                f"Download error: no unique source repository is mapped to model: {model_id}",
-                file=err,
-            )
-        return 1
-    _, repository = locator
-
-    source = (source_factory or HuggingFaceSource)()
-    try:
-        artifacts = source.discover_artifacts(repository)
-    except SourceError as error:
-        print(f"Download error: {error}", file=err)
-        return 1
-
-    try:
-        artifact = select_artifact(
-            artifacts, quantization=quantization, filename=filename
-        )
-    except ArtifactSelectionError as error:
-        if not quantization and not filename:
-            print(f"CastleArq - Download candidates for model: {model_id}", file=out)
-            print("==========================", file=out)
-            if not artifacts:
-                print("No GGUF artifacts found.", file=out)
-            for item in artifacts:
-                size = item.size_bytes if item.size_bytes is not None else "Unknown"
-                print(f"\n  {item.filename}", file=out)
-                print(f"    Quantization: {item.quantization}", file=out)
-                print(f"    Size: {size}", file=out)
-                print(f"    SHA-256: {item.sha256 or 'Unknown'}", file=out)
-            print(f"\nDownload error: {error}", file=err)
-        else:
-            print(f"Download error: {error}", file=err)
-        return 1
-    if artifact.model_id != model_id:
-        print(
-            f"Download error: discovered artifact model_id "
-            f"{artifact.model_id!r} does not match {model_id!r}",
-            file=err,
-        )
-        return 1
-
-    # B9.40: one single store instance drives planning, transfer and
-    # registration, so the planned destination always belongs to the store
-    # that will persist the artifact.
-    store = model_store if model_store is not None else ModelStore()
-    if planner_factory is not None:
-        planner = planner_factory()
-    else:
-        planner = DownloadPlanner(store)
-    try:
-        plan = planner.plan(artifact)
-    except (UnsafePathError, ValueError, TypeError) as error:
-        print(f"Download error: {error}", file=err)
-        return 1
-    except SourceError as error:
-        print(f"Download error: {error}", file=err)
-        return 1
-
-    print(f"Model: {artifact.model_id}", file=out)
-    print(f"Artifact: {artifact.filename}", file=out)
-    print(
-        f"Size: {artifact.size_bytes if artifact.size_bytes is not None else 'Unknown'}",
-        file=out,
+    acquisition = service if service is not None else _compose_acquisition(
+        source_factory=source_factory,
+        planner_factory=planner_factory,
+        downloader_factory=downloader_factory,
+        model_store=model_store,
     )
-    print(f"Source: Hugging Face", file=out)
-    print("", file=out)
-    print("Planning download...", file=out)
 
-    if plan.status == DownloadPlanStatus.ALREADY_DOWNLOADED:
+    try:
+        outcome = acquisition.acquire(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+        )
+    except AcquisitionError as error:
+        _present_acquisition_candidates(error, out=out)
+        print(f"Download error: {error}", file=err)
+        return 1
+
+    return _present_acquisition_outcome(outcome, out=out, err=err)
+
+
+def _compose_acquisition(
+    *,
+    source_factory=None,
+    planner_factory=None,
+    downloader_factory=None,
+    model_store: ModelStore | None = None,
+) -> ModelAcquisitionService:
+    """Build one acquisition service through the application composition root.
+
+    B9.85: the CLI performs no orchestration and constructs no collaborators of
+    its own. ``source_factory`` is the legacy test seam; when supplied it yields
+    the discovery collaborator, which keeps the existing injection points
+    working without reintroducing legacy discovery into this command.
+    """
+    discovery_provider = None
+    if source_factory is not None:
+        discovery_provider = _as_discovery_provider(source_factory())
+
+    return compose_acquisition_service(
+        discovery_provider=discovery_provider,
+        model_store=model_store,
+        planner_factory=planner_factory,
+        downloader_factory=downloader_factory,
+    )
+
+
+def _as_discovery_provider(candidate):
+    """Accept either a B9.81 discovery provider or a legacy source object.
+
+    A genuine B9.81 provider implements the B9.80 port and is used directly.
+    A legacy ``ModelSource`` implements only ``discover_artifacts`` and is
+    adapted through a thin shim over the B9.80 port, so the existing
+    ``source_factory`` test seam keeps working while this command runs the
+    B9.80-B9.84 chain. ``ModelSource`` itself is untouched.
+    """
+    if isinstance(candidate, ModelDiscovery):
+        return candidate
+    if hasattr(candidate, "discover_artifacts"):
+        return _LegacySourceDiscoveryAdapter(candidate)
+    return candidate
+
+
+class _LegacySourceDiscoveryAdapter:
+    """Expose a legacy ``ModelSource`` through the B9.80 discovery port.
+
+    This is a compatibility shim for the existing ``source_factory`` test seam
+    only. It never retires or deprecates ``ModelSource``: the legacy
+    architecture stays operational and untouched.
+    """
+
+    def __init__(self, source) -> None:
+        self._source = source
+
+    def inspect(self, repository: str):
+        """Return B9.80 variants derived from the legacy declared artifacts."""
+        from .discovery import (
+            DiscoveredArtifact,
+            ModelCandidate,
+            ModelVariant,
+        )
+
+        try:
+            artifacts = tuple(self._source.discover_artifacts(repository))
+        except SourceError as error:
+            # The legacy seam raises SourceError; the B9.80 port speaks
+            # DiscoveryError, so the boundary translation happens here.
+            raise DiscoveryError(str(error)) from error
+
+        groups: dict[str, list] = {}
+        for spec in artifacts:
+            declared = DiscoveredArtifact(
+                repository=spec.repository,
+                filename=spec.filename,
+                format=spec.format,
+                declared_quantization=spec.quantization,
+                model_id=spec.model_id,
+                source=spec.source,
+                download_url=spec.download_url,
+                declared_size=spec.size_bytes,
+                declared_sha256=spec.sha256,
+                revision=spec.revision,
+            )
+            groups.setdefault(declared.declared_quantization, []).append(declared)
+
+        provider_id = (
+            getattr(artifacts[0], "source", None) if artifacts else "legacy"
+        )
+        candidate = ModelCandidate(
+            provider_id=provider_id or "legacy",
+            repository=repository,
+            has_gguf=bool(artifacts),
+        )
+        return tuple(
+            ModelVariant(
+                candidate=candidate,
+                declared_quantization=quantization,
+                artifacts=tuple(groups[quantization]),
+            )
+            for quantization in sorted(groups)
+        )
+
+    def search(self, query, *, limit=20, cursor=None):
+        """Not supported by the legacy seam; the B9.80 port requires it."""
+        raise DiscoveryError(
+            "the legacy source seam does not implement discovery search"
+        )
+
+
+def _present_acquisition_candidates(error: AcquisitionError, *, out) -> None:
+    """Present discovered candidates for a refused selection.
+
+    Candidate data is produced by the application boundary from the artifacts
+    it already discovered; this function only prints. It is populated only
+    when no explicit selector was supplied, which is exactly when candidates
+    are worth showing.
+    """
+    if not error.candidates:
+        if error.category is AcquisitionErrorCategory.SELECTION_FAILED and (
+            not error.candidate_filenames
+        ):
+            # Discovery returned nothing at all; this is the legacy
+            # "No GGUF artifacts found." presentation.
+            print("CastleArq - Download candidates for model: " f"{error.model_id}", file=out)
+            print("==========================", file=out)
+            print("No GGUF artifacts found.", file=out)
+        return
+    print(f"CastleArq - Download candidates for model: {error.model_id}", file=out)
+    print("==========================", file=out)
+    for candidate in error.candidates:
+        size = (
+            candidate.declared_size
+            if candidate.declared_size is not None
+            else "Unknown"
+        )
+        print(f"\n  {candidate.filename}", file=out)
+        print(f"    Quantization: {candidate.quantization}", file=out)
+        print(f"    Size: {size}", file=out)
+        print(f"    SHA-256: {candidate.declared_sha256 or 'Unknown'}", file=out)
+
+
+def _failure_detail(message: str) -> str:
+    """Recover the downloader's own error text from the boundary message."""
+    _, _, detail = message.partition("): ")
+    return detail if detail else message
+
+
+def _present_acquisition_outcome(outcome: AcquisitionOutcome, *, out, err) -> int:
+    """Present an application outcome and return the CLI exit status."""
+    if outcome.status is AcquisitionStatus.BLOCKED:
+        for reason in outcome.reasons or ("download plan is blocked",):
+            print(f"Download error: {reason}", file=err)
+        return 1
+
+    if outcome.status is AcquisitionStatus.FAILED:
+        # Keep the legacy, more specific download-failure wording the CLI
+        # established, derived from the downloader status the boundary kept.
+        status = outcome.failure_status
+        detail = _failure_detail(outcome.message or "")
+        if status == "checksum_mismatch":
+            print(f"Download error: SHA-256 verification failed: {detail}", file=err)
+        elif status in {"http_error", "network_error"}:
+            print(f"Download error: download failed: {detail}", file=err)
+        elif status == "filesystem_error":
+            print(f"Download error: filesystem error: {detail}", file=err)
+        else:
+            print(f"Download error: {outcome.message}", file=err)
+        return 1
+
+    if outcome.status is AcquisitionStatus.ALREADY_DOWNLOADED:
+        print(f"Model: {outcome.model_id}", file=out)
+        print(f"Artifact: {outcome.filename}", file=out)
         print("Artifact already downloaded.", file=out)
         return 0
-    if plan.status == DownloadPlanStatus.BLOCKED:
-        for reason in plan.reasons:
-            print(f"Download error: {reason}", file=err)
-        if not plan.reasons:
-            print("Download error: download plan is blocked", file=err)
-        return 1
-    if plan.status != DownloadPlanStatus.READY:
-        print(
-            f"Download error: cannot plan download (status: {plan.status.value})",
-            file=err,
-        )
-        return 1
-
-    print(f"Destination: {plan.destination}", file=out)
-    print("Downloading...", file=out)
-    downloader = (downloader_factory or Downloader)(store)
-    try:
-        result = downloader.download(plan)
-    except UnsafePathError as error:
-        print(f"Download error: {error}", file=err)
-        return 1
-    if result.success:
-        # B9.40: the transfer published the artifact file; registering its
-        # manifest is what makes it visible to the store and the resolver.
-        try:
-            manifest_path = store.save_manifest(artifact)
-        except (UnsafePathError, OSError, ValueError) as error:
-            print(
-                "Download error: artifact was downloaded but its local "
-                f"manifest could not be persisted: {error}",
-                file=err,
-            )
-            return 1
-        print("Download complete.", file=out)
-        if artifact.sha256:
-            print("SHA-256 verified.", file=out)
-        print("Artifact state: downloaded", file=out)
-        print(f"Registered manifest: {manifest_path}", file=out)
+        print(f"Model: {outcome.model_id}", file=out)
+        print(f"Artifact: {outcome.filename}", file=out)
+        print("Artifact already downloaded.", file=out)
         return 0
-    if result.status == DownloadResultStatus.CHECKSUM_MISMATCH:
-        print(f"Download error: SHA-256 verification failed: {result.error}", file=err)
-        return 1
-    if result.status in {
-        DownloadResultStatus.HTTP_ERROR,
-        DownloadResultStatus.NETWORK_ERROR,
-    }:
-        print(f"Download error: download failed: {result.error}", file=err)
-        return 1
-    if result.status == DownloadResultStatus.FILESYSTEM_ERROR:
-        print(f"Download error: filesystem error: {result.error}", file=err)
-        return 1
-    print(
-        f"Download error: download failed ({result.status.value}): {result.error}",
-        file=err,
-    )
-    return 1
+
+    print(f"Model: {outcome.model_id}", file=out)
+    print(f"Artifact: {outcome.filename}", file=out)
+    if outcome.size_bytes is not None:
+        print(f"Size: {outcome.size_bytes}", file=out)
+    print("Source: Hugging Face", file=out)
+    print("", file=out)
+    print("Planning download...", file=out)
+    if outcome.destination is not None:
+        print(f"Destination: {outcome.destination}", file=out)
+    print("Downloading...", file=out)
+
+    print("Download complete.", file=out)
+    if outcome.verified:
+        print("SHA-256 verified.", file=out)
+    print("Artifact state: downloaded", file=out)
+    if outcome.manifest_path is not None:
+        print(f"Registered manifest: {outcome.manifest_path}", file=out)
+    return 0
 
 
 def _error_message(error: BaseException) -> str:

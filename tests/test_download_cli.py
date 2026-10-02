@@ -360,7 +360,7 @@ class RunDownloadTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("a-q4.gguf", out)
         self.assertIn("b-q8.gguf", out)
-        self.assertIn("specify --quantization or --filename", err)
+        self.assertIn("specify quantization, filename or revision", err)
         downloader_factory.downloader.download.assert_not_called()
         planner.plan.assert_not_called()
 
@@ -407,7 +407,7 @@ class RunDownloadTests(unittest.TestCase):
             planner_factory=lambda: planner,
         )
         self.assertEqual(code, 1)
-        self.assertIn("No artifact matches quantization 'Q9_K_M'", err)
+        self.assertIn("No discovered artifact matches quantization 'Q9_K_M'", err)
         planner.plan.assert_not_called()
 
     def test_both_selectors_matching_succeeds(self):
@@ -439,7 +439,7 @@ class RunDownloadTests(unittest.TestCase):
             planner_factory=lambda: planner,
         )
         self.assertEqual(code, 1)
-        self.assertIn("No artifact matches both", err)
+        self.assertIn("No discovered artifact matches both", err)
         planner.plan.assert_not_called()
 
     def test_ambiguous_quantization_fails_without_calling_planner(self):
@@ -452,8 +452,9 @@ class RunDownloadTests(unittest.TestCase):
             planner_factory=lambda: planner,
         )
         self.assertEqual(code, 1)
-        self.assertIn("Multiple artifacts match quantization 'Q4_K_M'", err)
-        self.assertIn("--filename", err)
+        self.assertIn("Multiple discovered artifacts match", err)
+        self.assertIn("model-q4-00001.gguf", err)
+        self.assertIn("model-q4-00002.gguf", err)
         planner.plan.assert_not_called()
 
 

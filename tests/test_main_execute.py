@@ -424,7 +424,15 @@ class StructuralBoundaryTests(unittest.TestCase):
         self.assertEqual(
             received,
             {
-                "application_wiring": {"compose_execute_model_dependencies"},
+                # B9.85 adds the acquisition use case's composition seam: the
+                # download path must be composed through the same single
+                # application composition root, not through a second one. The
+                # approved boundary is widened by exactly this one name; no
+                # other module is added to the flow.
+                "application_wiring": {
+                    "compose_acquisition_service",
+                    "compose_execute_model_dependencies",
+                },
                 "evaluate_compatibility": {
                     # B9.74 adds the use case's own dependency holder: the store
                     # selected for the invocation has to reach the evaluation
