@@ -2808,35 +2808,34 @@ Validity Reason:
 ```text
 Block ID:                 B9.83
 Name:                     Revision-Aware Acquisition
-Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED
 Origin:                   this document, section 19
 Scope:                    see 19.2
 Non-goals:                see 19.3
 Dependencies:             see 19.4
 Architectural decision:   see 19.5
-Current State:            IMPLEMENTED — implementation recorded; not verified
-                          and not closed. Verification and closure remain
-                          PENDING and are performed by a separate READ-ONLY
-                          audit
-Acceptance Criteria:      AC1-AC14 — see 19.6; all PENDING, none yet
-                          independently verified
+Current State:            CLOSED — implemented, independently verified and
+                           formally closed; authoritative closure record in 19.8
+Acceptance Criteria:      AC1-AC14 — see 19.6; all PASS, recorded in 19.8
 Evidence:                 see 19.4, the READ-ONLY B9.83 allocation audit and
-                          the preceding decision audit, and 19.5
+                          the preceding decision audit, 19.5, and 19.8
 Evidence Type:            DOC
 Decision Reference:       READ-ONLY NAR decision audit and human
                           architectural decision record preceding this
                           allocation: SELECT A — Revision-aware acquisition
-Implementation Commit:    recorded by the commit containing this
-                          implementation-state update
+Implementation Commit:    76d9c993af26e1a755c57b4771eb0cc0aa15e44a
                           ("feat: implement B9.83 revision-aware acquisition")
-Verification Result:      NONE — not verified
-Closure Commit:           NONE — not closed
+Verification Result:      B9.83 VERIFIED — READ-ONLY audit against the
+                          implementation commit; see 19.8
+Closure Commit:           recorded by the commit that introduces the closure
+                          record in 19.8
+                          ("docs: close roadmap block B9.83")
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
 Number Allocation Record: PRESENT — section 19
 Retrospective Record:     NO — prospective allocation record
-Human decisions pending:  see 19.7
+Human decisions pending:  none — OD-1 settled in 19.7
 ```
 
 
@@ -3200,7 +3199,156 @@ itself: neither of them authorized implementation, and neither may be read as
 doing so. Implementation was performed in a separate controlled step, whose
 authorization came from the operator and not from this record.
 
-B9.83 is now `IMPLEMENTED`. It is **not** verified and **not** closed: the
-acceptance criteria in 19.6 remain PENDING, and a separate READ-ONLY
-verification audit plus a closure record are still required. B9.78, B9.79,
-B9.80, B9.81 and B9.82 are not modified by the B9.83 implementation.
+The verification audit and the formal closure that followed are recorded in
+19.8; the decision text above is unchanged by either.
+
+---
+
+### 19.8 Verification and closure record
+
+A READ-ONLY verification audit was performed against the implementation commit
+`76d9c993af26e1a755c57b4771eb0cc0aa15e44a`
+("feat: implement B9.83 revision-aware acquisition"). The audit modified no
+file, created no commit and pushed nothing.
+
+```text
+Verification Result:
+  B9.83 VERIFIED
+
+Implementation Commit (verified contents — immutable, never rewritten):
+  76d9c993af26e1a755c57b4771eb0cc0aa15e44a
+  "feat: implement B9.83 revision-aware acquisition"
+
+Committed Files (exclusively; exactly eight, all within allocated scope):
+  castlearq/models.py                              (+17 / -0)
+  castlearq/acquisition_mapping.py                 (+15 / -7)
+  castlearq/sources/huggingface.py                 (+36 / -4)
+  castlearq/downloads/planner.py                   (+24 / -3)
+  castlearq/model_store.py                         (+18 / -0)
+  tests/test_b983_revision_aware_acquisition.py    (new, 278 lines)
+  tests/test_b982_acquisition_mapping.py           (+63 / -20)
+  docs/roadmap-register-and-numbering-policy.md    (+522 / -0)
+
+OD-1 Compliance (human architectural decision, verified against the
+implementation and not re-derived from it):
+  - `revision` does NOT participate in `ArtifactSpec.artifact_id`. The
+    artifact_id property body is byte-identical to the pre-B9.83 baseline;
+    the models.py change is purely the added field and its comment.
+  - Behavioral identity verification, not dataclass equality: five distinct
+    revisions (None, 40-hex x2, "main", "deadbeef") yield exactly one
+    artifact_id; the digest is still
+    sha256(source|repository|filename|quantization).
+  - The content_id short-circuit is unchanged and stable under any revision.
+  - No conditional identity formula and no second artifact identity exist;
+    the property contains one digest and one content_id return.
+  - OD-1 was not rewritten, reopened or replaced by the implementation. It
+    remains a human architectural decision recorded in 19.7.
+
+Domain Semantics (four concepts kept separate):
+  artifact_id = addressing identity
+  revision    = declared remote provenance pointer
+  content_id  = digest CastleArq computed from observed bytes
+  verified    = derived outcome of inspect_manifest recomputation
+  A revision is never content identity, never a verified claim, and never
+  the SHA-256 of the downloaded GGUF. state was observed to remain
+  NOT_DOWNLOADED and sha256 remained the declared value.
+
+Revision Transport (acquisition mapping boundary):
+  - A present DiscoveredArtifact.revision is transported verbatim.
+  - An absent revision stays None; it is never fabricated and never
+    defaulted to "main".
+  - Revision is never converted into content_id or sha256.
+  - The mapper remains an explicit boundary adapter: its import closure
+    still reaches castlearq, castlearq.discovery, castlearq.models and
+    castlearq.acquisition_mapping only.
+  - The B9.82 mapper remains NOT production-wired: no production module
+    imports it.
+
+Download URL Contract (constructor/validator separation preserved):
+  - Declared revision -> https://huggingface.co/<repo>/resolve/<rev>/<file>
+  - No declared revision -> the unchanged /resolve/main/ form
+  - Mismatch rejection was verified in all three directions: revision R with
+    a main URL, revision R with a revision-S URL, and a declared-absent
+    artifact carrying a revision-pinned URL are all BLOCKED. No stale or
+    mismatched locator is silently accepted.
+  - Construction, preservation and validation remain three distinct
+    responsibilities: _download_url builds, the B9.82 mapper preserves the
+    declared locator verbatim, and the planner validates correspondence.
+  - 13 of 14 adversarial URLs were BLOCKED (http, evil host, localhost,
+    embedded credentials, explicit port, query, fragment, ../ traversal,
+    percent-encoded traversal, file://, wrong repository, wrong filename).
+  - 17 of 18 malformed revisions were rejected at construction, including
+    empty, dot segments, separators, whitespace padding, over-length and
+    percent-encoded forms.
+
+Manifest Contract (write, read, round-trip, legacy compatibility):
+  - A declared revision is written and read back exactly.
+  - An absent revision is persisted as null and reads back as None.
+  - A manifest written before B9.83, with no revision key, remains readable
+    and reconstructs revision = None.
+  - artifact_id is unchanged by the round trip.
+  - state and verified remain derived and are never persisted (B9.41).
+
+ModelStore Invariants:
+  - _artifact_directory, artifact directory naming and addressing were not
+    modified; only the manifest payload and its reader changed.
+  - No second storage identity, no revision index, and no migration were
+    introduced. manifest_migration.py is untouched.
+  - The documented multi-revision limitation recorded in 19.7.3 remains
+    true by design.
+
+B9.82 Supersession (prospective, not retroactive):
+  - RevisionDiscardTests was reworked in place as RevisionTransportTests; the
+    five assertions that encoded the discard contract were replaced, not
+    silently deleted, and the supersession is documented in the test
+    docstring, the mapper docstring and the mapper inline comment.
+  - The B9.82 closure record, scope, implementation commit and commit
+    references remain intact and unmodified.
+
+Regression Result:
+  1998 passed / 2672 subtests passed / 0 failed / 0 errors
+  (B9.83 targeted tests: 19 passed;
+   B9.82 acquisition mapping tests: 58 passed;
+   B9.82 purity/isolation tests: 8 passed)
+  git diff --check: exit 0, clean
+
+Static Quality (comparison against the pre-B9.83 baseline):
+  ruff check castlearq/ : 239 errors before, 239 after — delta 0
+  mypy  castlearq/     : 29 errors in 14 files before, 29 after — delta 0
+  ruff on the new B9.83 test file: all checks passed
+  B9.83 introduced no new lint or type issue. No pre-existing lint or type
+  error was fixed, and none is claimed to have been fixed.
+
+Acceptance Criteria:
+  AC1-AC14 all PASS.
+
+Provenance Note (recorded fact, not a defect):
+  The section 19 allocation record and the OD-1 decision were present as
+  uncommitted roadmap changes when the implementation commit was created, so
+  that single commit carries the allocation record, the OD-1 decision, the
+  implementation state and the implementation itself. History is not
+  rewritten and no corrective commit was created to separate them. The
+  substantive content of each record was verified intact in the committed
+  tree; only their co-commitment is noted here.
+
+Non-blocking Observations (neither is a B9.83 defect; neither was fixed,
+and neither reopens B9.83):
+  1. An uppercase host such as https://HUGGINGFACE.CO/... is accepted,
+     because hostname comparison is case-insensitive. This behaviour is
+     identical in the pre-B9.83 baseline and is not a B9.83 regression.
+  2. revision="-main" is accepted as a single safe path segment. It is
+     permissive but produces no path traversal and no host escape.
+```
+
+B9.83 is **CLOSED**. No B9.83.x sub-block is assigned, no new identifier is
+allocated here, and B9.78, B9.79, B9.80, B9.81 and B9.82 are not modified by
+this record. The highest verified main block is now B9.83; any next main
+assignment is computed by the section 6 and section 7 procedure and is
+deliberately not made in this record. The implementation commit above is the
+verified artifact and remains immutable; this closure record only attests that
+the verified implementation has been formally closed.
+
+The multi-revision limitation recorded in 19.7.3 remains an intentional
+consequence of the OD-1 decision and was deliberately not redesigned here.
+Multi-revision coexistence stays a separate future architectural question with
+no identifier allocated.
