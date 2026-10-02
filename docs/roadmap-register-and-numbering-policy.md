@@ -3352,3 +3352,748 @@ The multi-revision limitation recorded in 19.7.3 remains an intentional
 consequence of the OD-1 decision and was deliberately not redesigned here.
 Multi-revision coexistence stays a separate future architectural question with
 no identifier allocated.
+---
+
+## 20. B9.84 — Human Architectural Decision Record
+
+**This section is a human architectural decision record only.** It allocates no
+identifier, implements nothing, modifies no production code and no test, and
+authorizes no implementation work. It is deliberately **not** a §11 Number
+Allocation Record: under the §6/§7 procedure a `B9.84` assignment requires a
+recorded corpus inspection at allocation time, and that inspection has not been
+performed. Consequently `B9.84` is, at the moment of this record, an
+**unallocated candidate identifier** carrying a recorded human decision and a
+recorded scope. Nothing here may be cited as an allocated B9 identifier, and no
+B9.85 is created.
+
+> **CROSS-REFERENCE (added by the section 21 Number Allocation Record).** The
+> paragraph above states the position **as of this section alone**. The §7 corpus
+> inspection was subsequently performed and `B9.84` is **ALLOCATED** by §21,
+> which cites this section as its authoritative decision record. This section's
+> eight decisions, its scope (20.3) and its non-goals (20.4) are unchanged by
+> §21; only the allocation status asserted in this paragraph is superseded
+> prospectively by §21. No other line of §20 is altered.
+
+Context (recorded, not re-verified here): the discovery/acquisition foundation
+is complete — B9.80 (discovery domain) and B9.81 (Hugging Face discovery
+provider) are **CLOSED**, and B9.82 (acquisition mapper) is a closed, pure 1:1
+translator that has no production caller. The gap recorded by the READ-ONLY
+decision matrix is the missing **discovery-domain selection contract** between
+that foundation and a future product/library surface. B9.84 is that contract.
+It is explicitly **not** the Model Library UX itself.
+
+The eight decisions below are **human architectural decisions**. They are not
+inferences drawn from implementation, they were not derived by the repository,
+and they decide only what this record states.
+
+### 20.1 The eight recorded human decisions (D1–D8)
+
+#### D1 — Selection input domain
+
+```text
+Decision:  A — `ModelVariant[]`
+Status:    DECIDED (human architectural decision)
+
+Rationale (recorded):
+  - preserves the B9.80/B9.81 model -> variant -> artifact hierarchy;
+  - consumes the grouping already established by B9.81;
+  - avoids re-deriving quantization grouping from a flat `DiscoveredArtifact[]`;
+  - naturally supports variants containing multiple artifacts, including
+    sharded artifacts;
+  - is directly compatible with the B9.82 mapper's accepted `ModelVariant`
+    input.
+
+Constraint:
+  No new selection type is introduced.
+```
+
+#### D2 — Selection boundary
+
+```text
+Decision:  A — selection occurs upstream of B9.82
+Status:    DECIDED (human architectural decision)
+
+Required flow (recorded, normative):
+  Discovery -> Selection -> B9.82 Mapping -> Acquisition
+
+Rationale (recorded):
+  - B9.84 chooses;
+#### D4 — Existing selector relationship
+
+```text
+Decision:  B — create a separate discovery-domain selection contract
+Status:    DECIDED (human architectural decision)
+
+Rationale (recorded):
+  - existing callers depend on the current `ArtifactSpec` semantics of
+    `select_artifact()`;
+  - discovery uses `declared_quantization`, while the legacy selector uses
+    acquisition-domain fields;
+  - changing the existing selector would unnecessarily reopen a closed
+    production contract.
+
+Constraint:
+  `select_artifact()` is not refactored into a shared abstraction as part of
+  B9.84.
+```
+
+#### D5 — Identity responsibility
+
+```text
+Decision:  B — identity remains the responsibility of the B9.82 caller
+Status:    DECIDED (human architectural decision)
+
+Rationale (recorded):
+  B9.84 must not resolve or fabricate `model_id`.
+
+B9.82 Decision 1 preserved (recorded):
+  - selection operates on discovery data;
+  - the caller of B9.82 supplies the identity resolver;
+  - B9.82 remains responsible for injecting/resolving identity at its existing
+    boundary.
+
+Constraint:
+  No model-identity coupling is added to B9.84.
+```
+
+#### D6 — Cardinality
+
+```text
+Decision:  A — exactly one result or explicit failure
+Status:    DECIDED (human architectural decision)
+
+Normative behaviour (recorded):
+  - exactly one match   -> return that artifact;
+  - zero matches       -> explicit failure;
+  - more than one match -> explicit ambiguity failure.
+
+Constraint:
+  No ranking, scoring, fuzzy matching, recommendation, or incidental-order
+  selection is introduced.
+```
+
+#### D7 — Error ownership
+
+```text
+Decision:  A — dedicated selection-boundary error
+Status:    DECIDED (human architectural decision)
+
+Rationale (recorded):
+  - `ArtifactSelectionError` belongs to the existing acquisition-domain
+    selector;
+  - `DiscoveryError` represents discovery/provider failures;
+  - B9.84 is a distinct discovery-domain selection boundary and owns its own
+    selection failures.
+
+Constraint:
+  B9.84 reuses neither `ArtifactSelectionError` nor `DiscoveryError`. The future
+  error symbol is named by a future implementation under the repository's
+### 20.2 Architectural invariants (immutable for B9.84)
+
+```text
+ 1. B9.80 remains closed.
+ 2. B9.81 remains closed.
+ 3. B9.82 remains a pure 1:1 mapper and does not choose.
+ 4. B9.83 remains closed.
+ 5. `revision` remains excluded from `artifact_id`.
+ 6. B9.84 performs no network access.
+ 7. B9.84 performs no persistence or filesystem access.
+ 8. B9.84 performs no identity resolution.
+ 9. B9.84 performs no ranking/recommendation/fuzzy matching.
+10. B9.84 does not implement Model Library UX.
+11. B9.84 does not wire the production acquisition pipeline.
+12. B9.84 does not redesign ModelStore.
+13. The existing `select_artifact()` behavior remains unchanged.
+```
+
+### 20.3 Formal scope (recorded)
+
+> **B9.84 — Discovery-Domain Deterministic Artifact Selection**
+>
+> Define a pure discovery-domain selection contract that accepts the
+> already-discovered `ModelVariant[]` domain and deterministic explicit
+> selection criteria, producing exactly one `DiscoveredArtifact` or an
+> explicit selection-boundary failure. The contract operates upstream of
+> B9.82, preserves B9.82 identity responsibility, supports revision as an
+> explicit criterion without changing artifact identity, and leaves the
+> existing acquisition-domain selector untouched.
+
+### 20.4 Non-goals (recorded)
+
+```text
+ - Model Library UI
+ - model catalog/search redesign
+ - Hugging Face provider redesign
+ - discovery protocol redesign
+ - ranking
+ - scoring
+ - recommendations
+ - fuzzy matching
+ - automatic "best" artifact selection
+ - production CLI/API wiring
+ - ModelSource deprecation/removal
+ - ModelStore redesign
+ - multi-revision storage redesign
+ - runtime/evaluation/admission
+ - fine-tuning/LoRA/QLoRA
+ - B9.82 mapper redesign
+ - B9.83 revision redesign
+ - changes to the existing `select_artifact()` behavior
+```
+
+### 20.5 Effect on closed records
+
+```text
+  - B9.80, B9.81, B9.82 and B9.83 allocation records, scopes, implementation
+    commits, closures and tests are untouched by this record.
+  - B9.83 OD-1 (19.7) is not rewritten, reopened or replaced.
+  - Sections 14 through 19 of this register are not modified.
+  - No acceptance criterion of any earlier block is satisfied, removed or
+    altered here.
+```
+
+### 20.6 Authorization state (recorded)
+
+```text
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+ALLOCATION RECORDED:        NO (no section 11 NAR is created by this record)
+B9.85 CREATED:              NO
+PUSHES PERFORMED:           0
+```
+
+> **CROSS-REFERENCE (added by the section 21 Number Allocation Record).** The
+> `ALLOCATION RECORDED` line above describes **this section's own state only**:
+> §20 created no NAR. The allocation was subsequently recorded in §21, which
+> allocates `B9.84` on the evidence of the §7 corpus inspection and cites this
+> section as its decision record. Every other line above — including
+> `IMPLEMENTATION AUTHORIZED: NO`, `TESTS AUTHORIZED: NO`, `B9.85 CREATED: NO`
+> and `PUSHES PERFORMED: 0` — remains true and is repeated in §21.7. No other
+> line of §20 is altered.
+
+This line records the state of the decision record itself. The eight decisions
+above, the scope in 20.3 and the non-goals in 20.4 define an intent and its
+boundaries. Any later allocation, implementation, verification or closure is a
+separate controlled step, authorized by the operator and not by this record.
+
+---
+  naming conventions; no error type is implemented by this record, and no
+  symbol name is fabricated here.
+```
+
+#### D8 — Empty candidate set
+
+```text
+Decision:  A — explicit selection error
+Status:    DECIDED (human architectural decision)
+
+Normative behaviour (recorded):
+  An empty candidate collection is an explicit B9.84 selection failure and
+  must remain distinguishable from:
+  - a non-empty candidate set with no matching criteria;
+  - an ambiguous match;
+  - malformed/inconsistent candidate data.
+
+Constraint:
+  An empty collection is never silently interpreted as success, as `None`, or
+  as a generic discovery failure.
+```
+  - B9.82 remains a pure 1:1 translator;
+  - B9.82 must not receive multiple alternatives merely to have them discarded
+    later.
+
+Constraint:
+  Selection is NOT moved after mapping.
+```
+
+#### D3 — Revision selection
+
+```text
+Decision:  A — revision is a first-class selection criterion
+Status:    DECIDED (human architectural decision)
+
+Meaning (recorded):
+  Revision may be used to express which discovered revision the caller intends
+  to acquire.
+
+Invariants explicitly preserved:
+  - revision is not content identity;
+  - revision is not `artifact_id`;
+  - revision is not verified content;
+  - B9.83 OD-1 (19.7) remains immutable;
+  - selecting a revision does not alter artifact identity or storage identity.
+
+Constraint:
+  No revision-aware storage and no multi-revision coexistence is introduced in
+  B9.84. The multi-revision limitation recorded in 19.7.3 is unchanged.
+```
+## 21. B9.84 — Number Allocation Record
+
+`B9.84` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. At allocation time B9.84 is **an allocation only**: no
+implementation, no verification and no closure is claimed by this section.
+
+The scope is **not chosen by this record**. It was fixed beforehand by the human
+architectural decision record in §20 and is reproduced here verbatim. This
+section allocates the number that carries that scope; it does not widen,
+reinterpret or extend it.
+
+```text
+Assigned Number:
+  B9.84
+
+Title:
+  Discovery-Domain Deterministic Artifact Selection
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash, per
+  the two-step mechanism already stated in section 11 for the numbering policy
+  activation anchor. A commit hash cannot be known before the commit exists and
+  writing a guessed value would be a fabricated identifier.
+
+Corpus/HEAD Anchor:
+  3a4c4a5bbd31863e48a4b52614d07292a42dc2ae
+  (main == HEAD == origin/main, working tree carrying only the section 20 human
+  architectural decision record, 0 ahead / 0 behind origin/main)
+
+Corpus File Count:
+  215 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  git rev-parse HEAD -> 3a4c4a5bbd31863e48a4b52614d07292a42dc2ae
+  git tree object at HEAD -> e390e4e0931febeb3a46c7e73a56f0bc56817bef
+  sorted path list SHA-256 ->
+    d993f49106e1e77be83da6832df1495263306438addffd62b67d763f64aa5ea4
+  identifier-set SHA-256 ->
+    106ac7edf92c98e7742be3666a94e1121fe632c607b9f1dc1137042167540240
+  mechanism: git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+    | LC_ALL=C sort [-u]; sha256sum over each sorted list
+
+Identifier Set:
+  132 distinct identifiers over 3121 occurrences in 215 versioned files.
+  Highest main identifier in real use: B9.83 (section 19, CLOSED).
+  B9.84 — 30 occurrences, every one of them inside this document:
+    the section 14-19 candidate rejection lists (lines 1863, 2260, 2285, 2303,
+    2746, 2775, 2797), the section 20 human architectural decision record, and
+    nothing else. `git ls-files -z | xargs -0 grep -ln 'B9\.84'` returns exactly
+    one path: this document. Zero occurrences exist in castlearq/, tests/,
+    config/, .github/, README.md, pyproject.toml, requirements.txt, LICENSE or
+    any other versioned file outside this document.
+  Classification at this anchor: illustrative example, rejected candidate,
+  historical reference, or section 20 decision record. Before section 21 no
+  occurrence was an allocation, a reservation, a proposal, a provisional
+  assignment or an implementation/test label.
+  B9.85 — 5 occurrences, all inside this document (lines 2294, 2746, 2778, 3367,
+    3553), each an explicit rejection or a negative assertion. No allocation,
+  reservation or proposal exists for it. B9.86 and above — no occurrence
+  anywhere in the corpus.
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3 — illustrative only,
+  per the section 8 rule.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+  v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations; no
+  commit outside this document's history introduces a B9.84 allocation. No
+  competing, competing-pending or conflicting identifier was found.
+
+Highest Verified Main Block:
+  B9.83 — allocated in section 19, implemented at 76d9c99, verified and closed
+  in 19.8; published on origin/main.
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+  decision matrix and the human architectural decision record in section 20
+
+Candidate Numbers Considered:
+  B9.84 — SELECTED. highest_verified_main_block + 1 = B9.83 + 1 = B9.84. No
+    allocation, reservation, provisional allocation or competing higher main
+    identifier exists for it
+  B9.85 — rejected: no occurrence of any such identifier exists in the corpus
+    outside recorded rejections inside this document; never considered
+  B9.86 and above — rejected: no occurrence anywhere in the corpus; never
+    considered
+  B9.83.1 and every other sub-block — rejected: sub-blocks do not raise the
+    main-block floor and do not consume B9.84 (section 8). B9.80, B9.81, B9.82
+  and B9.83 each record that no sub-block is assigned
+  B9.78 through B9.83 — rejected: already allocated by sections 14-19; not
+    reusable under section 9
+  Historical gaps (B9.25-B9.28, B9.32-B9.34, B9.38, B9.49, B9.60-B9.65,
+    B9.68-B9.73, B9.75, and every other main number below B9.84 that is not
+    allocated by sections 14-19) — rejected: historical gaps, not reusable under
+    section 9 (NOT REUSED, prospective declaration). No gap is claimed
+    abandoned, freed, reserved or erroneous (section 13)
+
+Selected Number:
+  B9.84
+
+Validity Reason:
+### 21.1 Register entry for B9.84
+
+```text
+Block ID:                 B9.84
+Name:                     Discovery-Domain Deterministic Artifact Selection
+Status:                   DOCUMENTED, ALLOCATED
+Origin:                   this document, section 21
+Scope:                    see 21.2 (normative: section 20.3)
+Non-goals:                see 21.3 (normative: section 20.4)
+Dependencies:             see 21.4
+Architectural decision:   see 20.1 (D1-D8) — precedes this allocation
+Current State:            ALLOCATED — no implementation, no verification, no
+                          closure. Implementation is NOT AUTHORIZED by this
+                          record; see 21.7
+Acceptance Criteria:      not established by this allocation; to be recorded by
+                          a later controlled step, as for sections 14-19
+Evidence:                 the section 7 corpus inspection above, the READ-ONLY
+                          decision matrix, and the section 20 human
+                          architectural decision record
+Decision Reference:       section 20 — human architectural decision record,
+                          D1-D8, recorded before this allocation
+Implementation Commit:    NONE — no implementation exists
+Verification Result:      NOT VERIFIED — no implementation to verify
+Closure Commit:           NONE — B9.84 is not closed
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document
+Number Allocation Record: PRESENT — section 21
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none — D1-D8 all DECIDED in 20.1
+```
+  B9.83 is the highest verified allocated main block at 3a4c4a5: allocated in
+  section 19, implemented at 76d9c99, verified and closed in 19.8, and published
+### 21.2 Scope (allocated)
+
+The scope is the one recorded in §20.3, reproduced verbatim. It is quoted here
+and is not restated, broadened or reinterpreted:
+
+> **B9.84 — Discovery-Domain Deterministic Artifact Selection**
+>
+> Define a pure discovery-domain selection contract that accepts the
+> already-discovered `ModelVariant[]` domain and deterministic explicit
+> selection criteria, producing exactly one `DiscoveredArtifact` or an
+> explicit selection-boundary failure. The contract operates upstream of
+> B9.82, preserves B9.82 identity responsibility, supports revision as an
+> explicit criterion without changing artifact identity, and leaves the
+> existing acquisition-domain selector untouched.
+
+The contract this scope names:
+
+```text
+B9.80  ModelDiscovery / ModelVariant / DiscoveredArtifact   (CLOSED, untouched)
+B9.81  HuggingFaceDiscoveryProvider                          (CLOSED, untouched)
+          ↓
+B9.84  discovery-domain deterministic selection             <- this block
+          ↓
+B9.82  map_discovered_artifacts — pure 1:1 translator        (CLOSED, untouched)
+          ↓
+       ArtifactSpec -> acquisition infrastructure             (existing, unwired)
+```
+
+### 21.3 Allocated boundary
+
+These constraints are normative for B9.84. They are the D1-D8 decisions of
+§20.1 restated as the boundary of this allocation; where the two texts differ,
+§20.1 is the human decision and governs.
+
+```text
+ 1. Input domain: `ModelVariant[]`.
+ 2. Selection occurs upstream of B9.82
+    (Discovery -> Selection -> B9.82 Mapping -> Acquisition).
+ 3. Revision is a first-class selection criterion.
+ 4. Revision remains distinct from `artifact_id`, content identity and
+    verification; B9.83 OD-1 (19.7) is immutable.
+ 5. The existing `select_artifact()` remains untouched.
+ 6. Identity remains the responsibility of the B9.82 caller; B9.84 neither
+    resolves nor fabricates `model_id`.
+ 7. Successful selection produces exactly one `DiscoveredArtifact`.
+ 8. Zero matches and ambiguous matches are explicit failures.
+ 9. Empty candidate input is an explicit selection error.
+10. B9.84 owns a dedicated selection-boundary error; it reuses neither
+    `ArtifactSelectionError` nor `DiscoveryError`.
+11. No network access.
+12. No persistence or filesystem access.
+13. No ranking, scoring, recommendation or fuzzy matching.
+14. No Model Library UX.
+15. No production wiring.
+16. No ModelStore redesign.
+17. No B9.82 redesign.
+18. No B9.83 redesign.
+```
+
+### 21.4 Dependencies and evidence
+
+```text
+B9.80 — ModelDiscovery, ModelVariant, DiscoveredArtifact, DiscoveryError;
+        CLOSED. B9.84 consumes its domain types and changes none of them
+B9.81 — HuggingFaceDiscoveryProvider; CLOSED. It already produces the declared
+        revision and already groups artifacts into variants; B9.84 consumes
+        that grouping and changes none of it
+B9.82 — map_discovered_artifacts; CLOSED and unchanged. It remains a pure 1:1
+        translator that does not choose; B9.84 never hands it multiple
+        alternatives for later discarding, and never redesigns it
+B9.83 — revision-aware acquisition; CLOSED. OD-1 (19.7) is preserved verbatim;
+### 21.5 Non-goals
+
+Recorded identically to §20.4. B9.84 does not:
+
+```text
+ - Model Library UI
+ - model catalog/search redesign
+ - Hugging Face provider redesign
+ - discovery protocol redesign
+ - ranking
+ - scoring
+ - recommendations
+ - fuzzy matching
+ - automatic "best" artifact selection
+ - production CLI/API wiring
+ - ModelSource deprecation/removal
+ - ModelStore redesign
+ - multi-revision storage redesign
+ - runtime/evaluation/admission
+ - fine-tuning/LoRA/QLoRA
+ - B9.82 mapper redesign
+ - B9.83 revision redesign
+ - changes to the existing `select_artifact()` behavior
+```
+
+### 21.6 Explicitly excluded deferrals
+
+Each item below was explicitly deferred or expressly excluded by an earlier
+block. B9.84 does **not** absorb any of them. They remain separate future work
+with no identifier allocated by this record:
+
+```text
+ - Model Library UX. Section 17.3 non-goal 19 and section 19.3 non-goal 3
+   exclude it; section 17.3 states the block "must NOT become the model
+   library". B9.84 explicitly does not implement it.
+ - Production pipeline wiring. Section 18.3 records that the legacy
+   ModelSource.discover_artifacts -> list[ArtifactSpec] path and its CLI
+   consumers remain untouched and that deprecating them "is a separate block";
+   section 19.3 non-goal 1 excludes wiring the B9.82 mapper into any production
+   path. That separate block is neither named nor numbered here.
+ - ModelSource deprecation / removal / migration. Section 19.3 non-goal 2. Not
+   absorbed.
+ - ModelStore redesign. Section 19.3 non-goal 12 and the multi-revision
+   limitation in 19.7.3. Not absorbed.
+ - Multi-revision storage coexistence. Section 19.7.3 records it as "a separate
+   future architectural question" with no identifier allocated. B9.84 supports
+   revision as a *selection criterion* only and introduces no storage change.
+ - Runtime, evaluation and admission. Section 19.3 non-goals 8, 9, 10; the
+   B9.79 runtime evidence boundary is untouched.
+ - Ranking, recommendation and fuzzy matching. Section 17.3 non-goals 14, 15, 16
+   and section 20 D6. Not absorbed.
+ - Provider redesign. Section 19.3 non-goal 5 (any new discovery provider) and
+   section 17.3 (the B9.81 HuggingFaceDiscoveryProvider itself). Not absorbed.
+```
+
+### 21.7 Implementation authorization
+
+```text
+IMPLEMENTATION AUTHORIZED: NO
+```
+
+This is stated explicitly because the question must not be left to inference:
+
+> Allocation of B9.84 does not by itself authorize implementation unless the
+> repository's roadmap policy defines allocation as implementation authorization.
+
+The roadmap policy does not define allocation as implementation authorization.
+Sections 14 through 19 record the same: each states that the block is "an
+allocation only" and that implementation, verification and closure are separate
+controlled steps whose authorization comes from the operator. The same
+discipline is applied to B9.84. The allocation in this section confers no
+implementation authority, and the section 20 decision record conferred none
+either.
+
+```text
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+VERIFICATION AUTHORIZED:    NO
+CLOSURE AUTHORIZED:         NO
+B9.85 CREATED:              NO
+PUSHES PERFORMED:           0
+```
+
+Implementation may begin only when the allocation has been reviewed and the next
+controlled implementation step is explicitly initiated by the operator. Nothing
+in this section anticipates, requests or substitutes for that initiation.
+
+---
+        `revision` still does not participate in `artifact_id`, and the
+        multi-revision limitation recorded in 19.7.3 is unchanged
+artifact_selection.py — the existing acquisition-domain selector. Its
+        `select_artifact()` contract and its `ArtifactSelectionError` are
+        untouched by B9.84 and are not refactored into a shared abstraction
+section 20 — the human architectural decision record that precedes and
+        authoritatively fixes this scope
+```
+
+Prerequisite check (recorded): all four architectural prerequisites above —
+B9.80, B9.81, B9.82 and B9.83 — are closed and published. The section 20 human
+architectural decision record is present and complete: D1-D8 are all recorded as
+DECIDED, with scope in 20.3 and non-goals in 20.4. B9.84 therefore has no unmet
+prerequisite, and this allocation re-verifies no implementation.
+  on origin/main. A fresh section 7 corpus inspection at this anchor found no
+  allocated main identifier above B9.83: B9.84 occurs only inside this document
+  (section 8 illustration, section 14-19 rejection evidence, and the section 20
+  decision record) and in no other versioned file, while B9.85 occurs only as a
+  recorded rejection. No branch, tag or commit outside this document's history
+  establishes an allocation. Sub-blocks never raise the main floor (section 8)
+  and historical gaps are not reusable (section 9). The next main block is
+  therefore B9.84.
+```
+---
+
+## 22. B9.84 — Closure Record
+
+### 22.1 Closure status
+
+B9.84 is formally **CLOSED**. The decision record (section 20) and the
+allocation record (section 21) precede this record and are unchanged by it. This
+section attests that the verified implementation exists, was published, and
+matches the allocated scope exactly.
+
+### 22.2 Implementation identity
+
+```text
+Implementation commit:
+  cb69c854c771121ea05c3abd8b15ba7cdd25a755
+Commit message:
+  feat: implement B9.84 discovery-domain artifact selection
+Branch:
+  main
+Publication state:
+  pushed to origin/main (HEAD == origin/main at closure time)
+Parent commit:
+  3a4c4a5bbd31863e48a4b52614d07292a42dc2ae
+```
+
+Committed files, exclusively, and both new:
+
+```text
+A  castlearq/discovery_selection.py        (+316 / -0)
+A  tests/test_b984_discovery_selection.py  (+597 / -0)
+```
+
+The implementation commit contains no roadmap change. The section 20/21/22
+records remain a separate, still-uncommitted documentation change at the moment
+this section is authored, exactly as recorded in 21.1.
+
+### 22.3 Implemented scope
+
+B9.84 implemented the scope allocated in 21.2, which reproduces the scope
+recorded in 20.3: **Discovery-domain deterministic artifact selection**. The
+implemented contract:
+
+- consumes `ModelVariant` candidates and selects from existing
+  `DiscoveredArtifact` objects, without reconstructing or regrouping them;
+- supports explicit quantization, filename, and revision criteria;
+- combines those criteria with logical AND;
+- returns exactly one artifact when uniquely matched, returning the original
+  discovered object rather than a derived copy;
+- raises an explicit selection-boundary error (`DiscoveredSelectionError`) for
+  empty candidates, no match, ambiguity, or invalid selector, keeping those
+  four conditions distinguishable;
+- does not perform ranking, scoring, fuzzy matching, recommendation, or
+  implicit ordering, and never selects a first, last, best or latest match;
+- does not resolve or fabricate model identity: no identity resolver is
+  accepted, and `model_id` is never read, resolved, fabricated or mutated;
+- remains upstream of B9.82, which continues to receive exactly one already
+  selected artifact;
+- leaves the existing acquisition-domain `select_artifact()` untouched.
+
+### 22.4 Verification evidence
+
+Re-verified against the published implementation commit:
+
+```text
+Targeted B9.84 tests:   42 passed  (tests/test_b984_discovery_selection.py)
+Regression suite:      200 passed  (artifact_selection, b974 store selection,
+                                    selection, B9.80, B9.81, B9.82, B9.83)
+Full suite:           2040 passed
+Full-suite subtests:  2699 passed
+Failures:                   0
+Errors:                     0
+Skipped:                    0
+Ruff on the two new files:  clean ("All checks passed")
+Repository Ruff delta:     0 (castlearq/ reports 239 errors before and after,
+                             the pre-B9.83 baseline recorded in 19.8)
+mypy on the new module:     clean ("Success: no issues found in 1 source file")
+git diff --check:          clean (exit 0)
+```
+
+Protected files were confirmed untouched by the implementation commit:
+
+```text
+castlearq/discovery.py, castlearq/sources/huggingface_discovery.py,
+castlearq/acquisition_mapping.py, castlearq/artifact_selection.py,
+castlearq/models.py, castlearq/model_store.py, castlearq/__init__.py,
+castlearq/main.py, castlearq/resolver.py, castlearq/selection.py
+  -> none appear in cb69c854c771121ea05c3abd8b15ba7cdd25a755
+```
+
+### 22.5 Boundary compliance
+
+The following were intentionally **not** implemented and remain separate future
+work with no identifier allocated by this record:
+
+```text
+ - Model Library UX / catalog / search redesign
+ - production wiring (CLI, API, or any production path)
+ - Hugging Face provider redesign
+ - discovery-domain type redesign (B9.80 untouched)
+ - B9.82 mapper redesign
+ - B9.83 revision-aware acquisition redesign
+ - ModelStore redesign
+ - multi-revision storage coexistence
+ - legacy select_artifact() refactor or shared-abstract extraction
+ - ranking / scoring / fuzzy matching / recommendation
+ - runtime, evaluation and admission changes
+ - GUI
+ - fine-tuning / LoRA / QLoRA
+ - unrelated CLI/API expansion
+```
+
+### 22.6 Compatibility
+
+B9.80, B9.81, B9.82 and B9.83 remain intact and their contracts are unaltered by
+B9.84. B9.84 is additive: it consumes the B9.80 domain types, consumes the
+grouping and declared revision already produced by B9.81, sits strictly
+upstream of the B9.82 mapper, and preserves the B9.83 OD-1 identity decision
+(`revision` still does not participate in `artifact_id`, and an absent revision
+is still never invented or defaulted). The human architectural decisions D1-D8
+recorded in 20.1 were realized exactly as decided and were not reopened,
+reinterpreted or amended by the implementation.
+
+### 22.7 Repository state
+
+```text
+Implementation commit published successfully:  YES
+HEAD == origin/main:                           YES
+  both cb69c854c771121ea05c3abd8b15ba7cdd25a755
+Implementation files remaining modified:       none
+Modification present at closure-record authoring time:
+  docs/roadmap-register-and-numbering-policy.md (this document)
+```
+
+The implementation commit is the verified artifact and remains immutable; it is
+never rewritten or amended. This closure record only attests that it has been
+formally closed. No B9.85 or any other identifier is created here.
+
+### 22.8 Closure authorization
+
+```text
+B9.84 STATUS: CLOSED
+B9.84 IMPLEMENTATION: COMPLETE
+B9.84 VERIFICATION: COMPLETE
+B9.84 PUBLICATION: COMPLETE
+B9.84 CLOSURE: COMPLETE
+```
