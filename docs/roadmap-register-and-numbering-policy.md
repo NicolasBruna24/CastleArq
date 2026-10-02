@@ -4123,11 +4123,16 @@ Allocation Date:
   2026-10-02
 
 Allocation Commit:
-  PENDING — fixed by the next controlled commit that sets it to that hash, per
-  the two-step mechanism already stated in section 11 for the numbering policy
-  activation anchor and used identically by sections 19 and 21. A commit hash
-  cannot be known before the commit exists, and writing a guessed value would
-  be a fabricated identifier.
+  9bd1f016b14c3d30f0bb255a90adb94c67e3617e
+    ("docs: allocate roadmap block B9.85")
+
+  Recorded by the two-step mechanism already stated in section 11 for the
+  numbering policy activation anchor and used identically by sections 19 and 21:
+  at authoring time the hash did not exist and the field read "PENDING — fixed by
+  the next controlled commit that sets it to that hash"; a commit hash cannot be
+  known before the commit exists, and writing a guessed value would be a
+  fabricated identifier. The value above is the actual hash of that commit,
+  obtained from Git after the fact. The allocation itself is unchanged.
 
 Roadmap file:
   docs/roadmap-register-and-numbering-policy.md
@@ -4213,17 +4218,26 @@ Actor/Process:
 ```text
 Block ID:                 B9.85
 Name:                     Application Acquisition Boundary + cmd_download Integration
-Status:                   DOCUMENTED, ALLOCATED
-Origin:                   this document, section 23
+Status:                   CLOSED
+Origin:                   this document, sections 23 (NAR) and 24 (Closure Record)
 Scope:                    see 23.2 — approved by the ADR
 Non-goals:                see 23.3
 Architectural decision:   approved Human Architectural Decision Record
                           (D1-D8 all APPROVED), preceding this allocation
-Current State:            ALLOCATED — no implementation, no verification, no
-                          closure
-Implementation Commit:    NONE — no implementation exists
-Verification Result:      NOT VERIFIED — no implementation to verify
-Closure Commit:           NONE — B9.85 is not closed
+Current State:            CLOSED — allocated by section 23, implemented at
+                          f2540dd022d1a3eb4ef2470265c25ac93d04a41f, verified
+                          PASS, closed by section 24
+Implementation Commit:    f2540dd022d1a3eb4ef2470265c25ac93d04a41f
+                          ("feat: implement B9.85 application acquisition boundary")
+Allocation Commit:       9bd1f016b14c3d30f0bb255a90adb94c67e3617e
+                          ("docs: allocate roadmap block B9.85")
+Verification Result:      PASS — see section 24.4
+Closure Commit:           PENDING — fixed by the next controlled commit that sets
+                          it to that hash, per the two-step mechanism stated in
+                          section 11 and used identically by sections 19, 21 and
+                          23. A commit hash cannot be known before the commit
+                          exists, and writing a guessed value would be a
+                          fabricated identifier.
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
@@ -4350,6 +4364,24 @@ B9.85 = NOT VERIFIED
 B9.85 = NOT CLOSED
 ```
 
+> **SUPERSESSION (added by section 24, Closure Record).** The four lines above
+> state the position **as of section 23 alone** and remain the accurate
+> description of what this NAR itself did: it allocated a number and nothing
+> more. The lifecycle status asserted by them is superseded prospectively by
+> §24, which records the implementation, verification and closure that occurred
+> afterwards. The current, authoritative state of B9.85 is:
+>
+> ```text
+> B9.85 = ALLOCATED   (this section)
+> B9.85 = IMPLEMENTED  (f2540dd022d1a3eb4ef2470265c25ac93d04a41f)
+> B9.85 = VERIFIED    (PASS — section 24.4)
+> B9.85 = CLOSED      (section 24)
+> ```
+>
+> The allocation evidence recorded in this section — the §7 corpus inspection,
+> the corpus integrity hashes, the candidate-number rejections and the
+> validity reason — is unchanged and is not rewritten by §24.
+
 ### 23.7 Human approval reference
 
 ```text
@@ -4359,9 +4391,16 @@ NUMBER ALLOCATION: APPROVED BY THIS NAR
 IMPLEMENTATION: NOT STARTED
 ```
 
+> **SUPERSESSION (added by section 24, Closure Record).** `IMPLEMENTATION:
+> NOT STARTED` describes this section's own state at authoring time. It was
+> superseded when the implementation was committed at
+> `f2540dd022d1a3eb4ef2470265c25ac93d04a41f` and subsequently verified and
+> closed by §24. `ADR STATUS: APPROVED`, `ARCHITECTURAL SCOPE: APPROVED` and
+> `NUMBER ALLOCATION: APPROVED BY THIS NAR` remain true and are unaffected.
+
 This record allocates a number and attaches an already-approved scope. It
 confers **no implementation authorization**. Implementation planning and
-execution are a separate step, which has not begun.
+execution were a separate step, which began after this record was committed.
 
 ```text
 IMPLEMENTATION AUTHORIZED: NO
@@ -4419,3 +4458,229 @@ Validity Reason:
   and historical gaps are not reusable (section 9). The next main block is
   therefore B9.85.
 ```
+---
+
+## 24. B9.85 — Closure Record
+
+### 24.1 Closure status
+
+B9.85 is formally **CLOSED**. The allocation record (section 23) precedes this
+record and is not rewritten by it; where its status statements are superseded,
+that supersession is stated explicitly as a cross-reference inside section 23
+and recorded here. This section attests that the verified implementation
+exists, was published, and matches the allocated scope exactly.
+
+### 24.2 Implementation identity
+
+```text
+Implementation commit:
+  f2540dd022d1a3eb4ef2470265c25ac93d04a41f
+Commit message:
+  feat: implement B9.85 application acquisition boundary
+Branch:
+  main
+Publication state:
+  pushed to origin/main (HEAD == origin/main at closure time)
+Parent commit:
+  9bd1f016b14c3d30f0bb255a90adb94c67e3617e  (the section 23 NAR)
+```
+
+Committed files, exclusively:
+
+```text
+A  castlearq/acquisition_service.py            (+491 / -0)
+M  castlearq/application_wiring.py             (+74 / -)  additive composition seam
+M  castlearq/main.py                           (+356 / -) run_download reduced to a CLI adapter
+A  tests/test_b985_acquisition_service.py      (+544 / -0)
+M  tests/test_download_cli.py                  (CLI regression preservation)
+M  tests/test_main_execute.py                  (structural boundary allow-list)
+```
+
+The implementation commit contains no roadmap change: `docs/` does not appear in
+it. The closure of B9.85 is this separate documentation commit.
+
+### 24.3 Implemented scope
+
+B9.85 implemented the scope allocated in 23.2: **Application Acquisition
+Boundary + Real production integration through cmd_download**. The implemented
+production path is:
+
+```text
+main.run_download
+  -> application_wiring.compose_acquisition_service
+  -> ModelAcquisitionService.acquire
+  -> downloadable locator (injected locator_resolver)
+  -> ModelDiscovery.inspect                      exactly once
+  -> select_discovered_artifact                 B9.84, called once, unmodified
+  -> map_discovered_artifacts                   B9.82, identity_resolver forwarded unchanged
+  -> DownloadPlanner.plan
+  -> Downloader.download
+  -> ModelStore.save_manifest                   only after a successful transfer
+  -> AcquisitionOutcome
+  -> CLI presentation / exit status
+```
+
+Confirmed properties of the implementation:
+
+```text
+  - the boundary is a service class with every collaborator injected at the
+    composition root; it builds nothing, caches nothing, and there is no hidden
+    global service state;
+  - discovery runs exactly once; the second call that would be needed for
+    candidate presentation is eliminated by deriving candidates from data the
+    service already holds;
+  - `search()` is never called on the download path; no ranking, scoring, fuzzy
+    matching or recommendation is introduced;
+  - the service holds no identity knowledge: it receives an
+    `IdentityResolver = Callable[[str], str | None]` bound at the composition
+    root to `logical_model_id`, and forwards it unchanged to B9.82;
+### 24.4 Verification evidence
+
+Re-verified against the published implementation commit:
+
+```text
+B9.85 targeted tests:   61 passed  (tests/test_b985_acquisition_service.py,
+                                        tests/test_download_cli.py)
+B9.80-B9.84 regression: 260 passed (b980 discovery, b981 huggingface discovery,
+                                        b982 acquisition mapping, b983 revision-aware
+                                        acquisition, b984 discovery selection,
+                                        artifact_selection, huggingface, selection,
+                                        b974 store selection)
+Full suite:            2070 passed
+Full-suite subtests:   2703 passed
+Failures:                   0
+Errors:                     0
+Ruff on the B9.85 files:   PASS ("All checks passed!" for
+                                     castlearq/acquisition_service.py and
+                                     tests/test_b985_acquisition_service.py)
+mypy on the B9.85 module:  0 errors in castlearq/acquisition_service.py
+git diff --check:          PASS (clean)
+```
+
+Mypy scope, stated precisely: 7 errors are reported project-wide, all of them
+pre-existing and all of them located in modules the B9.85 implementation did
+not touch (`castlearq/acquisition_mapping.py`, `castlearq/hardware.py`,
+`castlearq/sources/huggingface.py`, `castlearq/compatibility.py`,
+`castlearq/model_store.py`, `castlearq/downloads/downloader.py`). This record
+does **not** assert that the repository is free of pre-existing type debt; it
+asserts only that B9.85 introduced none, and that none of the pre-existing
+errors were repaired in the course of B9.85.
+
+Protected files confirmed untouched by the implementation commit:
+
+```text
+castlearq/discovery.py, castlearq/sources/huggingface_discovery.py,
+castlearq/discovery_selection.py, castlearq/acquisition_mapping.py,
+castlearq/resolver.py, castlearq/artifact_selection.py, castlearq/chat.py,
+castlearq/run_service.py, castlearq/api.py, castlearq/model_store.py
+  -> none appear in f2540dd022d1a3eb4ef2470265c25ac93d04a41f
+```
+
+### 24.5 CI follow-up (Python 3.11)
+
+```text
+CI failure:
+  tests/test_chat_sessions.py::LifecycleHardeningTests::
+    test_creation_concurrent_around_limit
+  (expected sum(close_counts) == 2; observed 3)
+
+Classification:
+  E — FLAKY/NON-DETERMINISTIC TEST
+
+B9.85 causality:   NOT ESTABLISHED — no causal path found
+Closure impact:    NON-BLOCKING
+```
+
+A dedicated READ-ONLY regression audit was performed after the implementation
+commit. It established that `tests/test_chat_sessions.py` was not modified by
+B9.85, that the chat-session lifecycle modules (`castlearq/api.py`,
+`castlearq/run_service.py`, `castlearq/chat.py`) are byte-identical to the
+parent commit, and that the B9.85 diff introduces no threading, lock, barrier,
+HTTP-lifecycle, session-cleanup, process-shutdown or global-state change. The
+failure mechanism is a race between the registry's `is_full()` pre-check and its
+atomic `register()`: a create rejected after its launch adds one additional
+close, which is a legitimate interleaving that the test's
+`sum(close_counts) == 2` assertion does not admit. Python 3.11 was the only CI
+version that hit that interleaving in the run; the test passed on Python 3.12
+and Python 3.13, and passed locally in 18 of 18 runs under the available
+interpreter.
+
+**The test was not modified as part of B9.85, it has not been fixed, and this
+record does not claim that Python 3.11 CI is green.** The flaky assertion
+remains a known, separately-owned test-quality issue with no identifier
+allocated by this record. The incident did not block closure because no B9.85
+correctness problem was identified.
+
+### 24.6 Boundary compliance
+
+The following were intentionally **not** implemented and remain separate future
+work with no identifier allocated by this record:
+
+```text
+  - Model Library / Model Library GUI / Model Library UX
+  - catalog / search UX
+  - ranking, scoring, recommendation, fuzzy matching
+  - multi-revision storage redesign
+  - ModelStore redesign
+  - ModelSource retirement or deprecation
+  - B9.80, B9.81, B9.82, B9.83, B9.84 redesign
+  - resolver signature redesign
+  - API adapter integration
+  - runtime execution changes
+  - evaluation / admission changes
+  - fine-tuning / LoRA / QLoRA
+  - release / distribution redesign
+  - B9.86 or any higher identifier (NOT ALLOCATED)
+```
+
+The legacy architecture remains operational and untouched: `ModelSource`,
+`HuggingFaceSource`, `artifact_selection.select_artifact()` and `resolver.py`
+are unmodified. The `_LegacySourceDiscoveryAdapter` introduced in `main.py` is a
+compatibility shim for the pre-existing `source_factory` test seam only; it is
+reachable only when `source_factory` is supplied and is not part of the normal
+production download dispatch.
+
+### 24.7 Repository state
+
+```text
+Implementation commit published successfully:  YES
+HEAD == origin/main at implementation time:     YES
+                                                    both f2540dd022d1a3eb4ef2470265c25ac93d04a41f
+Implementation files remaining modified:       none
+Modification present at closure-record authoring time:
+  docs/roadmap-register-and-numbering-policy.md (this document) — this file only
+```
+
+The implementation commit is the verified artifact and remains immutable; it is
+never rewritten or amended. This closure record only attests that it has been
+formally closed. No B9.86 or any other identifier is created here.
+
+### 24.8 Closure authorization
+
+```text
+B9.85 STATUS: CLOSED
+B9.85 IMPLEMENTATION: COMPLETE
+B9.85 VERIFICATION: COMPLETE
+B9.85 PUBLICATION: COMPLETE
+B9.85 CI PY3.11 INCIDENT: DISPOSITIONED — NON-BLOCKING
+B9.85 CLOSURE: COMPLETE
+```
+  - expected failures are translated into `AcquisitionError` with a stable
+    application category, preserving the original exception both as `cause` and
+    as the Python exception cause; no blanket `except Exception` is used;
+  - `run_download` retains argument validation, presentation and the exit status
+    only; no orchestration logic remains in the CLI adapter;
+  - exactly one `ModelStore` instance is created per use-case invocation and is
+    shared by the planner, the downloader and manifest registration;
+  - the application result is independent of CLI presentation and exposes no
+    `Path`, `DownloadPlan` or `DownloadResult`.
+```
+
+The approved decisions D1-D8 recorded in 23.2 were realized exactly as decided:
+D1 boundary and wiring in one block; D2 service class with injected
+collaborators; D3 identity resolver backed by `logical_model_id`; D4
+application-level error category with preserved causes; D5 ModelSource
+coexistence; D6 production integration through `cmd_download`; D7 dedicated
+application acquisition result; D8 scope limited to application acquisition
+orchestration and its real production integration. None was reopened,
+reinterpreted or amended.
