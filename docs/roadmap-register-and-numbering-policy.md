@@ -1781,9 +1781,12 @@ identifier is allocated here.
 
 `B9.81` is allocated as the next main block under §6, on the evidence of a §7
 corpus inspection performed at allocation time. This section is the §11 record
-for that assignment. B9.81 is an allocation only: no implementation,
-verification, or closure is claimed here. This is a future implementation
-block, not completed work.
+for that assignment. At allocation time B9.81 was an allocation only: no
+implementation, verification, or closure was claimed by this section. The block
+has since been implemented, independently verified and formally closed; the
+authoritative state is the register entry in §17.1 and the verification and
+closure record in §17.9. The allocation-time facts recorded in this section are
+preserved unchanged as historical evidence.
 
 ```text
 Assigned Number:
@@ -1796,7 +1799,7 @@ Allocation Date:
   2026-10-01
 
 Allocation Commit:
-  PENDING — established by the commit that introduces section 17
+  0a237082b01be95a9a15f058029502dbec358787
   ("docs: allocate roadmap block B9.81").
 
 Corpus/HEAD Anchor:
@@ -1886,25 +1889,31 @@ sub-block is assigned here.
 ```text
 Block ID:                 B9.81
 Name:                     Hugging Face Discovery Provider
-Status:                   DOCUMENTED, ALLOCATED
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, VERIFIED, CLOSED
 Origin:                   this document, section 17
 Scope:                    see 17.2
 Non-goals:                see 17.3
 Dependencies:             see 17.4
 Architectural Decisions:  see 17.5
-Current State:            ALLOCATED — implementation pending; NOT implemented,
-                          NOT verified, NOT closed
-Acceptance Criteria:      AC1-AC15 — see 17.6 (all PENDING at allocation time)
-Evidence:                 see 17.4 and prior READ-ONLY discovery audits
+Current State:            CLOSED — implemented, independently verified,
+                          (VERIFIED WITH MINOR OBSERVATIONS) and formally
+                          closed; authoritative closure record in 17.9
+Acceptance Criteria:      AC1-AC15 — see 17.6; all PASS, recorded in 17.9
+Evidence:                 see 17.4, prior READ-ONLY discovery audits and 17.9
 Evidence Type:            DOC
-Implementation Commit:    NONE — no production code for B9.81 exists
-Verification Result:      NOT VERIFIED
-Closure Commit:           NONE
+Implementation Commit:    ef9f9b94c7688d037fb2c7da70fee93f497296a4
+                           ("feat: implement B9.81 Hugging Face discovery
+                           provider")
+Verification Result:      B9.81 VERIFIED WITH MINOR OBSERVATIONS — READ-ONLY
+                           audit of the implementation working tree; see 17.9
+Closure Commit:           recorded by the commit that introduces section 17.9
+                           ("docs: close B9.81 verification")
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document
 Number Allocation Record: PRESENT — section 17
-Retrospective Record:     NO — prospective allocation record
+Retrospective Record:     NO — prospective allocation record; implementation,
+                           verification and closure recorded in 17.9
 ```
 
 ### 17.2 Scope
@@ -2112,17 +2121,88 @@ location in this section.
 ### 17.8 Verification and closure expectations
 
 ```text
-Verification: PENDING — a later READ-ONLY verification audit against the
-  future implementation commit must evaluate AC1-AC15 and record the result
-  in a new subsection of this section; this allocation performs no
-  verification.
+Verification: COMPLETED — the READ-ONLY verification audit required by this
+  section was performed against the B9.81 implementation and evaluated
+  AC1-AC15; the result is recorded in 17.9. This allocation section performed
+  no verification of its own.
 
-Closure: PENDING — closure requires AC1-AC15 all PASS plus the standard
-  closure record; this allocation creates no closure record and claims no
-  implementation, verification, or closure.
+Closure: COMPLETED — AC1-AC15 all PASS and the standard closure record is 17.9.
+  B9.81 is CLOSED. The verification classification is
+  "VERIFIED WITH MINOR OBSERVATIONS"; the recorded minor observations are
+  non-blocking and required no correction.
 ```
 
-B9.81 is a future implementation block, not completed work. No provider,
-mapper, CLI, GUI, catalog, or model-library functionality exists as a result
-of this section.
+B9.81 is a completed block: the HuggingFaceDiscoveryProvider and its tests
+exist, as recorded in §17.9. No acquisition mapper, CLI, GUI, catalog or
+model-library functionality was introduced by this block.
+### 17.9 Verification and closure record
+
+READ-ONLY verification audit of the B9.81 implementation, performed against the
+working tree that contains the two new files recorded in §17.7, before any
+commit.
+
+```text
+Verification Result:
+  B9.81 VERIFIED WITH MINOR OBSERVATIONS
+
+Implementation Anchor:
+  castlearq/sources/huggingface_discovery.py   (new, 432 lines)
+  tests/test_b981_huggingface_discovery.py     (new, 733 lines)
+  Implementation commit: ef9f9b94c7688d037fb2c7da70fee93f497296a4
+  ("feat: implement B9.81 Hugging Face discovery provider")
+  No production or test file was modified and no other file was created.
+
+Verification Scope (all established):
+  - HuggingFaceDiscoveryProvider implements the B9.80 ModelDiscovery port as a
+    frozen dataclass with injectable transport; the module imports
+    castlearq.discovery and the standard library only (AC1, AC10)
+  - search and inspect query the public Hugging Face metadata API; one request
+    per page and per inspection, no per-candidate requests; declared metadata
+    only, opaque cursor translated behind the provider boundary (AC2, AC3)
+  - GGUF discovered from remote tree metadata without downloading artifact
+    content; /resolve/ never requested; download_url is a declared locator,
+    not a downloaded, verified or admitted artifact (AC4, AC11)
+  - artifacts grouped by declared_quantization into variants with non-empty
+    artifact tuples and deterministic ordering; no ranking, recommendation or
+    fuzzy matching (AC5)
+  - declared quantization, size, SHA-256 (lfs.oid only), revision and download
+    locator represented strictly as declared remote metadata (AC6)
+  - no model_identity dependency or identity gate; unmapped repositories remain
+    discoverable with model_id None (AC7)
+  - transport/API failures mapped to DiscoveryError; SourceError neither
+    imported nor raised; programming errors remain TypeError/ValueError (AC8)
+  - repository, filename, URL/host and cursor validation preserved; the cursor
+    cannot introduce a foreign host or path (AC9)
+  - castlearq/discovery.py and castlearq/sources/huggingface.py byte-identical
+    to their HEAD blobs; no existing code, test or roadmap file was modified
+    by the implementation (AC12, AC13)
+  - the provider is a sibling adapter: not a subclass, wrapper or replacement
+    of HuggingFaceSource (AC15)
+
+Regression Result:
+  1921 passed / 2672 subtests passed / 0 failed / 0 errors / 0 skipped
+  (B9.81 tests: 59 passed; B9.80 tests: 15 passed; HuggingFaceSource tests:
+  18 passed)
+  git diff --check: rc 0
+
+Acceptance Criteria:
+  AC1-AC15 all PASS.
+
+Non-blocking minor observations (recorded; no correction required):
+  - unused api_base parameter in the internal cursor helper
+  - internal URL builders rely on the caller-side host gate
+  - limit is ignored when an opaque cursor is supplied, and pagination depends
+    on the Link response header
+  - a single invalid remote entry can abort an entire search or inspection
+  - the isolation test inspects the module's direct imports only; the
+    pre-existing castlearq/sources/__init__.py package init still pulls
+    HuggingFaceSource, models and model_identity into the import closure
+    (unchanged by B9.81 and outside its implementation surface)
+```
+
+B9.81 is **CLOSED**. No B9.81.x sub-block is assigned and no new identifier is
+allocated here. B9.78, B9.79 and B9.80 are not modified by this record. The
+implementation anchor above is the verified artifact and remains immutable; this
+closure record only attests that the verified implementation has been formally
+closed.
 
