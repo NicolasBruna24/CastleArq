@@ -29,13 +29,15 @@ from .run_service import (
     ExecutionPreparation,
     ModelNotFoundError,
     PreparationError,
+    RunDependencies,
     RunPreparationFailedError,
+    RunServiceError,
     detect_runtime_statuses as _detect_runtime_statuses,
     open_chat_session,
-    prepare as _prepare,
+    run_once,
 )
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
-from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutionRequest, ExecutableArtifact, PreflightErrorCode
+from .execution import ArtifactExecutionPreflight, ArtifactPreflightError, ExecutableArtifact, PreflightErrorCode
 from . import gpu_diagnosis
 from . import json_output
 from .gpu_diagnosis import (
@@ -104,7 +106,6 @@ from .runtimes import (
     recommend,
     resolve_llama_runtime,
 )
-from .runner import LlamaCppRunner
 from .selection import RuntimeBackendSelector, RuntimeSelection, RuntimeSelectionError
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
@@ -1752,19 +1753,12 @@ def run_model(
     if not model_id or prompt is None or not prompt.strip():
         print("Usage: python3 -m castlearq.main run <model-id> --prompt <text>", file=sys.stderr)
         return 2
-    try:
-        model_store = model_store if model_store is not None else ModelStore()
-        resolver = ModelArtifactResolver(model_store)
-        resolved = resolver.resolve(
-            model_id,
-            quantization=quantization,
-            filename=filename,
-        )
-    except ModelArtifactResolutionError as error:
-        print(f"Run error: {error}", file=sys.stderr)
-        return 1
 
+    model_store = model_store if model_store is not None else ModelStore()
     capability = detect_llama_capability()
+    # B9.89: the CLI owns compatibility evaluation and admission. The admission
+    # is forwarded unchanged to the application boundary, which validates it and
+    # never mints one.
     admission = _admit_for_preparation(
         model_id,
         capability,
@@ -1772,47 +1766,32 @@ def run_model(
         filename=filename,
         model_store=model_store,
     )
+
+    # B9.89: resolution, preparation and runtime invocation belong to the
+    # application boundary that the HTTP API already consumes. The CLI keeps
+    # dependency acquisition, admission and presentation only.
     try:
-        preparation = _prepare(
-            resolved.model, resolved.artifact, capability, model_store,
+        outcome = run_once(
+            model_id,
+            prompt,
+            quantization=quantization,
+            filename=filename,
+            dependencies=RunDependencies(
+                model_store=model_store,
+                capability=capability,
+            ),
             admission=admission,
         )
-    except (PreparationError, ExecuteAdmissionDeniedError) as error:
+    except RunServiceError as error:
         print(f"Run error: {_error_message(error)}", file=sys.stderr)
-        for warning in (*_error_warnings(error), *_prepare_warnings(error)):
+        for warning in _error_warnings(error):
             print(f"Warning: {warning}", file=sys.stderr)
         return 1
 
-    request = ExecutionRequest(
-        resolved.artifact,
-        prompt,
-        target=preparation.target,
-        timeout_seconds=_DEFAULT_EXECUTION_TIMEOUT_SECONDS,
-    )
-    result = LlamaCppRunner(capability).run(
-        preparation.executable_artifact, preparation.target, request
-    )
-    if result.success:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
-        if result.stderr:
-            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-        all_warnings = tuple(
-            dict.fromkeys(
-                (
-                    *preparation.compatibility_warnings,
-                    *preparation.selection_warnings,
-                    *result.warnings,
-                )
-            )
-        )
-        for warning in all_warnings:
-            print(f"Warning: {warning}", file=sys.stderr)
-        return 0
-    if result.stderr:
-        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-    if result.error:
-        print(f"Run error: {result.error.message}", file=sys.stderr)
-    return 1
+    print(outcome.output, end="" if outcome.output.endswith("\n") else "\n")
+    for warning in outcome.warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+    return 0
 
 
 def chat_model(

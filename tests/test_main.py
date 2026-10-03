@@ -36,6 +36,7 @@ from castlearq.main import (
 from castlearq.model_catalog import get_catalog
 from castlearq.models import ArtifactSpec, Quantization
 from castlearq.resolver import ModelArtifactResolutionError, ResolvedModelArtifact
+from castlearq.run_service import RunOutcome
 
 class RuntimeDiagnosticsTests(unittest.TestCase):
     def test_available_runtime_presentation_and_exit_zero(self):
@@ -115,9 +116,9 @@ class MainRunTests(unittest.TestCase):
         return runner
 
     def test_empty_prompt_is_usage_error_without_resolution(self):
-        with patch("castlearq.main.ModelArtifactResolver") as resolver:
+        with patch("castlearq.main.run_once") as boundary:
             self.assertEqual(run_model(self.model.model_id, "  "), 2)
-            resolver.assert_not_called()
+            boundary.assert_not_called()
 
     def test_run_rejects_extra_positional_argument(self):
         with patch.object(
@@ -139,108 +140,83 @@ class MainRunTests(unittest.TestCase):
         self.assertEqual(context.exception.code, 2)
 
     def test_run_with_one_model_id_reaches_resolution_error(self):
+        from castlearq.run_service import ModelNotFoundError
+
         with patch.object(
             sys,
             "argv",
             ["castlearq.main", "run", "unknown-model", "--prompt", "hello"],
         ), patch(
-            "castlearq.main.ModelArtifactResolver"
-        ) as resolver:
-            resolver.return_value.resolve.side_effect = (
-                ModelArtifactResolutionError("missing")
-            )
+            "castlearq.main.run_once", side_effect=ModelNotFoundError("missing")
+        ):
             from castlearq.main import main
 
             self.assertEqual(main(), 1)
 
     def test_resolution_error_returns_one_without_execution(self):
-        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
-            "castlearq.main._prepare"
-        ) as prepare, patch("castlearq.main.LlamaCppRunner") as runner:
-            resolver.return_value.resolve.side_effect = (
-                ModelArtifactResolutionError("missing")
-            )
+        from castlearq.run_service import ModelNotFoundError
+
+        with patch(
+            "castlearq.main.run_once", side_effect=ModelNotFoundError("missing")
+        ) as boundary:
             error = io.StringIO()
             with redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
             self.assertEqual(code, 1)
             self.assertIn("missing", error.getvalue())
-            prepare.assert_not_called()
-            runner.assert_not_called()
+            boundary.assert_called_once()
 
     def test_preparation_error_returns_one_without_running(self):
-        error_class = __import__("castlearq.main", fromlist=["PreparationError"]).PreparationError
-        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
-            "castlearq.main._prepare"
-        ) as prepare, patch("castlearq.main.LlamaCppRunner") as runner:
-            resolver.return_value.resolve.return_value = self.resolved
-            prepare.side_effect = error_class(
+        from castlearq.run_service import RunPreparationFailedError
+
+        with patch(
+            "castlearq.main.run_once",
+            side_effect=RunPreparationFailedError(
                 "Model compatibility does not permit execution",
-                compatibility_warnings=("marginal",),
-            )
+                warnings=("marginal",),
+            ),
+        ) as boundary:
             error = io.StringIO()
             with redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
             self.assertEqual(code, 1)
-            self.assertIn("Model compatibility", error.getvalue())
-            self.assertIn("marginal", error.getvalue())
-            runner.assert_not_called()
+            self.assertIn("Run error: Model compatibility", error.getvalue())
+            self.assertIn("Warning: marginal", error.getvalue())
+            boundary.assert_called_once()
 
     def test_success_prints_stdout_and_warnings(self):
-        self.preparation.compatibility_warnings = ("estimated memory",)
-        result = ExecutionResult(True, 0, "model response\n", "runtime diagnostic\n")
-        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
-            resolve=Mock(return_value=self.resolved)
-        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
-            "castlearq.main.LlamaCppRunner", return_value=self._runner(result)
-        ):
-            code = run_model(self.model.model_id, "hello")
+        outcome = RunOutcome(
+            self.model.model_id, "model response\n", 0, ("estimated memory",)
+        )
+        out = io.StringIO()
+        error = io.StringIO()
+        with patch("castlearq.main.run_once", return_value=outcome):
+            with redirect_stdout(out), redirect_stderr(error):
+                code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), "model response\n")
+        self.assertEqual(error.getvalue(), "Warning: estimated memory\n")
 
     def test_runner_error_returns_one(self):
-        result = ExecutionResult(
-            False, 2, "", "bad runtime",
-            error=ExecutionErrorInfo(
-                ExecutionErrorCode.PROCESS_FAILED, "process failed"
-            ),
-        )
+        from castlearq.run_service import RunExecutionFailedError
+
         error = io.StringIO()
-        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
-            resolve=Mock(return_value=self.resolved)
-        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
-            "castlearq.main.LlamaCppRunner", return_value=self._runner(result)
+        with patch(
+            "castlearq.main.run_once",
+            side_effect=RunExecutionFailedError("process failed"),
         ), redirect_stderr(error):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 1)
-        self.assertIn("process failed", error.getvalue())
+        self.assertIn("Run error: process failed", error.getvalue())
 
     def test_run_passes_finite_positive_default_timeout(self):
-        captured = {}
+        """The default runtime timeout stays owned by the application boundary."""
+        self.assertGreater(_DEFAULT_EXECUTION_TIMEOUT_SECONDS, 0)
+        self.assertTrue(math.isfinite(_DEFAULT_EXECUTION_TIMEOUT_SECONDS))
 
-        def run(executable_artifact, target, request):
-            captured["request"] = request
-            return ExecutionResult(True, 0, "ok\n", "")
-
-        runner = Mock()
-        runner.run.side_effect = run
-        with patch("castlearq.main.ModelArtifactResolver", return_value=Mock(
-            resolve=Mock(return_value=self.resolved)
-        )), patch("castlearq.main._prepare", return_value=self.preparation), patch(
-            "castlearq.main.LlamaCppRunner", return_value=runner
-        ):
-            code = run_model(self.model.model_id, "hello")
-        self.assertEqual(code, 0)
-        request = captured["request"]
-        self.assertEqual(request.timeout_seconds, _DEFAULT_EXECUTION_TIMEOUT_SECONDS)
-        self.assertGreater(request.timeout_seconds, 0)
-        self.assertTrue(math.isfinite(request.timeout_seconds))
-
-    def test_run_model_forwards_quantization_and_filename_to_resolver(self):
-        resolver_mock = Mock()
-        resolver_mock.resolve.return_value = self.resolved
-        with patch("castlearq.main.ModelArtifactResolver", return_value=resolver_mock), patch(
-            "castlearq.main._prepare", return_value=self.preparation
-        ), patch("castlearq.main.LlamaCppRunner", return_value=self._runner(ExecutionResult(True, 0, "ok\n", ""))):
+    def test_run_model_forwards_quantization_and_filename_to_boundary(self):
+        outcome = RunOutcome(self.model.model_id, "ok\n", 0, ())
+        with patch("castlearq.main.run_once", return_value=outcome) as boundary:
             code = run_model(
                 self.model.model_id,
                 "hello",
@@ -248,11 +224,69 @@ class MainRunTests(unittest.TestCase):
                 filename="model.Q4_K_M.gguf",
             )
             self.assertEqual(code, 0)
-            resolver_mock.resolve.assert_called_once_with(
-                self.model.model_id,
-                quantization="Q4_K_M",
-                filename="model.Q4_K_M.gguf",
-            )
+            boundary.assert_called_once()
+            args, kwargs = boundary.call_args
+            self.assertEqual(args[0], self.model.model_id)
+            self.assertEqual(args[1], "hello")
+            self.assertEqual(kwargs["quantization"], "Q4_K_M")
+            self.assertEqual(kwargs["filename"], "model.Q4_K_M.gguf")
+
+    def test_run_delegates_to_application_boundary(self):
+        """B9.89: the CLI no longer resolves, prepares or runs the runtime."""
+        with patch("castlearq.main.run_once", return_value=RunOutcome(self.model.model_id, "ok\n", 0, ())):
+            self.assertEqual(run_model(self.model.model_id, "hello"), 0)
+
+    def test_admission_is_evaluated_once_and_forwarded_by_identity(self):
+        """B9.89: CLI evaluates and admits exactly once; boundary reuses it."""
+        from castlearq.execute_model import EvaluationAdmission
+
+        admission = EvaluationAdmission("ok")
+        outcome = RunOutcome(self.model.model_id, "ok\n", 0, ())
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ) as evaluate, patch(
+            "castlearq.main.to_admission", return_value=admission
+        ) as to_admission, patch(
+            "castlearq.main.run_once", return_value=outcome
+        ) as boundary:
+            code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 0)
+        self.assertEqual(evaluate.call_count, 1)
+        self.assertEqual(to_admission.call_count, 1)
+        # The exact object created by the CLI travels through the boundary.
+        self.assertIs(boundary.call_args.kwargs["admission"], admission)
+
+    def test_cli_never_passes_a_fallback_none_admission(self):
+        """The boundary refuses to run without admission; the CLI supplies one."""
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["admission"] = kwargs.get("admission")
+            return RunOutcome(self.model.model_id, "ok\n", 0, ())
+
+        with patch("castlearq.main.run_once", side_effect=capture):
+            code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 0)
+        self.assertIsNotNone(captured["admission"])
+
+    def test_duplicate_warnings_are_presented_once(self):
+        """B9.89: overlapping preparation warnings are deduplicated."""
+        from castlearq.run_service import RunPreparationFailedError
+
+        with patch(
+            "castlearq.main.run_once",
+            side_effect=RunPreparationFailedError(
+                "denied",
+                warnings=("shared", "unique"),
+            ),
+        ):
+            error = io.StringIO()
+            with redirect_stderr(error):
+                code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 1)
+        self.assertEqual(error.getvalue().count("Warning: shared\n"), 1)
+        self.assertEqual(error.getvalue().count("Warning: unique\n"), 1)
 
     def test_chat_model_forwards_quantization_and_filename_to_resolver(self):
         from castlearq.main import chat_model

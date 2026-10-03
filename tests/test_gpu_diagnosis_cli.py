@@ -305,7 +305,9 @@ class DiagnoseCommandTests(unittest.TestCase):
 class ReadOnlyGuaranteesTests(unittest.TestCase):
     def test_diagnose_does_not_touch_execution_pipeline(self):
         with ExitStack() as stack:
-            runner = stack.enter_context(patch("castlearq.main.LlamaCppRunner"))
+            # B9.89: the CLI no longer constructs the runner directly; the run
+            # application boundary does. Guard that owning module instead.
+            runner = stack.enter_context(patch("castlearq.run_service.LlamaCppRunner"))
             chat = stack.enter_context(patch("castlearq.main.start_chat_session"))
             run_model = stack.enter_context(patch("castlearq.main.run_model"))
             chat_model = stack.enter_context(patch("castlearq.main.chat_model"))

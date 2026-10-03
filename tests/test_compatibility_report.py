@@ -289,7 +289,7 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with patch(
             "castlearq.main.evaluate_model_compatibility", return_value=result
-        ) as evaluate, patch("castlearq.main.LlamaCppRunner") as runner, patch(
+        ) as evaluate, patch("castlearq.run_service.LlamaCppRunner") as runner, patch(
             "castlearq.main.execute_model"
         ) as execute, patch("castlearq.main.run_model") as run:
             code = compatibility_command("m1", out=out, err=err)

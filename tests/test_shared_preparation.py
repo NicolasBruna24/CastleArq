@@ -29,7 +29,11 @@ from castlearq.execute_model import EvaluationAdmission, ExecuteAdmissionDeniedE
 # B9.78: strict admission is the mandatory gate for the shared preparation
 # pipeline, so tests exercising preparation supply an admitting signal.
 ADMITTING = EvaluationAdmission(status="evaluated", verdict="compatible")
-from castlearq.main import PreparationError, _prepare
+# B9.89: preparation is no longer re-exported by the CLI. The CLI delegates to
+# the application boundary (``run_once``), which owns preparation. These tests
+# exercise the same shared preparation pipeline through its owning module, so
+# the architectural assertions below are unchanged and not weakened.
+from castlearq.run_service import PreparationError, prepare as _prepare
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
 from castlearq.resolver import ResolvedModelArtifact
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
@@ -193,24 +197,33 @@ class SharedPreparationTests(unittest.TestCase):
         )
 
         # run_model path
+        # B9.89: run_model no longer calls prepare directly; it delegates to the
+        # run_once application boundary, which invokes the same shared prepare.
+        # The architectural relationship under test is unchanged, so we patch
+        # run_service's own prepare seam and let the boundary drive it.
         runner = Mock()
         runner.run.return_value = ExecutionResult(True, 0, "ok\n", "")
         output = io.StringIO()
         error = io.StringIO()
-        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
-            "castlearq.main._prepare", return_value=preparation
-        ) as prepare, patch("castlearq.main.LlamaCppRunner", return_value=runner), patch(
-            "castlearq.main.detect_hardware"
+        with patch("castlearq.main.ModelStore", return_value=self.model_store), patch(
+            "castlearq.main.evaluate_model_compatibility"
+        ) as evaluate, patch(
+            "castlearq.main.to_admission", return_value=ADMITTING
         ), patch(
-            "castlearq.main.detect_llama_capability"
+            "castlearq.main.detect_llama_capability", return_value=self.capability
         ), patch(
-            "castlearq.main.detect_backends"
+            "castlearq.run_service.ModelArtifactResolver"
+        ) as resolver, patch(
+            "castlearq.run_service.prepare", return_value=preparation
+        ) as prepare, patch(
+            "castlearq.run_service.LlamaCppRunner", return_value=runner
         ), redirect_stdout(
             output
         ), redirect_stderr(
             error
         ):
             resolver.return_value.resolve.return_value = self.resolved
+            evaluate.return_value = _compatible(self.model)
             run_model("qwen2.5-coder-7b-instruct", "hello")
             self.assertTrue(prepare.called)
 
