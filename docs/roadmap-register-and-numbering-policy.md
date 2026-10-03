@@ -6313,3 +6313,461 @@ CLI adapter that presents what the closed B9.86 boundary returns and interprets
 nothing. It is explicitly not a Model Library surface. No decision was reopened,
 reinterpreted or amended. This closure allocates no successor identifier and
 authorizes no future capability.
+---
+
+## 29. B9.88 — Number Allocation Record
+
+`B9.88` is allocated as the next main block under section 6, on the evidence of
+a section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.88 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified Human Architectural Decision Record
+`docs/B9.88-chat-application-boundary-cli-caller-decision.md`, which was
+preceded by a READ-ONLY next-roadmap-allocation audit. This section allocates
+the number that carries that scope; it does not widen, reinterpret or extend
+it.
+
+### 29.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.88
+
+Title:
+  Chat Application Boundary: CLI Caller
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash.
+
+  Recorded by the two-step mechanism already stated in section 11 and used
+  identically by sections 19, 21, 23, 25 and 27: at authoring time the hash did
+  not exist and the field read "PENDING — fixed by the next controlled commit
+  that sets it to that hash"; a commit hash cannot be known before the commit
+  exists, and writing a guessed value would be a fabricated identifier. The
+  allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 28 — B9.87 Closure Record
+Section for this allocation:
+  section 29 — this record
+
+Human Architectural Decision Record:
+  docs/B9.88-chat-application-boundary-cli-caller-decision.md
+  HADR STATUS: HUMAN-RATIFIED
+  ARCHITECTURAL SCOPE: APPROVED
+  NUMBER ALLOCATION: APPROVED BY THIS HADR; RECORDED IN SECTION 29
+  IMPLEMENTATION: NOT STARTED
+
+Corpus/HEAD Anchor:
+  036669c2c923989f79e25631f98b0b06f59de971
+  ("docs: close roadmap block B9.87"; main == HEAD == origin/main)
+
+Branch:
+  main
+
+Working tree at anchor:
+  tracked tree clean; no untracked files.
+
+Corpus File Count:
+  224 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  corpus integrity digest SHA-256 ->
+    60551cddbb418214cc2fee0f91a93e9217d90abe4afed475ff2d564e5a5c72c3
+  identifier-set SHA-256 ->
+    82af630eed5bd9c78abd7368460aaa68b857e0e16196e5b8fc298073c228c0ce
+  mechanism:
+    git ls-tree -r HEAD --format='%(objectname)  %(path)' | sha256sum
+      -> corpus integrity digest
+    git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+      | LC_ALL=C sort -u | sha256sum
+      -> identifier-set digest
+
+Identifier Set:
+  Highest main identifier in real use: B9.88 (this section)
+  Preceding closed block: B9.87 (section 28), implemented at
+    df99949f922789f2b1cc4a507a090c86a01c5e84, published on origin/main
+  The identifier-set digest above is identical to the one recorded at the
+    B9.87 allocation (section 27.1). B9.88 did not previously appear anywhere
+    in the corpus, so the identifier set is unchanged by this record; B9.88
+    enters the set through the set of allocated-and-recorded identifiers, not
+    through a pre-existing corpus occurrence.
+
+Pre-existing occurrences of B9.88 in the anchor corpus: 5
+  All five are explicit non-allocations or recorded declines:
+    - section 25.1 (B9.86 candidate analysis): "B9.88 and above —
+      CONSIDERED AND DECLINED"
+    - section 26.6: "B9.88+: NOT ALLOCATED"
+    - section 27.1 (B9.87 corpus inspection): "B9.88 and above — 2 occurrences
+      before this record, both inside this document"
+    - section 27.1: "B9.88 and above — CONSIDERED AND DECLINED. Section 6
+      requires the integer"
+    - section 28.14: "B9.88+: NOT ALLOCATED"
+  None of them allocates B9.88. No competing, competing-pending or conflicting
+  identifier was found.
+
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.88.x sub-block
+    is assigned by this record.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+    v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+    no commit outside this document's history introduces a B9.88 allocation.
+
+Preceding Block:
+  B9.87 — CLI Catalog Query Caller (First Production Caller for B9.86
+  ModelCatalogQueryService)
+
+Preceding Block Status:
+  ALLOCATED (section 27), IMPLEMENTED (df99949f922789f2b1cc4a507a090c86a01c5e84),
+  VERIFIED (section 28.7), CLOSED (section 28.14), published on origin/main
+
+Highest Verified Allocation:
+  B9.87
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Allocation Rule Applied:
+  highest_verified_allocated_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+  next-roadmap-allocation audit and a human-ratified HADR
+
+Allocation basis:
+  B9.88 READ-ONLY Next Roadmap Allocation Audit, which concluded
+  "PROPOSE B9.88 — Chat Application Boundary: CLI Caller through
+  run_service.open_chat_session", followed by the project owner's ruling:
+  "APPROVE B9.88 with the minimal CLI-only scope proposed by the audit."
+
+Candidate Numbers Considered:
+  B9.88 — SELECTED. highest_verified_allocated_block + 1 = B9.87 + 1. No
+    allocation, reservation, provisional assignment or competing higher main
+    identifier exists for it; every pre-existing occurrence is an explicit
+    non-allocation or a recorded decline inside this document.
+  B9.89 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+    immediately following the highest verified block; selecting 89 or above
+    would leave 88 permanently unused and would contradict the prospective
+    monotonic rule.
+  B9.88.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+    integers of the form B9.x raise the main-block floor.
+  Any lower or gap-filling identifier (for example B9.17 or B9.85) —
+    CONSIDERED AND DECLINED. Section 6 fixes the floor at the highest VERIFIED
+    allocated identifier; section 9 declares gaps NOT REUSED prospectively. No
+    gap is claimed abandoned, freed, reserved or erroneous (section 13).
+
+Selected Number:
+  B9.88
+
+Validity Reason:
+  B9.87 is the highest main block assigned, implemented, verified and closed in
+  the activation corpus at the anchor recorded above. B9.88 is the integer
+  immediately following it, as section 6 requires. Every pre-existing
+  occurrence of B9.88 in the corpus is an explicit non-allocation or a recorded
+  decline, so no competing allocation exists. The number is therefore valid
+  under the active rule.
+
+Release Association:
+  NOT YET DEFINED
+
+Supersession:
+  none — the earlier "B9.88 and above: NOT ALLOCATED" statements remain the
+  accurate description of the corpus at their own anchors and are not
+  rewritten; they are superseded by this record as a cross-reference only
+
+Documented?:
+  YES — this document (section 29) plus
+  docs/B9.88-chat-application-boundary-cli-caller-decision.md
+
+Number Allocation Record:
+  PRESENT — section 29
+
+Retrospective Record:
+  NO — prospective allocation record
+
+Human decisions pending:
+  none — the HADR is HUMAN-RATIFIED and its architectural scope is APPROVED
+```
+
+### 29.2 Register entry for B9.88
+
+```text
+Block ID:                 B9.88
+Name:                     Chat Application Boundary: CLI Caller
+Status:                   ALLOCATED
+Origin:                   this document, section 29 (NAR)
+Scope:                    see 29.3 — approved by the HADR
+Non-goals:                see 29.4
+Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
+                          (docs/B9.88-chat-application-boundary-cli-caller-decision.md),
+                          preceding this allocation
+Current State:            ALLOCATED — allocated by section 29
+Implementation Commit:    NONE — NOT IMPLEMENTED
+Verification Result:      NONE — NOT VERIFIED
+Closure Commit:           NONE — NOT CLOSED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document + the HADR
+Number Allocation Record: PRESENT — section 29
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.88 = ALLOCATED
+B9.88 = NOT IMPLEMENTED
+B9.88 = NOT VERIFIED
+B9.88 = NOT CLOSED
+```
+
+> **SUPERSESSION NOTE.** Earlier records in this document state that B9.88 and
+> higher identifiers are not allocated (section 25.1; section 26.6; the
+> recorded declines in sections 27.1 and 28.14). Those statements remain the
+> accurate description of the corpus **at their own anchors** and are **not**
+> rewritten by this section. The current, authoritative state of B9.88 is the
+> one asserted above. The allocation evidence recorded in earlier sections is
+> unchanged.
+
+### 29.3 Scope attached to this allocation
+
+The scope was fixed by the human-ratified HADR and is recorded here without
+reinterpretation.
+
+```text
+Chat Application Boundary: CLI Caller
+```
+
+**Architectural purpose, as approved:**
+
+```text
+Route the existing CLI `chat` command through the already-established
+application boundary run_service.open_chat_session, replacing the CLI's
+duplicated resolver -> admission -> preparation -> runtime-session pipeline
+with the shared application service.
+```
+
+**Architectural target:**
+
+```text
+CLI chat
+    ↓
+run_service.open_chat_session()
+    ↓
+existing chat runtime
+```
+
+**In scope:**
+
+```text
+- route the existing CLI `chat` command through
+  run_service.open_chat_session
+- preservation of current chat behaviour
+- preserve existing admission handling: the admission already minted by
+  _admit_for_preparation is forwarded into the application service, using the
+  existing `admission` parameter
+- preserve current CLI output, exit codes and user-visible warnings
+- preserve current chat runtime semantics
+- focused regression coverage proving the boundary is being consumed
+- CLI documentation/help text updated only if the boundary change makes an
+  existing statement inaccurate
+```
+
+**Dependency on already-closed contracts (consumed as-is, not redesigned):**
+
+```text
+run_service.open_chat_session — application boundary; already exported in
+        run_service.py:72 and already production-called by
+        castlearq/api.py:1234
+run_service.prepare           — preparation stage inside that boundary
+chat.LlamaCppChatSession      — the existing chat runtime primitive the service
+                               launches; untouched by this allocation
+EvaluationAdmission           — already minted by _admit_for_preparation and
+                               forwarded, exactly as api.py:1242 does
+evaluate_compatibility / to_admission — the single existing evaluation path
+```
+
+### 29.4 Explicit non-goals
+
+```text
+Chat architecture expansion
+  a Conversation domain object
+  conversation persistence
+  chat history storage
+  generic history policy
+  prompt templating
+  system-prompt policy
+  session persistence
+  conversation listing
+  model selection UX
+  chat marketplace / chat library
+  a streaming application contract
+
+Other execution work
+  run / execute convergence
+  run_service.run_once / run_model redesign
+  ModelExecutionService adoption
+  execution policy changes
+  execution API changes
+
+Product surfaces
+  GUI
+  Model Library UX
+  Model Library GUI
+  new HTTP endpoints
+  new CLI commands
+
+Runtime expansion
+  second runtime
+  Ollama runtime
+  multi-GPU
+  distributed execution
+
+Training
+  LoRA
+  QLoRA
+  datasets
+  training jobs
+  checkpoints
+  fine-tuning
+
+Infrastructure
+  telemetry
+  accounts
+  cloud
+  persistence
+  new dependencies
+
+Other
+  unrelated refactoring
+```
+
+This allocation authorizes none of the above, opens no identifier for any of
+them, and reserves none of them.
+
+### 29.5 Architectural invariants approved with this allocation
+
+Persisted without expansion or reinterpretation.
+
+```text
+- The boundary CLI -> Application (run_service.open_chat_session) -> existing
+  chat runtime primitive is preserved.
+- The CLI no longer duplicates the resolver -> admission -> preparation ->
+  session-opening pipeline inline.
+- Exactly one evaluation and exactly one admission per CLI `chat` invocation.
+  The existing admission is forwarded; admission is neither redesigned nor
+  duplicated.
+- run_service.open_chat_session remains authoritative and is consumed as-is.
+- The existing llama.cpp chat integration, its ready marker, its metrics block
+  parsing, its cancellation semantics and its shutdown behaviour are untouched.
+- No second resolver path, no second evaluation, no second admission.
+- No new runtime and no new core-chain stage.
+- No new user-facing surface: `castlearq chat` already exists and is unchanged.
+- Existing CLI exit codes, output text and user-visible warnings are preserved.
+- The `run` versus `execute` question is NOT resolved by this allocation and
+  remains deferred.
+- ModelExecutionService is NOT adopted by this allocation; it is recorded as
+  existing architectural debt outside this scope.
+```
+
+### 29.6 Allocation versus implementation state
+
+The distinction is explicit and is not implied anywhere in this record:
+
+```text
+This record allocates an identifier and attaches an already-approved scope.
+
+B9.88  = ALLOCATED
+B9.88  = NOT IMPLEMENTED
+B9.88  = NOT VERIFIED
+B9.88  = NOT CLOSED
+
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+VERIFICATION AUTHORIZED:    NO
+CLOSURE AUTHORIZED:         NO
+```
+
+The CLI `chat` command at this anchor still performs its preparation and
+session-opening sequence inline: `castlearq/main.py:1813` `chat_model`
+constructs `ModelStore`, `ModelArtifactResolver`, calls `resolver.resolve`,
+`detect_llama_capability`, `_admit_for_preparation` and `_prepare`, then calls
+`start_chat_session` directly at `main.py:1883`. It does **not** call
+`run_service.open_chat_session`. Nothing in this record changes that.
+
+The four statuses are distinct and are not conflated anywhere in this record:
+
+```text
+ALLOCATION  !=  IMPLEMENTATION  !=  VERIFICATION  !=  CLOSURE
+```
+
+This task establishes authorization only. No implementation work is authorized
+beyond what will be performed in the subsequent controlled implementation phase.
+
+### 29.7 Relation to the B9.87 allocation and closure
+
+B9.87 (section 27 NAR; section 28 Closure Record) is the immediately preceding
+block and is ALLOCATED, IMPLEMENTED (`df99949f922789f2b1cc4a507a090c86a01c5e84`),
+VERIFIED and CLOSED, published on origin/main. B9.88 does not modify, reopen or
+reinterpret B9.87.
+
+B9.87 is not a technical prerequisite of B9.88: B9.88's dependency is
+`run_service.open_chat_session`, which predates B9.87 and was introduced by
+Block 3.1 of the run-service work. B9.87's relevance is documentary: its HADR
+section 5.1 considered and deferred this exact candidate, and its section 5.2
+recorded that the separate `run` / `execute` question remains a human decision.
+
+### 29.8 Relation to the Product Vision ADR
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.88
+applies it without reopening any of its decisions. The register's own closure
+language (28.14) already records `GUI: NOT AUTHORIZED` and
+`Model Library UX: NOT ALLOCATED`; this allocation preserves both statements.
+
+```text
+D1  — NOT ENGAGED: no claim about the product problem is made.
+D2  — NOT ENGAGED: no claim about the user population is made.
+D3  — NOT ENGAGED: no claim about the Job To Be Done is made.
+D4  — NOT ENGAGED: no claim about the runtime thesis is made.
+D5  — RESPECTED: no new runtime and no new core-chain stage.
+D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
+D7  — ENGAGED: B9.88 addresses the application-boundary seam D7 names for future
+      Chat work. No Conversation abstraction is invented; D7 states none exists
+      in the repository and forbids reconstructing one.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — ENGAGED: CLI and API consume one shared application capability rather
+      than each owning lifecycle logic.
+D11 — RESPECTED: no new user-facing surface is created; the existing `chat`
+      surface is consumed.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit is
+      made or implied. B9.88 is not product validation.
+```
+
+### 29.9 Human approval reference
+
+```text
+HADR STATUS:           HUMAN-RATIFIED
+ARCHITECTURAL SCOPE:   APPROVED
+NUMBER ALLOCATION:     APPROVED BY THIS NAR
+IMPLEMENTATION:        NOT STARTED
+```
+
+> Implementation is **not** authorized by this record. The next required step
+> is a separate implementation task that consumes B9.88. No source file, test,
+> surface or refactoring is authorized here.
+
+B9.80 through B9.87 are not modified by this record.
