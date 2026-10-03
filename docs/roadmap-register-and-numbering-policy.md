@@ -7883,7 +7883,8 @@ Allocation Date:
   2026-10-03
 
 Allocation Commit:
-  PENDING — fixed by the next controlled commit that sets it to that hash.
+  8cf2ef9de03a3b5d32cec606e0fdda97f9dfe204
+  ("docs: allocate roadmap block B9.90")
 ```
   Recorded by the two-step mechanism already stated in section 11 and used
   identically by sections 19, 21, 23, 25, 27, 29 and 31: at authoring time the
@@ -8032,17 +8033,25 @@ Branch:
 ```text
 Block ID:                 B9.90
 Name:                     Planner-Canonicalized Revision-Aware Acquisition Locator
-Status:                   ALLOCATED
+Status:                   CLOSED
 Origin:                   this document, section 33 (NAR)
 Scope:                    see 33.3 — fixed by the HADR, recorded without reinterpretation
 Non-goals:                see 33.4
 Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
                           (planner-as-canonical-authority for revision ↔ download_url),
                           DECISION: ADOPT, preceding this allocation
-Current State:            ALLOCATED — allocated by section 33
-Implementation Commit:    NONE — NOT IMPLEMENTED
-Verification Result:      NONE — NOT VERIFIED
-Closure Commit:           NONE — NOT CLOSED
+Current State:            CLOSED — allocated by section 33; implemented,
+                          verified and closed by the controlled closure
+                          transition recorded in this section
+Implementation Commit:    7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+                          ("feat: canonicalize revision-aware acquisition locators")
+Verification Result:      COMPLETE — evidence audits PASSED; full test suite
+                          2160 passed, 2718 subtests passed, 0 failures,
+                          0 errors; closure readiness audit:
+                          READY FOR FORMAL CLOSURE
+Closure Commit:           the commit that contains this closure update
+                          (a commit cannot contain its own hash; this record is
+                          committed in that commit — the section 32.2 convention)
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document + the decision record
@@ -8056,9 +8065,9 @@ of anything further:
 
 ```text
 B9.90 = ALLOCATED
-B9.90 = NOT IMPLEMENTED
-B9.90 = NOT VERIFIED
-B9.90 = NOT CLOSED
+B9.90 = IMPLEMENTED
+B9.90 = VERIFIED
+B9.90 = CLOSED
 ```
 
 > **SUPERSESSION NOTE.** Earlier records in this document state that B9.90 and
@@ -8261,12 +8270,19 @@ I8 OD-1 identity (revision ∉ artifact_id) is preserved
 
 ```text
 NUMBER ALLOCATION:        APPROVED BY THIS NAR
-IMPLEMENTATION AUTHORIZED: NO — a separate implementation task consumes B9.90
-IMPLEMENTATION:           NOT STARTED
-VERIFICATION AUTHORIZED:  NO
-VERIFICATION:             NOT PERFORMED
-CLOSURE AUTHORIZED:       NO
-CLOSURE:                  NOT CLOSED
+IMPLEMENTATION AUTHORIZED: NO (by this NAR) — executed by the separate
+                          implementation task, commit
+                          7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+                          ("feat: canonicalize revision-aware acquisition
+                          locators")
+IMPLEMENTATION:           COMPLETE
+VERIFICATION AUTHORIZED:  NO (by this NAR) — executed by the separate
+                          READ-ONLY evidence audits
+VERIFICATION:             COMPLETE — full test suite 2160 passed,
+                          2718 subtests passed, 0 failures, 0 errors;
+                          closure readiness audit: READY FOR FORMAL CLOSURE
+CLOSURE AUTHORIZED:       YES — formal closure operation (this transition)
+CLOSURE:                  CLOSED
 ```
 
 At this anchor the planner still rejects revision/URL mismatch, the downloader
@@ -8305,12 +8321,15 @@ D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
 DECISION RECORD STATUS:  HUMAN-RATIFIED
 DECISION:                ADOPT
 NUMBER ALLOCATION:       APPROVED BY THIS NAR
-IMPLEMENTATION:          NOT STARTED
+IMPLEMENTATION:          COMPLETE — by the separate task, commit
+                         7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+                         (not by this NAR)
 ```
 
 > Implementation is **not** authorized by this record. The next required step
-> is a separate implementation task that consumes B9.90. No source file, test,
-> surface or refactoring is authorized here.
+> was a separate implementation task that consumes B9.90 (completed by commit
+> 7d691c6ea29818c523bc5d27b1b66ab9bbea27d9). No source file, test,
+> surface or refactoring was authorized here.
 
 B9.80 through B9.89 are not modified by this record. B9.91+ is NOT allocated
 by this record.
@@ -8318,10 +8337,10 @@ by this record.
 ### 33.11 Register entry state summary
 
 ```text
-B9.90 STATUS:        ALLOCATED
-B9.90 IMPLEMENTATION: NOT STARTED
-B9.90 VERIFICATION:   NOT PERFORMED
-B9.90 CLOSURE:        NOT CLOSED
+B9.90 STATUS:        CLOSED
+B9.90 IMPLEMENTATION: COMPLETE
+B9.90 VERIFICATION:   COMPLETE
+B9.90 CLOSURE:        CLOSED
 B9.89:               CLOSED — preserved verbatim (sections 31–32), immutable
 B9.91+:              NOT ALLOCATED
 ```
