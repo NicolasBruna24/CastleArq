@@ -103,6 +103,23 @@ class RunServiceErrorSemanticsTests(unittest.TestCase):
                 self.assertIsInstance(error, RunExecutionFailedError)
                 self.assertEqual(error.error_code, code)
 
+    def test_execution_error_preserves_runtime_stderr(self):
+        """B9.89 s16.2: a failed runtime's stderr crosses the boundary."""
+        result = ExecutionResult(
+            success=False,
+            exit_code=1,
+            stdout="",
+            stderr="runtime diagnostic\n",
+            error=ExecutionErrorInfo(
+                ExecutionErrorCode.PROCESS_FAILED, "process failed"
+            ),
+        )
+        error = self._run_once_failure(runner_result=result)
+        self.assertIsInstance(error, RunExecutionFailedError)
+        self.assertEqual(error.stderr, result.stderr)
+        # Defaulted when the runtime produced none (message-only construction).
+        self.assertEqual(RunExecutionFailedError("boom").stderr, "")
+
     def test_preparation_warnings_preserved(self):
         error = self._run_once_failure(
             prepare_error=PreparationError(

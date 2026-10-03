@@ -144,10 +144,18 @@ class RunExecutionFailedError(RunServiceError):
     """
 
     def __init__(
-        self, message: str, *, error_code: ExecutionErrorCode | None = None
+        self,
+        message: str,
+        *,
+        error_code: ExecutionErrorCode | None = None,
+        stderr: str = "",
     ) -> None:
         super().__init__(message)
         self.error_code = error_code
+        # B9.89 HADR Amendment A section 16.2: a failed runtime result also
+        # carries stderr, and the CLI presented it before B9.89. Additive and
+        # defaulted; ``message`` and ``error_code`` are unchanged.
+        self.stderr = stderr
 
 
 @dataclass(frozen=True)
@@ -168,6 +176,10 @@ class RunOutcome:
     output: str
     exit_code: int | None
     warnings: tuple[str, ...]
+    # B9.89 HADR Amendment A section 16.2: the runtime's stderr is part of the
+    # observable CLI contract and must cross this boundary. Additive and
+    # defaulted, so existing construction sites are unaffected.
+    stderr: str = ""
 
 
 def detect_runtime_statuses(
@@ -362,11 +374,13 @@ def run_once(
             output=result.stdout,
             exit_code=result.exit_code,
             warnings=warnings,
+            stderr=result.stderr,
         )
     detail = result.error.message if result.error is not None else "execution failed"
     raise RunExecutionFailedError(
         detail,
         error_code=result.error.code if result.error is not None else None,
+        stderr=result.stderr,
     )
 
 

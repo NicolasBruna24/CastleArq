@@ -197,6 +197,39 @@ class MainRunTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "model response\n")
         self.assertEqual(error.getvalue(), "Warning: estimated memory\n")
 
+    def test_success_prints_runtime_stderr_before_warnings(self):
+        """B9.89 s16.2: successful runtime stderr reaches CLI stderr."""
+        outcome = RunOutcome(
+            self.model.model_id,
+            "model response\n",
+            0,
+            ("estimated memory",),
+            stderr="runtime diagnostic\n",
+        )
+        out = io.StringIO()
+        error = io.StringIO()
+        with patch("castlearq.main.run_once", return_value=outcome):
+            with redirect_stdout(out), redirect_stderr(error):
+                code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), "model response\n")
+        self.assertEqual(
+            error.getvalue(), "runtime diagnostic\nWarning: estimated memory\n"
+        )
+
+    def test_success_with_empty_runtime_stderr_emits_no_extra_output(self):
+        outcome = RunOutcome(
+            self.model.model_id, "model response\n", 0, ("estimated memory",)
+        )
+        out = io.StringIO()
+        error = io.StringIO()
+        with patch("castlearq.main.run_once", return_value=outcome):
+            with redirect_stdout(out), redirect_stderr(error):
+                code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), "model response\n")
+        self.assertEqual(error.getvalue(), "Warning: estimated memory\n")
+
     def test_runner_error_returns_one(self):
         from castlearq.run_service import RunExecutionFailedError
 
@@ -213,6 +246,35 @@ class MainRunTests(unittest.TestCase):
         """The default runtime timeout stays owned by the application boundary."""
         self.assertGreater(_DEFAULT_EXECUTION_TIMEOUT_SECONDS, 0)
         self.assertTrue(math.isfinite(_DEFAULT_EXECUTION_TIMEOUT_SECONDS))
+
+    def test_runner_error_prints_runtime_stderr_before_run_error(self):
+        """B9.89 s16.2: failed runtime stderr reaches CLI stderr."""
+        from castlearq.run_service import RunExecutionFailedError
+
+        error = io.StringIO()
+        with patch(
+            "castlearq.main.run_once",
+            side_effect=RunExecutionFailedError(
+                "process failed", stderr="runtime diagnostic\n"
+            ),
+        ), redirect_stderr(error):
+            code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            error.getvalue(), "runtime diagnostic\nRun error: process failed\n"
+        )
+
+    def test_runner_error_without_stderr_prints_only_run_error(self):
+        from castlearq.run_service import RunExecutionFailedError
+
+        error = io.StringIO()
+        with patch(
+            "castlearq.main.run_once",
+            side_effect=RunExecutionFailedError("process failed"),
+        ), redirect_stderr(error):
+            code = run_model(self.model.model_id, "hello")
+        self.assertEqual(code, 1)
+        self.assertEqual(error.getvalue(), "Run error: process failed\n")
 
     def test_run_model_forwards_quantization_and_filename_to_boundary(self):
         outcome = RunOutcome(self.model.model_id, "ok\n", 0, ())

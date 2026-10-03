@@ -1696,6 +1696,17 @@ def _error_warnings(error: BaseException) -> tuple[str, ...]:
     return tuple(getattr(error, "warnings", ()) or ())
 
 
+def _print_runtime_stderr(stderr: str) -> None:
+    """B9.89 HADR Amendment A section 16.2: present runtime stderr.
+
+    Restores the pre-B9.89 presentation: nothing is emitted when the runtime
+    produced no stderr, and a trailing newline is added only when missing. The
+    application boundary transports this text; the CLI owns printing it.
+    """
+    if stderr:
+        print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
+
+
 def _prepare_warnings(error: BaseException) -> tuple[str, ...]:
     """B9.78: preparation failures may carry compatibility and selection warnings."""
     return (
@@ -1783,12 +1794,19 @@ def run_model(
             admission=admission,
         )
     except RunServiceError as error:
+        # B9.89 HADR Amendment A section 16.2: a failed runtime's stderr was
+        # printed before the "Run error:" line before B9.89 and remains part of
+        # the observable contract.
+        _print_runtime_stderr(getattr(error, "stderr", ""))
         print(f"Run error: {_error_message(error)}", file=sys.stderr)
         for warning in _error_warnings(error):
             print(f"Warning: {warning}", file=sys.stderr)
         return 1
 
     print(outcome.output, end="" if outcome.output.endswith("\n") else "\n")
+    # B9.89 HADR Amendment A section 16.2: successful runtime stderr is printed
+    # between stdout and warnings, matching the pre-B9.89 ordering.
+    _print_runtime_stderr(outcome.stderr)
     for warning in outcome.warnings:
         print(f"Warning: {warning}", file=sys.stderr)
     return 0
