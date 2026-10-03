@@ -113,7 +113,16 @@ class Downloader:
                 "Download plan has no destination",
             )
         try:
-            _validate_url(artifact.download_url or "", artifact.repository, artifact.filename)
+            # B9.90: defensive validation only, aligned to the planner's
+            # canonical contract — the declared revision selects the expected
+            # `/resolve/<revision>/` path. The downloader never constructs or
+            # repairs locators; canonicalization belongs to the planner alone.
+            _validate_url(
+                artifact.download_url or "",
+                artifact.repository,
+                artifact.filename,
+                artifact.revision,
+            )
             expected = self._destination(artifact)
             if expected != plan.destination:
                 raise UnsafePathError("Download plan destination does not match ModelStore")

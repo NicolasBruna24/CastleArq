@@ -16,6 +16,7 @@
 import hashlib
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import patch
@@ -743,6 +744,92 @@ class DownloaderTests(unittest.TestCase):
                 ).download(plan)
             self.assertEqual(called, [])
             self.assertTrue(final.is_symlink())
+
+
+    def test_revision_pinned_canonical_plan_is_accepted(self):
+        # B9.90 downloader alignment: revision=R + /resolve/R/ -> accepted
+        # and executed against exactly that locator.
+        content = b"0123456789"
+        revision = "b" * 40
+        url = (
+            "https://huggingface.co/owner/repository/resolve/"
+            f"{revision}/model.Q4_K_M.gguf"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(
+                directory, artifact(revision=revision, download_url=url)
+            )
+            self.assertEqual(plan.status, DownloadPlanStatus.READY)
+            self.assertEqual(plan.artifact.download_url, url)
+            requested = []
+
+            def opener(requested_url, _timeout):
+                requested.append(requested_url)
+                return Response([content])
+
+            result = Downloader(
+                ModelStore(Path(directory)), opener=opener
+            ).download(plan)
+        self.assertTrue(result.success, result.error)
+        self.assertEqual(requested, [url])
+
+    def test_absent_revision_main_form_plan_is_accepted(self):
+        # B9.90 downloader alignment: revision=None + /resolve/main/ ->
+        # accepted and executed against exactly that locator.
+        content = b"0123456789"
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(directory)
+            self.assertEqual(plan.status, DownloadPlanStatus.READY)
+            requested = []
+
+            def opener(requested_url, _timeout):
+                requested.append(requested_url)
+                return Response([content])
+
+            result = Downloader(
+                ModelStore(Path(directory)), opener=opener
+            ).download(plan)
+        self.assertTrue(result.success, result.error)
+        self.assertEqual(
+            requested,
+            [
+                "https://huggingface.co/owner/repository/resolve/main/"
+                "model.Q4_K_M.gguf"
+            ],
+        )
+
+    def test_noncanonical_ready_plan_is_rejected_defensively(self):
+        # B9.90 downloader alignment: the planner canonicalizes, so a READY
+        # plan that still carries the noncanonical main form for a declared
+        # revision can only exist if forged by hand. The downloader must
+        # reject it defensively — without repairing it and without touching
+        # the network.
+        revision = "b" * 40
+        main_url = (
+            "https://huggingface.co/owner/repository/resolve/main/"
+            "model.Q4_K_M.gguf"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.make_plan(directory, artifact(revision=revision))
+            self.assertEqual(plan.status, DownloadPlanStatus.READY)
+            self.assertNotEqual(plan.artifact.download_url, main_url)
+            forged = DownloadPlan(
+                replace(plan.artifact, download_url=main_url),
+                plan.destination,
+                plan.status,
+                plan.reasons,
+                plan.available_bytes,
+                plan.required_bytes,
+                plan.existing,
+            )
+            called = []
+            result = Downloader(
+                ModelStore(Path(directory)),
+                opener=lambda *_args: called.append(True),
+            ).download(forged)
+        self.assertEqual(result.status, DownloadResultStatus.PLAN_REJECTED)
+        self.assertIn("does not match repository and filename", result.error)
+        self.assertEqual(called, [])
 
 
 if __name__ == "__main__":

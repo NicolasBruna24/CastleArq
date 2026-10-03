@@ -42,6 +42,10 @@ def artifact(**overrides) -> ArtifactSpec:
     return ArtifactSpec(**values)
 
 
+# B9.90: the acquisition-path revision contract is exactly 40 hex characters.
+REVISION = "0123456789abcdef0123456789abcdef01234567"
+
+
 class DownloadPlannerTests(unittest.TestCase):
     def planner(self, root, available=100):
         return DownloadPlanner(ModelStore(Path(root)), lambda _path: available)
@@ -167,6 +171,96 @@ class DownloadPlannerTests(unittest.TestCase):
             self.assertEqual(manifest.read_bytes(), before)
             self.assertEqual(spec.state, ArtifactState.NOT_DOWNLOADED)
             self.assertFalse(manifest.parent.joinpath(f"{spec.filename}.part").exists())
+
+
+    def test_absent_revision_keeps_the_canonical_main_locator(self):
+        # B9.90 test 1: revision=None + incoming /resolve/main/ -> READY with
+        # the canonical main-form locator carried by the plan.
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.planner(directory).plan(artifact())
+        self.assertEqual(plan.status, DownloadPlanStatus.READY)
+        self.assertIsNone(plan.artifact.revision)
+        self.assertEqual(
+            plan.artifact.download_url,
+            "https://huggingface.co/owner/repository/resolve/main/"
+            "model.Q4_K_M.gguf",
+        )
+
+    def test_declared_revision_accepts_the_revision_form(self):
+        # B9.90 test 2: revision=R + incoming /resolve/R/ -> READY with the
+        # same canonical revision-aware locator.
+        url = (
+            "https://huggingface.co/owner/repository/resolve/"
+            f"{REVISION}/model.Q4_K_M.gguf"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.planner(directory).plan(
+                artifact(revision=REVISION, download_url=url)
+            )
+        self.assertEqual(plan.status, DownloadPlanStatus.READY)
+        self.assertEqual(plan.artifact.download_url, url)
+
+    def test_declared_revision_canonicalizes_the_incoming_main_form(self):
+        # B9.90 test 3 (critical case): revision=R + incoming /resolve/main/
+        # -> READY, and the plan carries the planner-derived canonical
+        # /resolve/R/ locator. The resulting URL is asserted explicitly: this
+        # is the evidence that B9.90 canonicalization actually happened.
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.planner(directory).plan(artifact(revision=REVISION))
+        self.assertEqual(plan.status, DownloadPlanStatus.READY)
+        self.assertEqual(plan.artifact.revision, REVISION)
+        self.assertEqual(
+            plan.artifact.download_url,
+            "https://huggingface.co/owner/repository/resolve/"
+            f"{REVISION}/model.Q4_K_M.gguf",
+        )
+        # Canonicalization must not perturb identity (OD-1): revision stays
+        # outside artifact_id, exactly as for the revision-less artifact.
+        self.assertEqual(plan.artifact.artifact_id, artifact().artifact_id)
+        self.assertNotIn(REVISION, plan.artifact.artifact_id)
+
+    def test_both_incoming_forms_produce_the_same_ready_plan(self):
+        # B9.90: the planner does not create two semantically different READY
+        # plans for the main form and the revision form of the same artifact.
+        pinned = (
+            "https://huggingface.co/owner/repository/resolve/"
+            f"{REVISION}/model.Q4_K_M.gguf"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            from_main = self.planner(directory).plan(artifact(revision=REVISION))
+            from_pinned = self.planner(directory).plan(
+                artifact(revision=REVISION, download_url=pinned)
+            )
+        self.assertEqual(from_main.status, DownloadPlanStatus.READY)
+        self.assertEqual(from_pinned.status, DownloadPlanStatus.READY)
+        self.assertEqual(from_main.artifact, from_pinned.artifact)
+
+    def test_malformed_revision_is_blocked(self):
+        # B9.90 test 4: only None or exactly 40 hexadecimal characters are
+        # valid revisions; malformed values are rejected explicitly with a
+        # revision-validation reason, never normalized or silently dropped.
+        malformed = (
+            "main",
+            "master",
+            "v1.0",
+            "abc",
+            "../foo",
+            "revision-with-invalid-format",
+            "",
+            "0" * 39,
+            "0" * 41,
+            "g" * 40,
+            " 0123456789abcdef0123456789abcdef0123456",
+            "0123456789abcdef0123456789abcdef0123456 ",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for revision in malformed:
+                with self.subTest(revision=revision):
+                    plan = self.planner(directory).plan(
+                        artifact(revision=revision)
+                    )
+                    self.assertEqual(plan.status, DownloadPlanStatus.BLOCKED)
+                    self.assertIn("revision", plan.reasons[0].lower())
 
 
 if __name__ == "__main__":

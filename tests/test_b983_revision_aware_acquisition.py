@@ -165,20 +165,28 @@ class DownloadUrlTests(unittest.TestCase):
             )
         self.assertIs(plan.status, DownloadPlanStatus.READY)
 
-    def test_planner_rejects_a_mismatched_revision(self):
-        # A declared revision must not be served by the unpinned main URL,
-        # and vice versa: no validation bypass.
-        for artifact in (
-            spec(download_url=_download_url(REPO, FILENAME)),
-            spec(download_url=_download_url(REPO, FILENAME, OTHER_REVISION)),
-        ):
-            with tempfile.TemporaryDirectory() as root:
-                plan = DownloadPlanner(
-                    model_store=ModelStore(root=Path(root)),
-                    disk_usage_provider=lambda path: 10 ** 12,
-                ).plan(artifact)
-            self.assertIs(plan.status, DownloadPlanStatus.BLOCKED)
-            self.assertTrue(plan.reasons)
+    def test_planner_canonicalizes_main_and_rejects_a_foreign_revision(self):
+        # B9.90 (AC1) supersedes the pre-B9.90 terminal rejection: a declared
+        # revision canonicalizes the provider's unpinned main locator into
+        # /resolve/<revision>/ instead of rejecting the mismatch, and the
+        # READY plan carries the canonical locator. A locator that declares a
+        # *foreign* revision still fails: no validation bypass.
+        with tempfile.TemporaryDirectory() as root:
+            plan = DownloadPlanner(
+                model_store=ModelStore(root=Path(root)),
+                disk_usage_provider=lambda path: 10 ** 12,
+            ).plan(spec(download_url=_download_url(REPO, FILENAME)))
+        self.assertIs(plan.status, DownloadPlanStatus.READY)
+        self.assertEqual(
+            plan.artifact.download_url, _download_url(REPO, FILENAME, REVISION)
+        )
+        with tempfile.TemporaryDirectory() as root:
+            plan = DownloadPlanner(
+                model_store=ModelStore(root=Path(root)),
+                disk_usage_provider=lambda path: 10 ** 12,
+            ).plan(spec(download_url=_download_url(REPO, FILENAME, OTHER_REVISION)))
+        self.assertIs(plan.status, DownloadPlanStatus.BLOCKED)
+        self.assertTrue(plan.reasons)
 
     def test_existing_url_security_invariants_are_preserved(self):
         bad_urls = (

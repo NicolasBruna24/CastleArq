@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Callable
@@ -82,7 +82,7 @@ class DownloadPlanner:
 
         reasons: list[str] = []
         try:
-            self._validate_metadata(artifact)
+            artifact = self._validate_metadata(artifact)
             destination = self._destination(artifact)
         except UnsafePathError:
             raise
@@ -195,7 +195,20 @@ class DownloadPlanner:
         return destination
 
     @staticmethod
-    def _validate_metadata(artifact: ArtifactSpec) -> None:
+    def _validate_metadata(artifact: ArtifactSpec) -> ArtifactSpec:
+        """Validate declared metadata and return the canonicalized artifact.
+
+        B9.90: the planner is the single canonical acquisition-locator
+        authority. After repository, filename and revision syntax have been
+        validated, the canonical locator is derived from the trusted artifact
+        fields — never from the incoming URL — and it is that canonical URL
+        which must pass the existing URL security validation. The incoming
+        ``download_url`` remains transport metadata: it is still held to the
+        same security model and path correspondence, but it never decides the
+        revision component of the locator carried by the resulting plan. An
+        already-canonical artifact is returned unchanged, so it keeps its
+        identity.
+        """
         if not artifact.source:
             raise ValueError("Artifact source is required")
         if artifact.source != "huggingface":
@@ -206,14 +219,51 @@ class DownloadPlanner:
         _validate_filename(artifact.filename)
         if not isinstance(artifact.format, str) or artifact.format.upper() != "GGUF":
             raise ValueError("Only GGUF artifacts are supported")
+        revision = artifact.revision
+        if revision is not None and (
+            not isinstance(revision, str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40}", revision)
+        ):
+            # B9.90: a malformed non-None revision is rejected explicitly,
+            # before any locator is derived from it, instead of surfacing as
+            # a malformed URL that only path comparison would catch. The
+            # syntax contract is exactly the existing 40-hex contract; it is
+            # neither broadened nor normalized here.
+            raise ValueError(
+                "Artifact revision must be a 40-character hexadecimal commit hash"
+            )
         if not artifact.download_url:
             raise ValueError("Artifact download URL is required")
-        _validate_url(
-            artifact.download_url,
-            artifact.repository,
-            artifact.filename,
-            artifact.revision,
+        # B9.90: derive the canonical locator from the trusted declared fields
+        # only; the incoming URL is never authoritative for the revision
+        # component. The canonical URL itself then passes the existing URL
+        # security validation unchanged.
+        canonical_url = _canonical_download_url(
+            artifact.repository, artifact.filename, revision
         )
+        _validate_url(canonical_url, artifact.repository, artifact.filename, revision)
+        try:
+            _validate_url(
+                artifact.download_url,
+                artifact.repository,
+                artifact.filename,
+                revision,
+            )
+        except ValueError:
+            if revision is None:
+                raise
+            # B9.90: the discovery provider intentionally emits the unpinned
+            # `main` form together with a declared revision. That combination
+            # is accepted as transport metadata only — the canonical locator
+            # validated above replaces it in the resulting plan. A locator
+            # declaring a different revision, a different repository or
+            # filename, or violating any URL security rule still fails here.
+            _validate_url(
+                artifact.download_url,
+                artifact.repository,
+                artifact.filename,
+                None,
+            )
         if artifact.size_bytes is not None and (
             isinstance(artifact.size_bytes, bool)
             or not isinstance(artifact.size_bytes, int)
@@ -225,6 +275,13 @@ class DownloadPlanner:
             or not re.fullmatch(r"[0-9a-fA-F]{64}", artifact.sha256)
         ):
             raise ValueError("Invalid artifact SHA-256")
+        # B9.90: the plan carries the canonical locator. The incoming locator
+        # is replaced by the planner-derived canonical one whenever they
+        # differ (e.g. the provider's main form for a declared revision); an
+        # already-canonical artifact keeps its identity untouched.
+        if artifact.download_url != canonical_url:
+            artifact = replace(artifact, download_url=canonical_url)
+        return artifact
 
     def _blocked(self, artifact: ArtifactSpec | None, reason: str) -> DownloadPlan:
         if not isinstance(artifact, ArtifactSpec):
@@ -245,6 +302,23 @@ class DownloadPlanner:
         )
 
 
+def _canonical_download_url(
+    repository: str, filename: str, revision: str | None
+) -> str:
+    """Derive the canonical acquisition locator from trusted artifact fields.
+
+    B9.90: this is the sole canonical locator derivation, and it lives only in
+    the planner. It reads the declared ``repository``, ``filename`` and
+    ``revision`` — never the incoming URL — so ``revision=None`` yields the
+    unpinned ``/resolve/main/`` form and a declared 40-hex revision yields
+    ``/resolve/<revision>/``. The result is validated by ``_validate_url``
+    before it can appear in a READY plan.
+    """
+    return (
+        f"https://huggingface.co/{repository}/resolve/{revision or 'main'}/{filename}"
+    )
+
+
 def _validate_url(
     url: str,
     repository: str,
@@ -261,7 +335,21 @@ def _validate_url(
     weakened. A declared revision is never accepted from an undeclared
     artifact, and the default ``main`` form is never accepted for an artifact
     that declares a different revision.
+
+    B9.90: a non-None ``revision`` must itself satisfy the acquisition-path
+    revision contract (exactly 40 hexadecimal characters); a malformed
+    revision is rejected explicitly instead of being folded into the expected
+    path. This is the shared validation rule the Downloader uses defensively,
+    aligned to the planner's canonical contract — it validates only, never
+    constructs or repairs a locator.
     """
+    if revision is not None and (
+        not isinstance(revision, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{40}", revision)
+    ):
+        raise ValueError(
+            "Artifact revision must be a 40-character hexadecimal commit hash"
+        )
     parsed = urlparse(url)
     if (
         parsed.scheme != "https"
