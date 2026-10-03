@@ -1901,6 +1901,12 @@ def chat_model(
 
     session = opened.session
 
+    # B9.88: preserve the pre-B9.88 successful-path selection warnings. These
+    # come from the preparation the application boundary already performed; no
+    # selection is recomputed here.
+    for warning in opened.warnings:
+        print(f"Warning: {warning}", file=err)
+
     print("CastleArq — chat", file=out)
     print(f"Model: {model_id}", file=out)
     print("Type /exit to quit.", file=out)

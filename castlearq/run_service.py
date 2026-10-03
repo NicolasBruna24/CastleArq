@@ -390,6 +390,11 @@ class ChatSessionOpened:
 
     session: Any
     model_id: str
+    # B9.88 human-approved clarification: the CLI chat caller must preserve the
+    # pre-B9.88 successful-path selection warnings. These are the warnings the
+    # existing preparation pipeline already computed; nothing is recomputed here.
+    # Additive and defaulted, so every existing construction site is unchanged.
+    warnings: tuple[str, ...] = ()
 
 
 def open_chat_session(
@@ -451,4 +456,8 @@ def open_chat_session(
         )
     except ChatSessionError as error:
         raise ChatLaunchFailedError(str(error)) from error
-    return ChatSessionOpened(session=session, model_id=resolved.model.model_id)
+    return ChatSessionOpened(
+        session=session,
+        model_id=resolved.model.model_id,
+        warnings=preparation.selection_warnings,
+    )

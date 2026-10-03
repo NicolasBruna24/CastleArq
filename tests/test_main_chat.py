@@ -572,3 +572,90 @@ def test_chat_maps_unknown_model_to_chat_error(pipeline, monkeypatch):
     )
     assert code == 1
     assert "Chat error: Model not found in the local catalog: nope" in err.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# B9.88 human-approved clarification — successful-path selection warnings.
+#
+# Before B9.88 the CLI printed preparation.selection_warnings to stderr when
+# preparation succeeded. The application boundary computes them but did not
+# return them; ChatSessionOpened now carries them additively.
+# ---------------------------------------------------------------------------
+
+MARGINAL_WARNING = "Compatibility is marginal; execution may be resource constrained."
+
+
+def test_chat_prints_successful_path_selection_warning(pipeline, monkeypatch):
+    """A marginal selection still warns on a successful chat run."""
+    real_open = main_module.open_chat_session
+
+    def opening_with_warnings(*args, **kwargs):
+        opened = real_open(*args, **kwargs)
+        return type(opened)(
+            session=opened.session,
+            model_id=opened.model_id,
+            warnings=(MARGINAL_WARNING,),
+        )
+
+    monkeypatch.setattr(main_module, "open_chat_session", opening_with_warnings)
+
+    out = io.StringIO()
+    err = io.StringIO()
+    code = chat_model(
+        "some-model",
+        input_fn=make_inputs(["hello", "/exit"]),
+        out=out,
+        err=err,
+        session_factory=pipeline.factory,
+    )
+
+    assert code == 0
+    assert err.getvalue().count(f"Warning: {MARGINAL_WARNING}") == 1
+    # The warning precedes the successful banner, as it did before B9.88.
+    assert "CastleArq — chat" in out.getvalue()
+    assert "Warning:" not in out.getvalue()
+
+
+def test_chat_emits_no_warning_when_selection_is_clean(pipeline):
+    """warnings == () produces no warning output at all."""
+    out = io.StringIO()
+    err = io.StringIO()
+    code = chat_model(
+        "some-model",
+        input_fn=make_inputs(["hello", "/exit"]),
+        out=out,
+        err=err,
+        session_factory=pipeline.factory,
+    )
+    assert code == 0
+    assert "Warning:" not in err.getvalue()
+
+
+def test_chat_does_not_print_selection_warning_twice(pipeline, monkeypatch):
+    """The boundary result is the single source; no duplicate emission."""
+    real_open = main_module.open_chat_session
+    emitted = []
+
+    def counting_open(*args, **kwargs):
+        emitted.append(1)
+        opened = real_open(*args, **kwargs)
+        return type(opened)(
+            session=opened.session,
+            model_id=opened.model_id,
+            warnings=("a", "b"),
+        )
+
+    monkeypatch.setattr(main_module, "open_chat_session", counting_open)
+
+    err = io.StringIO()
+    code = chat_model(
+        "some-model",
+        input_fn=make_inputs(["hello", "/exit"]),
+        out=io.StringIO(),
+        err=err,
+        session_factory=pipeline.factory,
+    )
+    assert code == 0
+    assert len(emitted) == 1
+    assert err.getvalue().count("Warning: a") == 1
+    assert err.getvalue().count("Warning: b") == 1

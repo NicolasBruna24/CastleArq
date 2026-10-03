@@ -1408,7 +1408,11 @@ class ServiceTests(unittest.TestCase):
         resolved = SimpleNamespace(
             model=SimpleNamespace(model_id="logical-id"), artifact=SimpleNamespace())
         prep = SimpleNamespace(
-            executable_artifact=SimpleNamespace(), target=SimpleNamespace())
+            executable_artifact=SimpleNamespace(), target=SimpleNamespace(),
+            # B9.88: ExecutionPreparation always carries this field; the stub
+            # must mirror the real shape now that it is propagated.
+            selection_warnings=(),
+        )
         cap = SimpleNamespace()
         with mock.patch.object(rs, "ModelArtifactResolver") as rc, mock.patch.object(
                 rs, "prepare", return_value=prep):
@@ -1567,3 +1571,45 @@ class OversizedBodyDrainTests(AdmissionDefault):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class ChatSessionOpenedWarningsTests(unittest.TestCase):
+    """B9.88 human-approved clarification.
+
+    The application boundary computes preparation.selection_warnings; the
+    successful result must carry the exact tuple back to its callers.
+    """
+
+    def test_warnings_default_to_empty(self):
+        opened = ChatSessionOpened(session=object(), model_id="m")
+        self.assertEqual(opened.warnings, ())
+
+    def test_open_propagates_preparation_selection_warnings(self):
+        from castlearq import run_service as rs
+
+        prep = SimpleNamespace(
+            executable_artifact=SimpleNamespace(),
+            target=SimpleNamespace(),
+            selection_warnings=("sel-a", "sel-b"),
+        )
+        resolved = SimpleNamespace(
+            model=SimpleNamespace(model_id="logical-id"),
+            artifact=SimpleNamespace(),
+        )
+        deps = rs.ChatDependencies(
+            model_store=mock.Mock(),
+            models=(),
+            capability=SimpleNamespace(),
+            session_factory=lambda c, e, t: FakeSession(),
+        )
+        with mock.patch.object(rs, "ModelArtifactResolver") as resolver, \
+                mock.patch.object(rs, "prepare", return_value=prep):
+            resolver.return_value.resolve.return_value = resolved
+            opened = rs.open_chat_session("logical-id", dependencies=deps)
+
+        # The exact tuple, not a copy, a merge or a recomputation.
+        self.assertEqual(opened.warnings, ("sel-a", "sel-b"))
+        self.assertIsInstance(opened.warnings, tuple)
+        # Session and model identity are unchanged by the additive field.
+        self.assertEqual(opened.model_id, "logical-id")
+        self.assertIsNotNone(opened.session)
