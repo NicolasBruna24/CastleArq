@@ -107,6 +107,7 @@ from .chat import ChatSessionError, start_chat_session
 from .artifact_selection import ArtifactSelectionError, select_artifact
 from .application_wiring import (
     compose_acquisition_service,
+    compose_catalog_query_service,
     compose_execute_model_dependencies,
 )
 from .acquisition_service import (
@@ -115,6 +116,10 @@ from .acquisition_service import (
     AcquisitionOutcome,
     AcquisitionStatus,
     ModelAcquisitionService,
+)
+from .catalog_query_service import (
+    CatalogQueryError,
+    CatalogQueryErrorCategory,
 )
 from .discovery import DiscoveryError, ModelDiscovery
 from .execute_model import (
@@ -744,6 +749,8 @@ _JSON_COMMANDS = (
     "runtime",
     "detect",
     "plan",
+    # B9.87: the search surface exposes the B9.86 catalog/query boundary.
+    "search",
 )
 
 
@@ -1170,6 +1177,130 @@ def print_source(provider: str | None, repository: str | None) -> int:
         print(f"    SHA-256: {artifact.sha256 or 'Unknown'}")
         print(f"    URL: {artifact.download_url}")
         print(f"    Artifact ID: {artifact.artifact_id}")
+    return 0
+
+
+# B9.87: the first production caller of the B9.86 application catalog/query
+# boundary. This function is a CLI adapter only: it holds no discovery logic,
+# constructs no provider (the composition root does), and interprets nothing it
+# is given. Query, limit and cursor are forwarded unchanged; candidates and the
+# opaque next_cursor are presented exactly as the application boundary returned
+# them. No ranking, no recommendation, no compatibility judgement.
+
+
+def _search_candidates_payload(candidates) -> list[dict]:
+    """Project B9.86 ``ModelCandidate`` objects for the JSON envelope.
+
+    Field-for-field pass-through of the L1 remote metadata the discovery domain
+    already declares. Nothing is added, renamed, derived, normalized or
+    reinterpreted, and no field is omitted.
+    """
+    return [
+        {
+            "provider_id": candidate.provider_id,
+            "repository": candidate.repository,
+            "display_name": candidate.display_name,
+            "author": candidate.author,
+            "description": candidate.description,
+            "tags": list(candidate.tags),
+            "declared_architecture": candidate.declared_architecture,
+            "has_gguf": candidate.has_gguf,
+        }
+        for candidate in candidates
+    ]
+
+
+def search_command(
+    query: str | None,
+    *,
+    limit: int | None = None,
+    cursor: str | None = None,
+    as_json: bool = False,
+    out=None,
+    err=None,
+    service=None,
+) -> int:
+    """Query the configured model discovery/catalog capability.
+
+    B9.87. The single production caller of
+    :meth:`castlearq.catalog_query_service.ModelCatalogQueryService.query`.
+    The service is composed through
+    :func:`castlearq.application_wiring.compose_catalog_query_service`, so this
+    command never imports or instantiates a discovery provider.
+
+    ``limit`` is forwarded to the application boundary, which owns no bound of
+    its own; when omitted the boundary's own default applies. ``cursor`` is an
+    opaque value produced by a previous call and is forwarded verbatim: it is
+    never decoded, validated, rebuilt or persisted here.
+
+    Returns 0 on a completed query — including a completed query that returned
+    no candidates — and 1 when the application boundary reports a failure.
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not query:
+        usage = "Usage: castlearq search <query>"
+        if as_json:
+            return _emit_json_envelope(
+                "search", 2, {}, error=json_output.error("usage_error", usage)
+            )
+        print(usage, file=err)
+        return 2
+
+    catalog_query = (
+        service if service is not None else compose_catalog_query_service()
+    )
+    # Forwarded only when the user supplied one: the application boundary owns
+    # its own default and the provider owns the bound, so passing ``None``
+    # through would replace a declared default with an invalid value.
+    query_kwargs = {}
+    if limit is not None:
+        query_kwargs["limit"] = limit
+    try:
+        outcome = catalog_query.query(query, **query_kwargs, cursor=cursor)
+    except CatalogQueryError as error:
+        kind = f"search_{error.category.value}"
+        if as_json:
+            return _emit_json_envelope(
+                "search",
+                1,
+                {"query": query},
+                error=json_output.error(kind, error.message),
+            )
+        print(f"Search error: {error.message}", file=err)
+        return 1
+
+    payload = {
+        "query": query,
+        "candidates": _search_candidates_payload(outcome.candidates),
+        "next_cursor": outcome.next_cursor,
+    }
+    if as_json:
+        return _emit_json_envelope("search", 0, payload)
+
+    print(f"CastleArq - Model discovery search: {query}", file=out)
+    print("=" * 43, file=out)
+    if not outcome.candidates:
+        print("No candidates found.", file=out)
+    for candidate in outcome.candidates:
+        print(f"\n  {candidate.repository}", file=out)
+        print(f"    Provider: {candidate.provider_id}", file=out)
+        if candidate.display_name is not None:
+            print(f"    Name: {candidate.display_name}", file=out)
+        if candidate.author is not None:
+            print(f"    Author: {candidate.author}", file=out)
+        if candidate.declared_architecture is not None:
+            print(f"    Architecture: {candidate.declared_architecture}", file=out)
+        print(f"    GGUF: {'yes' if candidate.has_gguf else 'no'}", file=out)
+        if candidate.tags:
+            print(f"    Tags: {', '.join(candidate.tags)}", file=out)
+        if candidate.description is not None:
+            print(f"    Description: {candidate.description}", file=out)
+    print("", file=out)
+    if outcome.next_cursor is not None:
+        print(f"  Next cursor: {outcome.next_cursor}", file=out)
+    else:
+        print("  Next cursor: none", file=out)
     return 0
 
 
@@ -2259,6 +2390,7 @@ def validate_command(
 
 USAGE_FLOW = """\
 usage flow:
+  0. search the catalog:   castlearq search "<query>"
   1. discover models:      castlearq models
   2. download a model:     castlearq download <model-id>
   3. import a local GGUF:  castlearq import <path>
@@ -2290,6 +2422,14 @@ execution:
 read-only inspection:
   detect  system, CPU, memory and GPU
   runtime resolved llama.cpp runtime state
+  search <query>
+          query the configured model discovery/catalog capability and print
+          the remote candidates it returned. Results are reported as the
+          discovery provider declared them: no ranking, no recommendation and
+          no compatibility judgement. `--limit` is forwarded unchanged to the
+          provider, which owns the bound. When more results exist, the opaque
+          `next_cursor` is printed and can be passed back with `--cursor`;
+          CastleArq never interprets it.
   models  scored model recommendations
   list    locally stored artifacts and their derived state
   validate <model-id>
@@ -2534,7 +2674,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -2569,6 +2709,21 @@ def main() -> int:
     parser.add_argument(
         "--filename",
         help="exact artifact filename to select for download, execute, compatibility, run or chat",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help=(
+            "maximum number of candidates for search; forwarded unchanged to "
+            "the discovery provider, which owns the bound"
+        ),
+    )
+    parser.add_argument(
+        "--cursor",
+        help=(
+            "opaque next_cursor from a previous search, forwarded unchanged; "
+            "CastleArq never interprets it"
+        ),
     )
     parser.add_argument(
         "--label",
@@ -2607,6 +2762,7 @@ def main() -> int:
         "list": (),
         "runtime": (),
         "source": (),
+        "search": ("limit", "cursor"),
         "plan": (),
         "compatibility": ("quantization", "filename"),
         "validate": ("quantization", "filename"),
@@ -2634,7 +2790,7 @@ def main() -> int:
         "serve",
         "store",
     )
-    for flag in ("prompt", "quantization", "filename", "label"):
+    for flag in ("prompt", "quantization", "filename", "label", "limit", "cursor"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     for flag in ("host", "port"):
@@ -2699,6 +2855,15 @@ def main() -> int:
         return print_runtime_diagnostics(as_json=args.json)
     elif args.command == "source":
         return print_source(args.provider, args.repository)
+    elif args.command == "search":
+        if args.repository is not None:
+            parser.error("search accepts exactly one query")
+        return search_command(
+            args.provider,
+            limit=args.limit,
+            cursor=args.cursor,
+            **json_kwargs,
+        )
     elif args.command == "plan":
         return print_plan(
             args.provider,

@@ -432,6 +432,11 @@ class StructuralBoundaryTests(unittest.TestCase):
                 "application_wiring": {
                     "compose_acquisition_service",
                     "compose_execute_model_dependencies",
+                    # B9.87 adds the catalog/query use case's composition
+                    # seam: `search` must be composed through the same single
+                    # application composition root. The boundary is widened by
+                    # exactly this one name; no provider is imported.
+                    "compose_catalog_query_service",
                 },
                 "evaluate_compatibility": {
                     # B9.74 adds the use case's own dependency holder: the store

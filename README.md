@@ -781,6 +781,7 @@ flags.
 | `diagnose` | GPU software diagnosis (Vulkan/CUDA/ROCm) |
 | `verify` | Re-checks the **GPU diagnosis**, not artifact integrity |
 | `source huggingface REPO` | Inspects a remote source |
+| `search QUERY` | Queries the configured model discovery/catalog capability |
 | `plan REPO FILENAME` | Inspects one specific remote artifact |
 
 `import PATH` copies a local GGUF file into the model store. It reports the
@@ -792,8 +793,28 @@ read, as physical GGUF evidence. Use `--label NAME` to choose the storage and
 presentation label; the store sanitizes it, and it is never used as a model id.
 Importing does not run anything: run the artifact later with `execute`.
 
-`detect`, `runtime`, `models`, `list`, `store`, `compatibility`, `source` and
-`plan` are read-only: they change nothing.
+`detect`, `runtime`, `models`, `list`, `store`, `compatibility`, `source`,
+`search` and `plan` are read-only: they change nothing.
+
+`search QUERY` queries the configured model discovery/catalog capability and
+prints the remote candidates it returned, together with the `next_cursor` the
+provider produced when more results exist:
+
+```bash
+castlearq search "qwen coder"
+castlearq search "qwen coder" --limit 50
+castlearq search "qwen coder" --cursor "<next_cursor from the previous call>"
+castlearq search "qwen coder" --json
+```
+
+It reports candidates **as the discovery provider declared them**. It does not
+rank them, recommend one, score them against your hardware or select a
+quantization: choosing the artifact is a separate decision made by `download`,
+`compatibility` and `execute`. `--limit` is forwarded unchanged to the provider,
+which owns the bound. `--cursor` takes the opaque `next_cursor` from a previous
+call and forwards it unchanged; CastleArq never decodes or interprets it, and
+it never paginates automatically. Results are remote, unverified metadata:
+they say what a source declares, not what your machine can run.
 
 `verify` checks **environment remediation** after a `diagnose`. It is not an
 artifact integrity check; for that, use `validate`, which reports what can be

@@ -396,6 +396,10 @@ class SurfaceAndParityTests(_ShouldCase):
                 "runtime",
                 "detect",
                 "plan",
+                # B9.87 adds the search surface: it exposes the B9.86
+                # catalog/query application boundary through the same
+                # envelope, with no new envelope shape.
+                "search",
             ),
         )
 
