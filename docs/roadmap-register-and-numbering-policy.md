@@ -8043,7 +8043,7 @@ Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
 Current State:            CLOSED — allocated by section 33; implemented,
                           verified and closed by the controlled closure
                           transition recorded in this section
-Implementation Commit:    7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+Implementation Commit:    e2f520822f356e36acb2b03f0494edcfdcb37bb0
                           ("feat: canonicalize revision-aware acquisition locators")
 Verification Result:      COMPLETE — evidence audits PASSED; full test suite
                           2160 passed, 2718 subtests passed, 0 failures,
@@ -8272,7 +8272,7 @@ I8 OD-1 identity (revision ∉ artifact_id) is preserved
 NUMBER ALLOCATION:        APPROVED BY THIS NAR
 IMPLEMENTATION AUTHORIZED: NO (by this NAR) — executed by the separate
                           implementation task, commit
-                          7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+                          e2f520822f356e36acb2b03f0494edcfdcb37bb0
                           ("feat: canonicalize revision-aware acquisition
                           locators")
 IMPLEMENTATION:           COMPLETE
@@ -8322,13 +8322,13 @@ DECISION RECORD STATUS:  HUMAN-RATIFIED
 DECISION:                ADOPT
 NUMBER ALLOCATION:       APPROVED BY THIS NAR
 IMPLEMENTATION:          COMPLETE — by the separate task, commit
-                         7d691c6ea29818c523bc5d27b1b66ab9bbea27d9
+                         e2f520822f356e36acb2b03f0494edcfdcb37bb0
                          (not by this NAR)
 ```
 
 > Implementation is **not** authorized by this record. The next required step
 > was a separate implementation task that consumes B9.90 (completed by commit
-> 7d691c6ea29818c523bc5d27b1b66ab9bbea27d9). No source file, test,
+> e2f520822f356e36acb2b03f0494edcfdcb37bb0). No source file, test,
 > surface or refactoring was authorized here.
 
 B9.80 through B9.89 are not modified by this record. B9.91+ is NOT allocated
@@ -8410,13 +8410,13 @@ Human Architectural Decision Record:
                               this section performs the allocation
 
 Corpus/HEAD Anchor:
-  1fe09421924b64b5eb91a8ae2bd70be7f3465856
+  85754680b6c600dc2edb5d23ac3f383b55485b19
 Corpus File Count:
   227 versioned files (git ls-files at the anchor above)
 
 Corpus Integrity Evidence:
   The corpus is fixed by the anchor commit itself: HEAD and origin/main both
-  name 1fe09421924b64b5eb91a8ae2bd70be7f3465856, the tracked working tree is
+  name 85754680b6c600dc2edb5d23ac3f383b55485b19, the tracked working tree is
   clean (git diff --check empty; git diff and git diff --cached empty), and the
   only untracked file at the anchor is the pre-existing, deliberately unstaged
   docs/post-b990-architectural-decision-preparation.md. Identifier discovery was
@@ -8565,7 +8565,7 @@ Architectural decision:   HUMAN-RATIFIED HADR — Internal Dynamic Model Library
 Current State:            CLOSED — allocated by section 34; implemented, verified
                           and closed by the controlled closure transition
                           recorded in this section
-Implementation Commit:    f6ed4dc97a75692bd3404f59d2340ab9757f3278
+Implementation Commit:    4d2c068c87748db7aa3a3251077ad353cb29dab1
                           ("feat: implement B9.91 dynamic model library")
 Verification Result:      COMPLETE — evidence audit PASSED WITH OBSERVATIONS;
                           focused suite 51 tests passed; full suite 2211 passed,
@@ -9021,7 +9021,7 @@ D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
 NUMBER ALLOCATION:         APPROVED BY THIS NAR
 IMPLEMENTATION AUTHORIZED: NO — by this NAR; executed by the separate
                            implementation task, commit
-                           f6ed4dc97a75692bd3404f59d2340ab9757f3278
+                           4d2c068c87748db7aa3a3251077ad353cb29dab1
                            ("feat: implement B9.91 dynamic model library")
 IMPLEMENTATION:           COMPLETE
 VERIFICATION AUTHORIZED:   NO — by this NAR; executed by the separate
@@ -9049,7 +9049,7 @@ DECISION:               AUTHORIZE — internal stateless Dynamic Model Library
                         capability
 NUMBER ALLOCATION:      APPROVED BY THIS NAR
 IMPLEMENTATION:         COMPLETE — by the separate implementation task, commit
-                        f6ed4dc97a75692bd3404f59d2340ab9757f3278
+                        4d2c068c87748db7aa3a3251077ad353cb29dab1
                         (not by this NAR)
 VERIFICATION:           COMPLETE — by the separate READ-ONLY evidence audit
                         (not by this NAR)
@@ -9078,6 +9078,630 @@ B9.91 closure transition (this section, commit "docs: close roadmap block
 B9.91") modified only this document. Source, tests, configuration, packaging,
 ADRs and the pre-existing untracked decision-preparation document were not
 touched by this transition.
+
+Working tree at anchor:
+  tracked tree clean apart from this allocation record; git diff --check clean;
+  ahead/behind origin/main 0/0; the only untracked file is the pre-existing,
+  unstaged docs/post-b990-architectural-decision-preparation.md.
+
+---
+
+## 35. B9.92 — Number Allocation Record
+
+`B9.92` is allocated as the next main block under section 6, on the evidence of a
+section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.92 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified product/architectural decision for the CLI discovery-to-
+acquisition flow, which was preceded by a READ-ONLY CLI/Terminal Alpha Readiness
+Audit, a READ-ONLY human product/architectural decision audit, a READ-ONLY
+formal roadmap allocation audit, and the human ratification that selected
+Option A as the boundary. This section allocates the number that carries that
+scope; it does not widen, reinterpret or extend it.
+
+### 35.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.92
+
+Title:
+  CLI Discovery-to-Acquisition Product Flow
+
+Allocation Date:
+  2026-10-03
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash
+  ("docs: allocate roadmap block B9.92")
+```
+  Recorded by the two-step mechanism stated in section 11 and used identically
+  by sections 14, 16, 19, 21, 23, 25, 27, 29, 31, 33 and 34: at authoring time
+  the hash did not exist and the field reads PENDING; a commit hash cannot be
+  known before the commit exists, and writing a guessed value would be a
+  fabricated identifier. The allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 34 — B9.91 Number Allocation Record and closure transition
+Section for this allocation:
+  section 35 — this record
+
+Origin:
+  controlled B9.92 product/architectural decision and formal allocation audit
+
+Human Product / Architectural Decision Record:
+  CLI Discovery-to-Acquisition Product Flow
+  STATUS: HUMAN-RATIFIED
+  BOUNDARY DECISION: OPTION A (ratified)
+  NUMBER (at ratification): NONE — the decision record assigned no identifier;
+                              this section performs the allocation
+
+Corpus/HEAD Anchor:
+  d50809d5599ad9472692d45588aa95525c365859
+Corpus File Count:
+  227 versioned files (git ls-files at the anchor above)
+
+Corpus Integrity Evidence:
+  The corpus is fixed by the anchor commit itself: HEAD and origin/main both
+  name d50809d5599ad9472692d45588aa95525c365859, the tracked working tree is
+  clean (git diff --check empty; git diff and git diff --cached empty), and the
+  only untracked file at the anchor is the pre-existing, deliberately unstaged
+  docs/post-b990-architectural-decision-preparation.md. Identifier discovery was
+  performed across the whole tracked corpus, not by reading documents alone
+  (section 6 requires corpus inspection, not document reading).
+
+Identifier Set:
+  Highest main identifier in real use before this section: B9.91
+  Preceding closed block: B9.91 (section 34), ALLOCATED / IMPLEMENTED /
+    VERIFIED / CLOSED, published at d50809d5599ad9472692d45588aa95525c365859.
+  B9.92 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.92 in the anchor corpus:
+  They are explicit non-allocations or historical declines; none allocates
+  B9.92:
+    - section 34.1: "B9.92 and above — CONSIDERED AND DECLINED. Section 6
+      requires the integer immediately following the highest verified main
+      block. B9.92 would skip B9.91 and is therefore invalid."
+    - section 34.15: "B9.92+ is NOT allocated by this record."
+    - section 34.16: "B9.92+: NOT ALLOCATED"
+  The decline recorded inside section 34 was accurate **at its own anchor**,
+  when B9.91 was still unallocated. It is preserved as history and is not
+  rewritten; the current authoritative state of B9.92 is the one asserted by
+  this section.
+
+  No competing, competing-pending, reserved or conflicting identifier was found
+  in the corpus, and no B9.93 or later main block, sub-block or alias is
+  assigned by this record.
+
+Preceding Block:
+  B9.91 — Internal Dynamic Model Library Capability (Live/Stateless)
+
+Preceding Block Status:
+  ALLOCATED (section 34), IMPLEMENTED, VERIFIED, CLOSED (section 34),
+  published state main == HEAD == origin/main at the anchor above.
+
+Highest Verified Allocation:
+  B9.91
+
+Branch:
+  main
+```
+
+Candidate Numbers Considered:
+
+```text
+B9.92 — SELECTED. highest_verified_allocated_block + 1 = B9.91 + 1. No
+  allocation, reservation, provisional assignment, sub-block or competing
+  claim exists for it anywhere in the anchor corpus; every pre-existing
+  occurrence is either an explicit non-allocation or the historical decline
+  recorded at section 34.1, which was accurate at its own anchor and is
+  preserved rather than rewritten.
+
+B9.91 and below — CONSIDERED AND DECLINED. Section 6 fixes the floor at the
+  highest VERIFIED allocated identifier; section 9 declares gaps NOT REUSED
+  prospectively. B9.91 is already allocated, implemented, verified, closed and
+  published. No gap is claimed abandoned, freed, reserved or erroneous
+  (section 13).
+
+B9.93 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+  immediately following the highest verified main block. B9.93 would skip
+  B9.92 and is therefore invalid.
+
+B9.92.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+  integers of the form B9.x raise the main-block floor, and a sub-block does
+  not by itself advance the next main block number.
+
+Any alias, umbrella or renamed identifier — CONSIDERED AND DECLINED. Section 6
+  admits only the integer form; no alias is minted.
+```
+
+Selected Number:
+
+```text
+B9.92
+```
+
+Validity Reason:
+
+```text
+B9.91 is the highest main block assigned, implemented, verified and closed in
+the activation corpus at the anchor recorded above. B9.92 is the integer
+immediately following it, as section 6 requires. Every pre-existing occurrence
+of B9.92 in the corpus is either an explicit non-allocation or a historical
+decline that was accurate at its own anchor, so no competing allocation
+exists. The number is therefore valid under the active rule, and the section 7
+corpus inspection record is present above.
+```
+
+Release Association:
+
+```text
+NOT YET DEFINED
+```
+
+Supersession:
+
+```text
+none as to B9.90 or B9.91 — those closure records remain the accurate
+description of those blocks and are not rewritten by this section.
+
+cross-reference only — the "B9.92 and above — CONSIDERED AND DECLINED"
+statement and the "B9.92+: NOT ALLOCATED" statements in section 34 remain the
+accurate description of the corpus at their own anchors and are not rewritten.
+They are superseded by this record as a cross-reference only.
+```
+
+Documented?:
+
+```text
+YES — this document (section 35) plus the ratified product/architectural
+decision and the completed allocation audit it cites
+```
+
+Number Allocation Record:
+
+```text
+PRESENT — section 35
+```
+
+Retrospective Record:
+
+```text
+NO — prospective allocation record
+```
+
+Human decisions pending:
+
+```text
+none as to allocation — the CLI Discovery-to-Acquisition Product Flow decision
+is HUMAN-RATIFIED and the READ-ONLY allocation audit concluded READY WITH
+OBSERVATIONS.
+
+Future human decisions NOT discharged by this record:
+  - implementation authorization (a separate task, not this NAR)
+  - expansion of model_identity.py, which remains a separate future decision
+  - any Model Library UX or GUI surface
+  - legacy source/plan/run convergence, download progress, and every other
+    recorded deferral listed in section 35.4
+```
+
+### 35.2 Register entry for B9.92
+
+```text
+Block ID:                 B9.92
+Name:                     CLI Discovery-to-Acquisition Product Flow
+Status:                   ALLOCATED
+Origin:                   controlled B9.92 product/architectural decision and
+                           formal allocation audit
+Scope:                    see 35.3 — fixed by the ratified decision, recorded
+                           without reinterpretation
+Boundary decision:        OPTION A — CLI uses ModelCatalogQueryService.search
+                           for search and ModelDiscovery.inspect(repository)
+                           for repository-keyed inspection
+Non-goals:                see 35.4
+Architectural decision:   HUMAN-RATIFIED product/architectural decision,
+                           preceding this allocation
+Current State:            ALLOCATED — allocated by section 35. Not implemented,
+                           not verified, not closed.
+Implementation Commit:    NONE — implementation is not authorized by this NAR
+Verification Result:      NOT PERFORMED
+Closure Commit:           NONE — closure is not authorized by this NAR
+Release Association:      NOT YET DEFINED
+Supersession:             none (cross-reference only, as recorded above)
+Documented?:              YES — this document + the decision record
+Number Allocation Record: PRESENT — section 35
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none as to allocation
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.92 = ALLOCATED
+```
+
+> **SUPERSESSION NOTE.** Section 34 states that B9.92 and higher identifiers are
+> not allocated. Those statements remain the accurate description of the corpus
+> **at their own anchors** and are **not** rewritten by this section. The
+> current, authoritative state of B9.92 is the one asserted above.
+
+### 35.3 Scope attached to this allocation
+
+The scope was fixed by the HUMAN-RATIFIED decision and is recorded here without
+reinterpretation.
+
+```text
+CLI Discovery-to-Acquisition Product Flow
+```
+
+**Objective, as decided:**
+
+> Establish a coherent, additive CLI surface allowing a user to search a remote
+> model, inspect its discovered variants/artifacts and declared metadata
+> including revision, express selection intent through the existing selection
+> flags, continue through the existing canonical acquisition path, and proceed
+> to the existing execution path.
+
+This is a **product-surface block, not a new domain architecture block**.
+
+**Boundary decision, as ratified:**
+
+```text
+Option A
+
+CLI
+ ↓
+ModelCatalogQueryService.search        (search, B9.86 boundary, unchanged)
+ModelDiscovery.inspect(repository)     (repository-keyed inspection, B9.80/81)
+```
+
+Recorded consequences of that decision:
+
+```text
+DynamicModelLibrary remains internal and unchanged.
+B9.91 remains stateless and composition-only.
+B9.91 does not become a public CLI or API surface.
+The CLI does not fabricate a ModelCandidate merely to invoke B9.91.
+No new higher-level service is introduced.
+No new discovery abstraction is introduced.
+Option B is NOT the selected implementation architecture.
+```
+
+**Required scope:**
+
+```text
+ 1. Add one read-only `inspect <repository>` CLI surface.
+ 2. Keep the existing 18 commands unchanged; B9.92 adds the 19th command.
+ 3. Consume the modern discovery boundary.
+ 4. Resolve the inspection input by repository.
+ 5. Present: repository; variant / declared_quantization; filename;
+    declared_size; declared_sha256; revision.
+ 6. Treat all provider metadata as DECLARED / unverified.
+ 7. Display missing values as Unknown.
+ 8. Preserve discovery-produced variant grouping and ordering.
+ 9. Preserve B9.84 as the sole selection authority.
+10. Preserve B9.90 as the sole revision-aware locator authority.
+11. Preserve the existing acquisition path.
+12. Maintain exit-code discipline 0 / 1 / 2.
+13. Add focused tests during the later implementation phase.
+```
+
+**Optional scope (optional, never mandatory):**
+
+```text
+- `--json` using the existing JSON envelope and schema (schema_version = 1).
+- README / help onboarding updates.
+```
+
+**CLI contract and intended user journey:**
+
+```text
+castlearq search <query>
+castlearq inspect <repository>
+castlearq download <model-id> [selection flags]
+castlearq execute ...
+
+search → inspect → select → acquire → execute
+```
+
+`inspect` is additive. No existing command is renamed, removed or re-scoped.
+Existing legacy commands remain untouched and functional.
+
+**Discovery and metadata contract.** `ModelDiscovery.search` and
+`ModelDiscovery.inspect(repository)` are consumed unchanged. The CLI preserves
+repository identity, discovery-produced variant grouping, artifact ordering,
+declared quantization, filename, declared size, declared SHA-256 and declared
+revision. No metadata is promoted from DECLARED to VERIFIED during inspection.
+
+**Revision contract.** Revision is **display-only provenance** in B9.92. No
+`--revision` input is part of this allocation. B9.90 remains the authority:
+
+```text
+revision == None → /resolve/main/
+revision == R    → /resolve/R/
+```
+
+**Model identity boundary:**
+
+```text
+DISCOVERABLE ≠ INSPECTABLE ≠ SELECTABLE ≠ ACQUIRABLE ≠ EXECUTABLE
+```
+
+Inspection must succeed for any discoverable repository, including repositories
+with no entry in `model_identity.py`. No identity entry may be added as part of
+this allocation or of the later implementation.
+
+**Alpha qualification, as decided:**
+
+> B9.92 improves the Alpha terminal workflow for models that CastleArq can
+> currently acquire. Discovery and inspection are broader than current
+> acquisition identity coverage; expansion of `model_identity.py` is a separate
+> future decision and is not part of B9.92.
+
+This prevents the roadmap from implying that every discoverable model is
+currently acquirable.
+
+**Architectural authorities consumed, not replaced.** B9.92 is only a CLI product
+adapter over existing authorities:
+
+```text
+ModelDiscovery                  discovery authority
+ModelCatalogQueryService        search/query boundary
+B9.84 deterministic selection   selection authority
+B9.82 mapping                   discovery-to-acquisition translation
+B9.90 / DownloadPlanner         canonical acquisition locator authority
+Downloader                      download execution and defensive validation
+ModelStore                      model persistence
+ModelAcquisitionService (B9.85) acquisition orchestration
+```
+
+The CLI must not construct `ArtifactSpec`, download URLs, planner state,
+downloader state, ModelStore state, model identities, selection algorithms or
+revision semantics.
+
+**Expected implementation surface (expected, not authorized here):**
+
+```text
+castlearq/main.py
+tests/test_b992_*.py
+README.md                        (optional)
+```
+
+The following are expected to remain untouched unless future implementation
+evidence proves an additive change strictly necessary:
+
+```text
+castlearq/dynamic_model_library.py
+castlearq/discovery.py
+castlearq/sources/huggingface_discovery.py
+castlearq/discovery_selection.py
+castlearq/acquisition_*.py
+castlearq/downloads/*
+castlearq/model_store.py
+castlearq/model_identity.py
+castlearq/model_domain.py
+castlearq/application_wiring.py
+```
+
+**Output contract.** Human-readable output is mandatory and must expose
+repository, variant/declared_quantization, filename, declared_size,
+declared_sha256 and revision, with explicit DECLARED/unverified semantics and
+`Unknown` handling. `--json` is optional and, if implemented, must reuse
+`_emit_json_envelope` and `schema_version = 1`. No second JSON schema may be
+introduced.
+
+**Error and exit-code contract:**
+
+```text
+0 = success
+1 = operational/application failure
+2 = usage/input error
+```
+
+Errors remain categorized and user-facing. No separate error architecture is
+introduced.
+
+### 35.4 Non-goals
+
+The following are explicit B9.92 non-goals. None of them is silently included
+in the allocated capability.
+
+```text
+Identity:
+  - model identity expansion (model_identity.py)
+  - arbitrary repository acquisition
+  - persistent library identity
+  - new model hierarchy
+  - model_domain unification
+
+Acquisition:
+  - download progress
+  - resumable downloads
+  - new acquisition backend
+  - ModelStore redesign
+  - multi-revision storage
+  - a second acquisition path
+
+Selection and discovery:
+  - new selection algorithm
+  - new revision semantics
+  - new provider
+  - provider federation
+  - ranking
+  - recommendation
+  - fuzzy search
+  - semantic search
+  - embeddings
+
+Legacy and convergence:
+  - legacy migration
+  - legacy source/plan convergence
+  - legacy run/execute convergence
+
+Product surfaces and storage:
+  - GUI
+  - web UI
+  - persistent catalog
+  - database
+  - cache
+  - offline snapshots
+  - synchronization / invalidation
+
+Other domains:
+  - fine-tuning
+  - evaluation
+  - datasets
+  - multi-GPU
+  - clusters
+  - chat lifecycle redesign
+```
+
+### 35.5 Dependencies (verified closed)
+
+```text
+B9.80 — Model Discovery domain contract        CLOSED
+B9.81 — Hugging Face discovery provider       CLOSED
+B9.84 — Selection Boundary                    CLOSED
+B9.85 — Production Acquisition Chain          CLOSED
+B9.86 — Catalog Query Boundary                CLOSED
+B9.90 — Canonical Acquisition Locator         CLOSED
+B9.91 — Internal Dynamic Model Library        CLOSED / PUBLISHED
+```
+
+B9.91 is recorded here for completeness: under the ratified Option A boundary it
+is **not** required as a production caller dependency. B9.92 does not depend on
+B9.91 becoming a product surface.
+
+No additional prerequisite was identified, and no dependency on GUI,
+persistence, legacy migration, ModelStore redesign or multi-provider acquisition
+is invented by this record.
+
+### 35.6 Acceptance criteria
+
+Objective, independently verifiable criteria. No numeric test target is
+invented.
+
+```text
+AC1  A read-only CLI command inspects a repository and reaches the modern
+     ModelDiscovery boundary without using the legacy HuggingFaceSource path.
+
+AC2  Inspection succeeds for any discoverable repository, including repositories
+     without a logical model identity; no identity-table entry is created or
+     required.
+
+AC3  Output exposes repository, variant/declared_quantization, filename,
+     declared_size, declared_sha256 and revision without inventing metadata.
+
+AC4  Exposed metadata remains DECLARED/unverified; absent values are shown as
+     Unknown and are never defaulted or promoted.
+
+AC5  Discovery-produced variant grouping is preserved and is not re-derived,
+     re-sorted, or re-grouped by the CLI.
+
+AC6  B9.84 remains the sole deterministic selection authority; B9.92 introduces
+     no selection algorithm, ranking, preference, fallback, or ambiguity
+     resolution.
+
+AC7  Acquisition remains unchanged; the CLI constructs no ArtifactSpec, URL,
+     planner, downloader, or ModelStore state and introduces no second
+     acquisition path.
+
+AC8  Revision is display-only in B9.92; B9.90 locator semantics remain
+     untouched.
+
+AC9  model_identity.py, model_domain.py, ModelStore, downloads/*, and the
+     B9.80-B9.91 contracts remain unmodified.
+
+AC10 The change is additive; no existing command is renamed, removed, or
+     re-scoped.
+
+AC11 Legacy source/plan/run commands remain functional and are not migrated.
+
+AC12 No GUI, persistence, catalog, cache, ranking, recommendation, fuzzy/semantic
+     search, provider federation, or new model hierarchy is introduced.
+
+AC13 Exit codes follow the documented 0/1/2 convention and errors remain
+     categorized.
+
+AC14 Focused tests cover the inspection behavior and the full suite passes.
+```
+
+### 35.7 Closure evidence expected
+
+Before closure, B9.92 will require:
+
+```text
+- an implementation commit
+- implementation verification
+- relevant focused tests
+- the full repository test suite where applicable
+- an explicit scope audit
+- confirmation that B9.80-B9.91 remain unchanged
+- confirmation that model identity was not expanded and that no legacy command
+  was migrated
+- evidence that AC1-AC14 are satisfied
+- a closure transition in this roadmap register
+```
+
+**None** of this evidence is produced, claimed or implied by this allocation
+record.
+
+### 35.8 Allocation versus implementation state
+
+```text
+NUMBER ALLOCATION:         APPROVED BY THIS NAR
+IMPLEMENTATION AUTHORIZED: NO — by this NAR
+IMPLEMENTATION:            NOT PERFORMED
+VERIFICATION AUTHORIZED:   NO — by this NAR
+VERIFICATION:              NOT PERFORMED
+CLOSURE AUTHORIZED:        NO — by this NAR
+CLOSURE:                   NOT PERFORMED
+```
+
+At this anchor no `inspect` CLI command exists, no JSON support exists for it,
+no README change has been made, and no application, discovery, selection,
+acquisition, storage or identity code is authorized here. Nothing in this record
+changes that.
+
+```text
+ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
+```
+
+### 35.9 Human approval reference
+
+```text
+DECISION RECORD STATUS: HUMAN-RATIFIED
+DECISION:               ESTABLISH the CLI Discovery-to-Acquisition Product Flow
+BOUNDARY:               OPTION A (ratified)
+NUMBER ALLOCATION:      APPROVED BY THIS NAR
+IMPLEMENTATION:         NOT AUTHORIZED by this record
+VERIFICATION:           NOT PERFORMED
+CLOSURE:                NOT PERFORMED
+```
+
+> Implementation is **not** authorized by this record. The next required step is
+> a separate implementation task consuming B9.92. No source file, test, command,
+> endpoint or refactoring is authorized here.
+
+B9.80 through B9.91 are not modified by this record. B9.93+ is NOT allocated by
+this record.
+
+### 35.10 Register entry state summary
+
+```text
+B9.92 STATUS:         ALLOCATED
+B9.92 IMPLEMENTATION: NOT PERFORMED
+B9.92 VERIFICATION:   NOT PERFORMED
+B9.92 CLOSURE:        NOT PERFORMED
+B9.91:                CLOSED / PUBLISHED — preserved verbatim (section 34)
+B9.93+:               NOT ALLOCATED
+```
 
 Working tree at anchor:
   tracked tree clean apart from this allocation record; git diff --check clean;
