@@ -7173,3 +7173,480 @@ The HADR's ratified scope was realized exactly as decided: the existing CLI
 product architecture was introduced. No decision was reopened, reinterpreted or
 amended beyond the owner's authorized Amendment A. This closure allocates no
 successor identifier and authorizes no future capability.
+
+---
+
+## 31. B9.89 — Number Allocation Record
+
+`B9.89` is allocated as the next main block under section 6, on the evidence of
+a section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.89 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified Human Architectural Decision Record
+`docs/run-boundary-architectural-decision.md`, which was preceded by a
+READ-ONLY architectural decision audit and a READ-ONLY allocation audit. This
+section allocates the number that carries that scope; it does not widen,
+reinterpret or extend it.
+
+### 31.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.89
+
+Title:
+  CLI Run Through Application Boundary
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash.
+
+  Recorded by the two-step mechanism already stated in section 11 and used
+  identically by sections 19, 21, 23, 25, 27 and 29: at authoring time the hash
+  did not exist and the field read "PENDING — fixed by the next controlled
+  commit that sets it to that hash"; a commit hash cannot be known before the
+  commit exists, and writing a guessed value would be a fabricated identifier.
+  The allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 30 — B9.88 Closure Record
+Section for this allocation:
+  section 31 — this record
+
+Human Architectural Decision Record:
+  docs/run-boundary-architectural-decision.md
+  STATUS: HUMAN-RATIFIED
+  DECISION: ADOPT
+  Q1: ADOPT               — run_once becomes the authoritative application
+                            boundary for the CLI one-shot run surface
+  Q2: SURFACE-OWNED       — admission continues to originate at the CLI
+                            surface; run_once never evaluates or mints
+  Q3: PRESERVE            — the existing observable CLI run contract must be
+                            preserved
+  Q4: REMAIN SEPARATE     — run and execute remain separate capabilities;
+                            convergence is out of scope
+  Q5: DOES NOT PARTICIPATE— ModelExecutionService is excluded and its
+                            architecture-debt classification is unchanged
+  NUMBER (at ratification): NONE — the decision record itself assigned no
+                            identifier; this section performs the allocation
+
+Corpus/HEAD Anchor:
+  fe9cd03d19962059e76520d06d3b6acb30f0d139
+  ("docs: close roadmap block B9.88"; main == HEAD == origin/main)
+
+Branch:
+  main
+
+Working tree at anchor:
+  tracked tree clean; one untracked file present,
+  docs/run-boundary-architectural-decision.md — the human-ratified decision
+  record. It is untracked at this anchor and is persisted by the allocation
+  commit, which contains both this record and the decision record.
+
+Corpus File Count:
+  225 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  corpus integrity digest SHA-256 ->
+    dce0f798590029ad37c5cd42d86512c23018dca867720fd9d4c885ae35f93f00
+  identifier-set SHA-256 ->
+    202a3a296d2762a927ede55075be6096579bc9ea7088de21ebdbc64739df0358
+  mechanism:
+    git ls-tree -r HEAD --format='%(objectname)  %(path)' | sha256sum
+      -> corpus integrity digest
+    git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+      | LC_ALL=C sort -u | sha256sum
+      -> identifier-set digest
+
+Identifier Set:
+  Highest main identifier in real use: B9.89 (this section)
+  Preceding closed block: B9.88 (section 30), implemented at
+    ee5844fdc694e50e430a8b860d33a1c4d1e9ae58 and corrected at
+    4459386dd8e3e9945a9ee35c307f616d628e42f1, published on origin/main
+  B9.89 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.89 in the anchor corpus: 2
+  Both are explicit non-allocations:
+    - section 29.1 (B9.88 candidate analysis): "B9.89 and above —
+      CONSIDERED AND DECLINED. Section 6 requires the integer"
+    - section 30.14: "B9.89+: NOT ALLOCATED"
+  None of them allocates B9.89. No competing, competing-pending or
+  conflicting identifier was found.
+
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.89.x sub-block
+    is assigned by this record.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+    v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+    no commit outside this document's history introduces a B9.89 allocation.
+
+Preceding Block:
+  B9.88 — Chat Application Boundary: CLI Caller
+
+Preceding Block Status:
+  ALLOCATED (section 29), IMPLEMENTED
+  (ee5844fdc694e50e430a8b860d33a1c4d1e9ae58), corrected at
+  (4459386dd8e3e9945a9ee35c307f616d628e42f1), VERIFIED (section 30.7),
+  CLOSED (section 30.14), published on origin/main
+
+Highest Verified Allocation:
+  B9.88
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Allocation Rule Applied:
+  highest_verified_allocated_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+  architectural decision audit, a human-ratified HADR and a READ-ONLY
+  allocation audit that returned ALLOCATION READY
+
+Allocation basis:
+  CastleArq run/run_once Architectural Decision Audit, followed by the project
+  owner's ratification of the decision record
+  docs/run-boundary-architectural-decision.md (ADOPT), followed by the
+  B9.89 Allocation Audit which classified the block ALLOCATION READY.
+
+Candidate Numbers Considered:
+  B9.89 — SELECTED. highest_verified_allocated_block + 1 = B9.88 + 1. No
+    allocation, reservation, provisional assignment or competing higher main
+    identifier exists for it; every pre-existing occurrence is an explicit
+    non-allocation or a recorded decline inside this document.
+  B9.90 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+    immediately following the highest verified block; selecting 90 or above
+    would leave 89 permanently unused and would contradict the prospective
+    monotonic rule.
+  B9.89.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+    integers of the form B9.x raise the main-block floor.
+  Any lower or gap-filling identifier — CONSIDERED AND DECLINED. Section 6 fixes
+    the floor at the highest VERIFIED allocated identifier; section 9 declares
+    gaps NOT REUSED prospectively. No gap is claimed abandoned, freed, reserved
+    or erroneous (section 13).
+
+Selected Number:
+  B9.89
+
+Validity Reason:
+  B9.88 is the highest main block assigned, implemented, verified and closed in
+  the activation corpus at the anchor recorded above. B9.89 is the integer
+  immediately following it, as section 6 requires. Every pre-existing
+  occurrence of B9.89 in the corpus is an explicit non-allocation or a recorded
+  decline, so no competing allocation exists. The number is therefore valid
+  under the active rule.
+
+Release Association:
+  NOT YET DEFINED
+
+Supersession:
+  none — the earlier "B9.89 and above: NOT ALLOCATED" statement remains the
+  accurate description of the corpus at its own anchor and is not rewritten;
+  it is superseded by this record as a cross-reference only
+
+Documented?:
+  YES — this document (section 31) plus
+  docs/run-boundary-architectural-decision.md
+
+Number Allocation Record:
+  PRESENT — section 31
+
+Retrospective Record:
+  NO — prospective allocation record
+
+Human decisions pending:
+  none — the decision record is HUMAN-RATIFIED with DECISION: ADOPT
+```
+
+### 31.2 Register entry for B9.89
+
+```text
+Block ID:                 B9.89
+Name:                     CLI Run Through Application Boundary
+Status:                   ALLOCATED
+Origin:                   this document, section 31 (NAR)
+Scope:                    see 31.3 — approved by the HADR
+Non-goals:                see 31.4
+Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
+                          (docs/run-boundary-architectural-decision.md),
+                          DECISION: ADOPT, preceding this allocation
+Current State:            ALLOCATED — allocated by section 31
+Implementation Commit:    NONE — NOT IMPLEMENTED
+Verification Result:      NONE — NOT VERIFIED
+Closure Commit:           NONE — NOT CLOSED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document + the decision record
+Number Allocation Record: PRESENT — section 31
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.89 = ALLOCATED
+B9.89 = NOT IMPLEMENTED
+B9.89 = NOT VERIFIED
+B9.89 = NOT CLOSED
+```
+
+> **SUPERSESSION NOTE.** Earlier records in this document state that B9.89 and
+> higher identifiers are not allocated (section 29.1; section 30.14). Those
+> statements remain the accurate description of the corpus **at their own
+> anchors** and are **not** rewritten by this section. The current,
+> authoritative state of B9.89 is the one asserted above.
+
+### 31.3 Scope attached to this allocation
+
+The scope was fixed by the HUMAN-RATIFIED decision record and is recorded here
+without reinterpretation.
+
+```text
+CLI Run Through Application Boundary
+```
+
+**Architectural purpose, as approved:**
+
+```text
+Route the existing CLI one-shot `run` surface through the already-authorized
+`run_once` application boundary while:
+  - preserving surface-owned admission
+  - preserving the existing observable CLI contract
+  - eliminating duplicated resolver/preparation/runtime orchestration from
+    the CLI
+```
+
+**Architectural target:**
+
+```text
+CLI run
+  ├─ argument validation
+  ├─ ModelStore / runtime capability acquisition
+  ├─ compatibility evaluation and admission creation
+  ├─ run_once(..., admission=admission)
+  └─ presentation
+
+run_once (authoritative)
+  ├─ resolution
+  ├─ preparation (admission gate, preflight, selection)
+  ├─ runtime invocation
+  └─ RunOutcome / typed errors
+```
+
+**Dependency on already-closed contracts (consumed as-is, not redesigned):**
+
+```text
+run_service.run_once    — the application boundary being adopted; already
+                          implemented, injectable and tested; requires an
+                          admission and never mints one
+run_service.prepare     — preparation stage inside that boundary, unchanged
+_run_service._require_admission — the B9.78 fail-closed admission gate
+RunOutcome              — structured successful result, including warnings
+RunServiceError family  — ModelNotFoundError, RunPreparationFailedError,
+                          RunExecutionFailedError
+evaluate_model_compatibility / to_admission — the single surface-owned
+                          evaluation and admission path (B9.78)
+LlamaCppRunner          — runtime invocation, owned by the boundary
+execute_model           — NOT touched; `run` and `execute` remain separate
+```
+
+**In scope:**
+
+```text
+- CLI `run` delegates to `run_once`
+- CLI retains argument validation
+- CLI retains ModelStore / runtime capability acquisition
+- CLI retains compatibility evaluation
+- CLI retains admission creation
+- the existing admission is forwarded unchanged into run_once
+- run_once owns resolution, preparation and runtime invocation
+- successful output is preserved
+- warning behaviour is preserved
+- failure and error behaviour is preserved
+- focused regression tests for delegation, admission and contract
+  compatibility
+```
+
+### 31.4 Explicit non-goals
+
+```text
+execute_model convergence (HADR Q4)
+ModelExecutionService participation or modification (HADR Q5)
+any Chat change or redesign
+Model Library UX
+GUI
+a new runtime, Ollama integration, or multi-GPU
+fine-tuning, LoRA, QLoRA
+datasets or training jobs
+a conversation abstraction
+persistence or chat history
+streaming redesign
+telemetry, accounts, cloud
+a new generic execution abstraction
+a redesign of RunOutcome or of the error hierarchy beyond what strict
+  contract preservation requires
+unrelated CLI refactoring
+unrelated architectural change
+```
+
+This allocation authorizes none of the above, opens no identifier for any of
+them, and reserves none of them.
+
+### 31.5 Acceptance criteria
+
+Persisted from the READ-ONLY allocation audit and not weakened here.
+
+```text
+C1  CLI run invokes run_once
+C2  CLI no longer executes resolver, preparation or runner itself, except
+    where explicitly required for presentation or existing surface
+    responsibilities
+C3  CLI remains responsible for evaluation and admission; run_once neither
+    evaluates nor mints
+C4  Exactly one compatibility evaluation occurs per CLI run invocation
+C5  Existing successful stdout remains compatible
+C6  Warning text, semantics, destination and ordering remain compatible
+C7  Error presentation and exit behavior remain compatible
+C8  RunOutcome and the typed-error contract remain coherent
+C9  No run -> execute_model convergence
+C10 No unrelated architectural change
+```
+
+The two observable deltas identified by the architectural decision audit —
+error-message mapping, and warning merge/delivery on failure paths — are
+contractual obligations under C6 and C7, not accepted side-effects.
+
+### 31.6 Verification plan
+
+Defined at allocation time. No verification has been performed.
+
+```text
+Focused suites
+  tests/test_main.py -q                     (CLI run surface)
+  tests/test_run_service_errors.py -q       (run_service error contract)
+  tests/test_shared_preparation.py -q       (shared preparation wiring)
+  plus any other focused suite the delta
+  actually touches
+
+Structural verification
+  AST / call-graph proof that CLI run calls run_once
+  AST proof that CLI run no longer references ModelArtifactResolver,
+  _prepare or LlamaCppRunner for its own execution path
+
+Behavioural verification
+  exactly-one-evaluation      — one evaluate_model_compatibility and one
+                                to_admission per invocation
+  admission identity           — the same admission object is forwarded
+                                unchanged into run_once
+  missing-admission fail-closed— None or a non-admitting verdict is denied,
+                                never bypassed
+  successful output            — stdout content and exit 0 unchanged
+  marginal warning             — warning text, ordering and stderr destination
+                                unchanged
+  preparation failure          — exit 1 and existing "Run error:" text
+  runtime failure              — exit 1 with the existing error text
+
+Whole-repository verification
+  python3 -m pytest -q
+  git diff --check
+```
+
+### 31.7 Architectural invariants approved with this allocation
+
+Persisted without expansion or reinterpretation.
+
+```text
+- run_once remains the authoritative application boundary for CLI one-shot
+  execution and is consumed as-is.
+- Admission authority is unchanged: the CLI surface evaluates compatibility and
+  mints admission; run_once validates the supplied admission and fails closed.
+  Application boundary != admission authority.
+- Exactly one evaluation and exactly one admission per CLI run invocation.
+- run_once does not gain the power to evaluate compatibility or mint an
+  admission.
+- The observable CLI run contract is preserved: exit behavior, "Run error:"
+  presentation, successful stdout, warning text, warning destination, warning
+  semantics and relevant failure-path behavior.
+- RunOutcome and the RunServiceError family remain coherent and are not
+  redesigned.
+- `run` and `execute` remain separate application capabilities; no convergence
+  is authorized.
+- ModelExecutionService is not adopted, not modified and not removed; its
+  architecture-debt classification is unchanged.
+- No new user-facing surface, no new runtime, no new dependency.
+
+### 31.8 Allocation versus implementation state
+
+The distinction is explicit and is not implied anywhere in this record:
+
+```text
+This record allocates an identifier and attaches an already-approved scope.
+
+B9.89  = ALLOCATED
+B9.89  = NOT IMPLEMENTED
+B9.89  = NOT VERIFIED
+B9.89  = NOT CLOSED
+
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+VERIFICATION AUTHORIZED:    NO
+CLOSURE AUTHORIZED:         NO
+```
+
+At this anchor the CLI one-shot `run` path still performs its own resolver,
+preparation and runner invocation inline, and `run_service.run_once` still has
+no production caller. Nothing in this record changes that.
+
+```text
+ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
+```
+
+### 31.9 Product Vision alignment
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.89
+applies it without reopening any of its decisions. The register's own closure
+language (30.14) already records `GUI: NOT AUTHORIZED` and
+`Model Library UX: NOT ALLOCATED`; this allocation preserves both statements.
+
+```text
+D1-D4 — NOT ENGAGED: no claim about the product problem, the user population,
+         the Job To Be Done or the runtime thesis is made.
+D5  — RESPECTED: no new runtime and no new core-chain stage.
+D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
+D7  — RESPECTED: no Chat change; the chat boundary is untouched.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — ENGAGED: the CLI surface consumes the shared application capability for
+      one-shot execution instead of duplicating it.
+D11 — RESPECTED: no new user-facing surface is created; the existing `run`
+      surface is consumed. An allocated core capability gains its real caller.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
+      is made or implied. B9.89 is not product validation.
+```
+
+### 31.10 Human approval reference
+
+```text
+DECISION RECORD STATUS:  HUMAN-RATIFIED
+DECISION:                ADOPT
+NUMBER ALLOCATION:       APPROVED BY THIS NAR
+IMPLEMENTATION:          NOT STARTED
+```
+
+> Implementation is **not** authorized by this record. The next required step
+> is a separate implementation task that consumes B9.89. No source file, test,
+> surface or refactoring is authorized here.
+
+B9.80 through B9.88 are not modified by this record.
