@@ -5478,3 +5478,409 @@ decided: an application-layer catalog/query boundary distinct from Model Library
 UX, with the negative scope fixed by the allocation. Neither was reopened,
 reinterpreted or amended. This closure allocates no successor identifier and
 authorizes no future capability.
+---
+
+## 27. B9.87 — Number Allocation Record
+
+`B9.87` is allocated as the next main block under §6, on the evidence of a §7
+corpus inspection performed at allocation time. This section is the §11 record
+for that assignment. At allocation time B9.87 is **an allocation only**: no
+implementation, no verification and no closure is claimed by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified Human Architectural Decision Record
+`docs/B9.87-cli-catalog-query-caller-decision.md`, which was preceded by a
+READ-ONLY roadmap allocation audit. This section allocates the number that
+carries that scope; it does not widen, reinterpret or extend it.
+
+### 27.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.87
+
+Title:
+  CLI Catalog Query Caller — First Production Caller for B9.86
+  ModelCatalogQueryService
+
+Allocation Date:
+  2026-10-02
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash.
+
+  Recorded by the two-step mechanism already stated in section 11 and used
+  identically by sections 19, 21, 23 and 25: at authoring time the hash did not
+  exist and the field read "PENDING — fixed by the next controlled commit that
+  sets it to that hash"; a commit hash cannot be known before the commit
+  exists, and writing a guessed value would be a fabricated identifier. The
+  allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 26 — B9.86 Closure Record
+Section for this allocation:
+  section 27 — this record
+
+Human Architectural Decision Record:
+  docs/B9.87-cli-catalog-query-caller-decision.md
+  HADR STATUS: HUMAN-RATIFIED
+  ARCHITECTURAL SCOPE: APPROVED
+  NUMBER ALLOCATION: APPROVED BY THIS HADR; RECORDED IN §27
+  IMPLEMENTATION: NOT STARTED
+
+Corpus/HEAD Anchor:
+  aacbc8e12b1098adeedb5bb64b4bdc621b1524d8
+  ("docs: close roadmap block B9.86"; main == HEAD == origin/main)
+
+Tree object at anchor:
+  76067f78e8a713ba49ccace1e21e2c33501e090e
+
+Branch:
+  main
+
+Working tree at anchor:
+  tracked tree clean; one untracked file present, docs/product-vision-adr.md —
+  the human-ratified Product Vision ADR recorded under the separate, prior
+  documentation-only authorization. It is untracked at this anchor and is
+  therefore NOT part of the corpus fixed below. Its presence does not change the
+  identifier set, which is asserted over tracked files only.
+
+Corpus File Count:
+  221 (git ls-files at allocation HEAD)
+
+Corpus Integrity Evidence:
+  corpus integrity digest SHA-256 ->
+    9f48eb7acec94febef1673c285be0ea27191c8ea6041dce67c5d3fd3f4982a39
+  identifier-set SHA-256 ->
+    82af630eed5bd9c78abd7368460aaa68b857e0e16196e5b8fc298073c228c0ce
+  identifier set: 137 distinct identifiers
+  mechanism:
+    git ls-tree -r HEAD --format='%(objectname)  %(path)' | sha256sum
+      -> corpus integrity digest
+    git ls-files -z | xargs -0 grep -hoE 'B9\.[0-9]+(\.[0-9]+)?'
+      | LC_ALL=C sort -u | sha256sum
+      -> identifier-set digest
+
+Identifier Set:
+  Highest main identifier in real use: B9.86 (section 25 NAR, section 26
+    closure; implementation commit
+    6cb9e1d8ab9c6f0790210a590ef48dcc11690822, an ancestor of origin/main).
+  B9.87 — 6 occurrences before this record, every one of them inside this
+    document and every one of them an explicit non-allocation statement, a
+    recorded rejection, a supersession cross-reference or a corpus-inspection
+    note: lines 4347, 4774, 4810, 4886, 5262 and 5470.
+    `git ls-files -z | xargs -0 grep -lnE 'B9\.8[789]'` returned exactly one
+    path: this document. Zero occurrences existed in castlearq/, tests/,
+    config/, .github/, README.md, pyproject.toml or any other versioned file.
+    Classification at this anchor: explicit non-allocation or recorded
+    rejection. None was an allocation, reservation, proposal, provisional
+    assignment or implementation/test label.
+  B9.88 and above — 2 occurrences before this record, both inside this document
+    (lines 4813 and 5263), both an explicit non-allocation or a recorded-decline
+    statement. No allocation or reservation exists for any of them.
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.87.x sub-block
+    is assigned by this record.
+  Conflict inspection: only main and origin/main exist as branches; the tags
+    v0.1.0, v0.2.0, v0.3.0 and v0.4.0 are release tags, not block allocations;
+    no commit outside this document's history introduces a B9.87 allocation.
+    No competing, competing-pending or conflicting identifier was found.
+
+Preceding Block:
+  B9.86 — Application Catalog / Query Boundary
+
+Preceding Block Status:
+  ALLOCATED (section 25), IMPLEMENTED (6cb9e1d8), VERIFIED (section 26.7),
+  CLOSED (section 26.12), published on origin/main
+
+Highest Verified Allocation:
+  B9.86
+
+Rule in Force:
+  Prospective monotonic main numbering (section 6)
+
+Allocation Rule Applied:
+  highest_verified_allocated_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled corpus inspection + formal registration, preceded by a READ-ONLY
+  roadmap allocation audit and a human-ratified HADR
+
+Candidate Numbers Considered:
+  B9.87 — SELECTED. highest_verified_allocated_block + 1 = B9.86 + 1. No
+    allocation, reservation, provisional assignment or competing higher main
+    identifier exists for it; every pre-existing occurrence is an explicit
+    non-allocation or a recorded rejection inside this document.
+  B9.88 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+    immediately following the highest verified block; selecting 88 or above
+    would leave 87 permanently unused and would contradict the prospective
+    monotonic rule.
+  B9.87.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+    integers of the form B9.x raise the main-block floor.
+  Any lower or gap-filling identifier (for example B9.17 or B9.84) —
+    CONSIDERED AND DECLINED. Section 6 fixes the floor at the highest VERIFIED
+    allocated identifier; section 9 declares gaps NOT REUSED prospectively. No
+    gap is claimed abandoned, freed, reserved or erroneous (section 13).
+
+Selected Number:
+  B9.87
+
+Validity Reason:
+  B9.86 is the highest main block assigned, implemented, verified and closed in
+  the activation corpus at the anchor recorded above. B9.87 is the integer
+  immediately following it, as section 6 requires. Every pre-existing occurrence
+  of B9.87 in the corpus is an explicit non-allocation or a recorded rejection,
+  so no competing allocation exists. The number is therefore valid under the
+  active rule.
+
+Release Association:
+  NOT YET DEFINED
+
+Supersession:
+  none
+
+Documented?:
+  YES — this document (section 27) plus
+  docs/B9.87-cli-catalog-query-caller-decision.md
+
+Number Allocation Record:
+  PRESENT — section 27
+
+Retrospective Record:
+  NO — prospective allocation record
+
+Human decisions pending:
+  none — the HADR is HUMAN-RATIFIED and its architectural scope is APPROVED
+```
+
+### 27.2 Register entry for B9.87
+
+```text
+Block ID:                 B9.87
+Name:                     CLI Catalog Query Caller — First Production Caller
+                          for B9.86 ModelCatalogQueryService
+Status:                   ALLOCATED
+Origin:                   this document, section 27 (NAR)
+Scope:                    see 27.3 — approved by the HADR
+Non-goals:                see 27.4
+Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
+                          (docs/B9.87-cli-catalog-query-caller-decision.md),
+                          preceding this allocation
+Current State:            ALLOCATED — allocated by section 27
+Implementation Commit:    NONE — NOT IMPLEMENTED
+Verification Result:      NONE — NOT VERIFIED
+Closure Commit:           NONE — NOT CLOSED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document + the HADR
+Number Allocation Record: PRESENT — section 27
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.87 = ALLOCATED
+B9.87 = NOT IMPLEMENTED
+B9.87 = NOT VERIFIED
+B9.87 = NOT CLOSED
+```
+
+> **SUPERSESSION NOTE.** Earlier records in this document state that B9.87 is
+> not allocated (section 23.5 line 4347; the corpus-inspection note at line 4774;
+> the recorded decline at line 4810; the cross-reference at line 4886; section
+> 26.6 line 5262; and section 26.12 line 5470). Those statements remain the
+> accurate description of the corpus **at their own anchors** and are **not**
+> rewritten by this section. The current, authoritative state of B9.87 is the one
+> asserted above. The allocation evidence recorded in earlier sections is
+> unchanged, and no historical allocation record is altered by this one.
+
+### 27.3 Scope attached to this allocation
+
+The scope was fixed by the human-ratified HADR and is recorded here without
+reinterpretation.
+
+```text
+CLI Catalog Query Caller — First Production Caller for B9.86
+ModelCatalogQueryService
+```
+
+**Architectural purpose, as approved:**
+
+```text
+Give the closed B9.86 application catalog/query boundary its first production
+caller, through a minimal read-only CLI `search` command that presents what the
+boundary returns and interprets nothing.
+```
+
+**Dependency on B9.86 (completed prerequisite):**
+
+```text
+B9.86 = ALLOCATED (25), IMPLEMENTED (6cb9e1d8), VERIFIED (26.7),
+        CLOSED (26.12)
+```
+
+B9.87 consumes the following closed contracts and does not redesign any of
+them:
+
+```text
+B9.80 — discovery domain; ModelDiscovery.search(query, limit, cursor) is
+        consumed as-is; ModelCandidate passes through by identity
+B9.81 — Hugging Face discovery provider; search(), cursor encoding/decoding,
+        limit validation and Link-header pagination consumed as-is
+B9.86 — application catalog/query boundary; ModelCatalogQueryService.query(),
+        CatalogQueryOutcome(candidates, next_cursor) and
+        CatalogQueryErrorCategory consumed as authoritative
+application_wiring.compose_catalog_query_service() — composition point
+        consumed as-is; the provider is constructed there, not by the CLI
+```
+
+**Included:**
+
+```text
+- a CLI `search` command;
+- routing it through the existing ModelCatalogQueryService;
+- use of the existing application composition root;
+- presentation of discovered catalog candidates;
+- preservation of the opaque next_cursor contract;
+- the existing human-readable / structured output conventions where applicable;
+- mapping of application errors to existing CLI error behaviour;
+- focused tests for the new adapter;
+- the CLI documentation/help-text update required by the public-surface
+  contract enforced in tests/test_api_serve_contract.py;
+- preservation of every B9.86 architectural invariant.
+```
+
+### 27.4 Explicit non-goals
+
+```text
+- Model Library UX
+- GUI
+- model cards
+- quantization selection UI
+- compatibility warnings in the search path
+- hardware suitability recommendations
+- ranking
+- scoring
+- recommendation
+- fuzzy search
+- query rewriting
+- caching
+- persistence
+- automatic pagination
+- acquisition from search
+- artifact selection
+- identity resolution
+- Chat changes
+- a Conversation abstraction
+- Chat lifecycle migration out of api.py
+- second runtime
+- Ollama integration
+- multi-runtime execution
+- multi-GPU
+- execution-path convergence (`run` vs `execute`)
+- compatibility / evaluation / admission expansion
+- fine-tuning
+- datasets
+- RAG
+- agents
+- MCP
+- telemetry
+- accounts
+- cloud services
+- a new HTTP endpoint
+- any new dependency
+```
+
+This allocation authorizes none of the above, opens no identifier for any of
+them, and reserves none of them.
+
+### 27.5 Architectural invariants approved with this allocation
+
+Persisted without expansion or reinterpretation.
+
+```text
+- The boundary CLI -> Application -> Discovery port -> Discovery provider is
+  preserved.
+- The CLI does not instantiate or import HuggingFaceDiscoveryProvider for the
+  search path; the composition root constructs the provider.
+- The CLI contains no discovery logic.
+- The CLI does not reinterpret the catalog query contract.
+- The CLI does not rank, score or recommend models.
+- The CLI does not turn the search feature into a Model Library.
+- ModelCatalogQueryService remains authoritative and is consumed as-is:
+  candidates pass through by identity, next_cursor stays verbatim and opaque,
+  exactly one search() call occurs per query() call, and no second validation
+  authority is introduced.
+- Application errors are translated by the adapter, never re-validated.
+- The application boundary is not moved, renamed or re-shaped.
+```
+
+### 27.6 Allocation versus implementation state
+
+The distinction is explicit and is not implied anywhere in this record:
+
+```text
+This record allocates an identifier and attaches an already-approved scope.
+
+B9.87  = ALLOCATED
+B9.87  = NOT IMPLEMENTED
+B9.87  = NOT VERIFIED
+B9.87  = NOT CLOSED
+
+IMPLEMENTATION AUTHORIZED: NO
+TESTS AUTHORIZED:           NO
+VERIFICATION AUTHORIZED:    NO
+CLOSURE AUTHORIZED:         NO
+```
+
+No `search` command exists at this anchor: `castlearq/main.py:2537` lists
+`detect, diagnose, verify, models, list, runtime, source, plan, compatibility,
+validate, download, import, run, execute, chat, serve, store`. Nothing in this
+record changes that.
+
+### 27.7 Relation to the Product Vision ADR
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.87
+applies it without reopening any of its decisions. The register's own closure
+language (26.12) already records `GUI: NOT AUTHORIZED` and
+`Model Library UX: NOT ALLOCATED`; this allocation preserves both statements.
+
+```text
+D1  — ENGAGED: reduces the uncertainty of finding an appropriate model.
+D3  — ENGAGED: makes the "find" stage of the JTBD reachable.
+D5  — ENGAGED: exposes an existing core discovery step; extends nothing.
+D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
+D7  — NOT ENGAGED: no Chat change; the lifecycle migration remains deferred and
+      unauthorized here.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — ENGAGED: the surface consumes the shared application capability.
+D11 — ENGAGED: this allocation exists precisely to give an already-allocated,
+      caller-less core capability a real caller, using an existing surface,
+      before any new surface is considered.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
+      is made or implied by this allocation.
+```
+
+### 27.8 Human approval reference
+
+```text
+HADR STATUS:           HUMAN-RATIFIED
+ARCHITECTURAL SCOPE:   APPROVED
+NUMBER ALLOCATION:     APPROVED BY THIS NAR
+IMPLEMENTATION:        NOT STARTED
+```
+
+> Implementation is **not** authorized by this record. The next required step
+> is a separate implementation task that consumes B9.87. No source file, test,
+> surface or refactoring is authorized here.
+
+B9.80 through B9.86 are not modified by this record.
