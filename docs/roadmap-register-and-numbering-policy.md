@@ -5507,7 +5507,8 @@ Allocation Date:
   2026-10-02
 
 Allocation Commit:
-  PENDING — fixed by the next controlled commit that sets it to that hash.
+  5f0431166a06289aa455e080ed02e002119186ea
+    ("docs: allocate roadmap block B9.87"; section 27 NAR)
 
   Recorded by the two-step mechanism already stated in section 11 and used
   identically by sections 19, 21, 23 and 25: at authoring time the hash did not
@@ -5664,33 +5665,57 @@ Human decisions pending:
 Block ID:                 B9.87
 Name:                     CLI Catalog Query Caller — First Production Caller
                           for B9.86 ModelCatalogQueryService
-Status:                   ALLOCATED
-Origin:                   this document, section 27 (NAR)
+Status:                   CLOSED
+Origin:                   this document, sections 27 (NAR) and 28 (Closure
+                          Record)
 Scope:                    see 27.3 — approved by the HADR
 Non-goals:                see 27.4
 Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
                           (docs/B9.87-cli-catalog-query-caller-decision.md),
                           preceding this allocation
-Current State:            ALLOCATED — allocated by section 27
-Implementation Commit:    NONE — NOT IMPLEMENTED
-Verification Result:      NONE — NOT VERIFIED
-Closure Commit:           NONE — NOT CLOSED
+Current State:            CLOSED — allocated by section 27, implemented at
+                          df99949f922789f2b1cc4a507a090c86a01c5e84, verified
+                          PASS, closed by section 28
+Implementation Commit:    df99949f922789f2b1cc4a507a090c86a01c5e84
+                          ("feat: implement B9.87 CLI catalog query caller")
+Allocation Commit:        5f0431166a06289aa455e080ed02e002119186ea
+                          ("docs: allocate roadmap block B9.87")
+Verification Result:      PASS — see section 28.7
+Closure Commit:           PENDING — fixed by the next controlled commit that sets
+                          it to that hash, per the two-step mechanism stated in
+                          section 11 and used identically by sections 19, 21, 23
+                          and 25. A commit hash cannot be known before the commit
+                          exists, and writing a guessed value would be a
+                          fabricated identifier. The same field is left PENDING in
+                          section 23.1 for B9.85 and section 26.2 for B9.86.
 Release Association:      NOT YET DEFINED
-Supersession:             none
+Supersession:             none — the allocation-time state below is preserved
+                          and superseded by explicit cross-reference only
 Documented?:              YES — this document + the HADR
 Number Allocation Record: PRESENT — section 27
 Retrospective Record:     NO — prospective allocation record
 Human decisions pending:  none
 ```
 
-The lifecycle state asserted by this record is, in full and without implication
-of anything further:
+The lifecycle state asserted by this record **at allocation time** is, in full
+and without implication of anything further:
 
 ```text
 B9.87 = ALLOCATED
 B9.87 = NOT IMPLEMENTED
 B9.87 = NOT VERIFIED
 B9.87 = NOT CLOSED
+```
+
+Those four statements remain the accurate description of B9.87 **at the
+allocation anchor recorded in 27.1** and are **not** rewritten. The current,
+authoritative lifecycle state is asserted by section 28.11:
+
+```text
+B9.87 = ALLOCATED   (section 27 NAR, 5f0431166a06289aa455e080ed02e002119186ea)
+B9.87 = IMPLEMENTED  (df99949f922789f2b1cc4a507a090c86a01c5e84)
+B9.87 = VERIFIED     (section 28.7)
+B9.87 = CLOSED       (section 28)
 ```
 
 > **SUPERSESSION NOTE.** Earlier records in this document state that B9.87 is
@@ -5846,41 +5871,445 @@ No `search` command exists at this anchor: `castlearq/main.py:2537` lists
 validate, download, import, run, execute, chat, serve, store`. Nothing in this
 record changes that.
 
-### 27.7 Relation to the Product Vision ADR
+> **SUPERSESSION NOTE (state only, added at closure).** The statement above is
+> preserved exactly as written and remains accurate **for the allocation anchor
+> recorded in 27.1** (`aacbc8e12b1098adeedb5bb64b4bdc621b1524d8`), where no
+> `search` command existed. B9.87 was subsequently implemented and closed:
+>
+> ```text
+> ALLOCATION-TIME STATE (section 27, preserved):
+>   B9.87 = ALLOCATED / NOT IMPLEMENTED / NOT VERIFIED / NOT CLOSED
+>   no `search` command existed at anchor aacbc8e
+>
+> CURRENT STATE (section 28, authoritative):
+>   B9.87 = ALLOCATED / IMPLEMENTED / VERIFIED / CLOSED
+>   `castlearq search <query>` exists, implemented at
+>   df99949f922789f2b1cc4a507a090c86a01c5e84
+> ```
+>
+> No allocation evidence, corpus count, identifier set, digest or anchor in this
+> section was altered by the implementation or by the closure. This paragraph is
+> a cross-reference, following the pattern of sections 25.1 and 26.11.
+
+---
+
+---
+
+## 28. B9.87 — Closure Record
+
+### 28.1 Closure status
+
+B9.87 is formally **CLOSED**. The allocation record (section 27) and the Human
+Architectural Decision Record
+`docs/B9.87-cli-catalog-query-caller-decision.md` both precede this record and
+are not rewritten by it; where their status statements are superseded, that
+supersession is stated explicitly as a cross-reference inside section 27 and
+inside the HADR, and recorded here. This section attests that the verified
+implementation exists, was published, and matches the allocated scope exactly.
+
+A READ-ONLY closure eligibility audit was performed before this closure and
+returned `CLOSURE-ELIGIBLE WITH DOCUMENTATION FOLLOW-UP`. Its findings are
+dispositioned in 28.10 and none of them is blocking. The documentation
+follow-up identified by that audit is discharged by this closure commit.
+
+### 28.2 Implementation identity
+
+```text
+Block ID:
+  B9.87
+
+Name:
+  CLI Catalog Query Caller — First Production Caller for B9.86
+  ModelCatalogQueryService
+
+Implementation commit:
+  df99949f922789f2b1cc4a507a090c86a01c5e84
+
+Commit message:
+  feat: implement B9.87 CLI catalog query caller
+
+Branch:
+  main
+
+Publication state:
+  pushed to origin/main (HEAD == origin/main at closure time)
+
+Parent commit:
+  aacbc8e12b1098adeedb5bb64b4bdc621b1524d8  ("docs: close roadmap block B9.86")
+```
+
+Committed files, exclusively:
+
+```text
+M  castlearq/main.py                        (+167 / -2)   the `search` CLI adapter
+A  tests/test_b987_cli_search.py            (+395 / -0)   focused adapter tests
+M  tests/test_b9765_json_cli.py             (+4 / -)      JSON surface exact set
+M  tests/test_main_execute.py               (+5 / -)      composition boundary set
+M  README.md                                (+25 / -1)    CLI documentation
+```
+
+The implementation commit contains no roadmap change: `docs/` does not appear in
+it. The allocation documentation (section 27, the HADR and the Product Vision
+ADR) is the separate commit `5f0431166a06289aa455e080ed02e002119186ea`, and the
+closure of B9.87 is this separate documentation commit.
+
+### 28.3 Human architectural decision reference
+
+```text
+docs/B9.87-cli-catalog-query-caller-decision.md
+
+DECISION:              HUMAN-RATIFIED
+ARCHITECTURAL SCOPE:  APPROVED
+IMPLEMENTATION:       approved by a separate implementation task
+                       (df99949f922789f2b1cc4a507a090c86a01c5e84)
+```
+
+No decision in the HADR was reopened, reinterpreted or amended by the
+implementation or by this closure. The HADR's own status block
+(`IMPLEMENTATION: NOT STARTED`, `VERIFICATION: NONE`, `CLOSURE: NONE`) is
+preserved verbatim as the allocation-time state and is superseded only by the
+explicit cross-reference added to that document.
+
+### 28.4 Allocation reference
+
+```text
+Allocation record:      section 27 (B9.87 — Number Allocation Record)
+Allocation commit:      5f0431166a06289aa455e080ed02e002119186ea
+                        ("docs: allocate roadmap block B9.87")
+Allocation anchor:      aacbc8e12b1098adeedb5bb64b4bdc621b1524d8
+                        ("docs: close roadmap block B9.86")
+Allocated scope:        section 27.3
+Allocated non-goals:    section 27.4
+Boundary invariants:    section 27.5
+Preserved records:      section 27.6
+Human-ratified scope:   "Give the closed B9.86 application catalog/query
+                        boundary its first production caller, through a minimal
+                        read-only CLI `search` command that presents what the
+                        boundary returns and interprets nothing."
+```
+
+### 28.5 Implemented scope
+
+B9.87 implemented exactly the scope allocated in 27.3. The realized product
+surface is:
+
+```text
+castlearq search <query>
+```
+
+The realized production path is:
+
+```text
+CLI
+  castlearq/main.py :: search_command
+  -> application composition
+       application_wiring.compose_catalog_query_service()
+  -> ModelCatalogQueryService.query()
+  -> ModelDiscovery.search()
+  -> HuggingFaceDiscoveryProvider.search()
+```
+
+Realized as:
+
+```text
+- a CLI `search` command, routed through the existing ModelCatalogQueryService
+- use of the existing application composition root
+  (compose_catalog_query_service), never a second one
+- presentation of discovered catalog candidates, in the boundary's own order,
+  with no field added, renamed, derived, normalized or omitted
+- preservation of the opaque next_cursor contract: printed verbatim in human
+  output, exposed as `next_cursor` in JSON, never decoded, validated or rebuilt
+- the existing human-readable and structured output conventions
+  (`search` added to _JSON_COMMANDS; no new envelope shape)
+- `--limit` and `--cursor`, accepted for `search` only and rejected elsewhere
+  by the existing per-command supported_flags table
+- mapping of application errors to existing CLI error behaviour
+  (CatalogQueryError -> exit 1, JSON kind `search_<category>`; usage errors ->
+  exit 2 through the existing CLI conventions)
+- focused tests (tests/test_b987_cli_search.py, 23 tests)
+- the CLI documentation update required by the public-surface contract
+  enforced in tests/test_api_serve_contract.py (README.md and the help text)
+- preservation of every B9.86 architectural invariant
+```
+
+A completed query that returned no candidates is a success: exit 0, human
+output prints "No candidates found.", and JSON output carries an empty
+`candidates` list with no `error` member.
+
+### 28.6 Contract-test changes
+
+Two pre-existing exact-set assertions were widened by exactly one name each.
+Neither was weakened, skipped, relaxed or made tolerant; both remain exact
+equality assertions and both still fail on any unintended addition or removal.
+
+```text
+tests/test_b9765_json_cli.py
+  test_wired_commands_are_exactly_the_ratified_set
+    -> `_JSON_COMMANDS` gains "search".
+    Required because the assertion is an exact tuple equality; the alternative
+    would be to deny the search command the existing JSON envelope, which the
+    HADR (7.1 item 6) does not authorize.
+
+tests/test_main_execute.py
+  test_new_flow_module_imports_are_exactly_the_three_allowed_modules
+    -> the `application_wiring` name set gains
+       "compose_catalog_query_service".
+    Required because the assertion is an exact equality over the names imported
+    from `application_wiring`; the alternative would be a second composition
+    root or a direct provider import, both forbidden by 27.5.
+    The outer assertion still enforces "exactly the three allowed modules";
+    only a name inside the already-allowed module grew.
+
+Precedent: B9.85 (commit f2540dd) made the structurally identical edit to the
+same assertion, adding "compose_acquisition_service", following the same
+inline-rationale convention. B9.74 did the same for the `evaluate_compatibility`
+set. B9.87 is the third block in that established series.
+```
+
+### 28.7 Verification evidence
+
+```text
+python3 -m pytest tests/test_b987_cli_search.py -q
+  -> 23 passed, 3 subtests passed
+
+python3 -m pytest tests/test_b987_cli_search.py \
+                    tests/test_b986_catalog_query_service.py \
+                    tests/test_api_serve_contract.py -q
+  -> 90 passed, 3 subtests passed
+
+python3 -m pytest -q
+  -> 2130 passed, 2706 subtests passed
+
+git diff --check
+  -> clean
+```
+
+The declared validator is the one recorded in `pyproject.toml`
+(`[project.optional-dependencies] dev -> pytest==9.1.1`). No lint, coverage or
+type-check tool is configured by this repository, and none was introduced. The
+full suite passed both before the implementation commit and again on the
+committed tree; no test was skipped, deselected or excluded to reach this
+result.
+
+Every collaborator in the new test file is a local fake: no test performs a
+network call and no test constructs a production discovery provider. The
+command's dependency on the provider is proven structurally, by AST inspection
+of `castlearq/main.py`, not by running one.
+
+### 28.8 Architectural boundary compliance
+
+```text
+B9.86 application boundary unchanged:                 YES
+  castlearq/catalog_query_service.py                   unmodified
+  castlearq/application_wiring.py                      unmodified
+  castlearq/discovery.py                               unmodified
+  castlearq/sources/huggingface_discovery.py           unmodified
+  (verified: git diff --name-only over those four paths is empty)
+
+ModelCatalogQueryService remains authoritative:        YES
+  consumed as-is; no second validation authority was introduced
+
+CLI does not depend on HuggingFaceDiscoveryProvider:   YES
+  castlearq/main.py does not name the concrete discovery provider at all;
+  the provider is constructed by the composition root
+  (application_wiring.py:384-389), unchanged
+
+next_cursor remains opaque and verbatim:               YES
+  never decoded, validated, rebuilt, persisted or auto-followed
+
+Candidate ordering preserved:                         YES
+  asserted by test_candidate_order_is_the_boundary_order
+
+No ranking, scoring, recommendation, fuzzy search:     YES
+  none present; asserted by
+  test_search_never_reorders_or_deduplicates and
+  test_search_adds_no_field_beyond_the_discovery_domain
+
+No deduplication:                                     YES
+  a repeated repository is printed twice, as returned
+
+No second discovery path:                             YES
+  the only production call site of ModelDiscovery.search() remains
+  catalog_query_service.py
+```
+
+The boundary `CLI -> Application -> Discovery port -> Discovery provider` is
+preserved end to end.
+
+### 28.9 Explicit non-goals
+
+B9.87 did **not** implement any of the following. Each was verified absent from
+the implementation commit `df99949`:
+
+```text
+Model Library UX                                  NOT IMPLEMENTED
+GUI                                               NOT IMPLEMENTED
+model cards                                       NOT IMPLEMENTED
+quantization selection UI                         NOT IMPLEMENTED
+compatibility warnings in the search path         NOT IMPLEMENTED
+hardware suitability recommendations              NOT IMPLEMENTED
+ranking / scoring / recommendation                NOT IMPLEMENTED
+fuzzy search                                      NOT IMPLEMENTED
+query rewriting                                   NOT IMPLEMENTED
+caching                                           NOT IMPLEMENTED
+persistence                                       NOT IMPLEMENTED
+automatic pagination                              NOT IMPLEMENTED
+acquisition from search                           NOT IMPLEMENTED
+artifact selection                                NOT IMPLEMENTED
+identity resolution                               NOT IMPLEMENTED
+Chat changes                                      NOT IMPLEMENTED
+a Conversation abstraction                        NOT IMPLEMENTED
+Chat lifecycle migration out of api.py            NOT IMPLEMENTED
+second runtime                                    NOT IMPLEMENTED
+Ollama integration                                NOT IMPLEMENTED
+multi-runtime execution                           NOT IMPLEMENTED
+multi-GPU                                         NOT IMPLEMENTED
+execution-path convergence (run vs execute)       NOT IMPLEMENTED
+compatibility / evaluation / admission expansion  NOT IMPLEMENTED
+fine-tuning                                       NOT IMPLEMENTED
+datasets                                          NOT IMPLEMENTED
+RAG / agents / MCP                                NOT IMPLEMENTED
+telemetry / accounts / cloud services             NOT IMPLEMENTED
+a new HTTP endpoint                               NOT IMPLEMENTED
+any new dependency                                NOT IMPLEMENTED
+  (requirements.txt remains standard library only; pyproject.toml unchanged)
+unrelated main.py refactoring                     NOT PERFORMED
+```
+
+### 28.10 Findings and disposition
+
+The repository configures no linter: `ruff` is installed in the maintainer's
+environment but is not declared in `pyproject.toml`, and there is no
+`ruff.toml`, `.ruff.toml`, `setup.cfg` or `.flake8`. It is therefore not part of
+any validation contract, and its findings are advisory only.
+
+```text
+Repository-wide `ruff check .` at the implementation commit: 415 findings
+  Pre-existing across the repository; unchanged by B9.87 in kind.
+
+castlearq/main.py: 27 findings at df99949, 25 at its parent
+  Delta = the two added imports. Breakdown: 22 F401, 1 F821, 2 FURB105,
+  1 I001, 1 UP037. Every one of those rules is pre-existing in the file.
+
+F1  tests/test_b987_cli_search.py raises 6 findings (4x SIM117, 2x SIM102)
+    -> NON-BLOCKING
+    All six are stylistic. Both rules already occur 33 times elsewhere in
+    tests/, including the `assertRaises` + `mock.patch` + `redirect_*` nesting
+    this file follows for consistency with the surrounding suite. Changing
+    them would be a style edit to satisfy a tool the repository has not
+    adopted. Nothing was auto-fixed.
+
+F2  castlearq/main.py imports CatalogQueryErrorCategory without using it (F401)
+    -> NON-BLOCKING
+    One unused import name in a module that already carries 21 other F401
+    findings at its parent. Cosmetic; removing it would be an unrelated lint
+    cleanup, which this closure does not perform.
+
+F3  castlearq/main.py adds a FURB105 empty `print("")` separator
+    -> NON-BLOCKING / CONSISTENT WITH EXISTING STYLE
+    The identical idiom is already present in the file and in the CLI
+    presentation code it sits beside.
+```
+
+No finding is blocking. No lint finding was fixed, and no finding outside the
+B9.87 changes was touched. The test file is **not** lint-clean and is not
+claimed to be.
+
+### 28.11 State transition and history preservation
+
+Section 27 and the HADR record the state of B9.87 **at allocation time** and are
+not rewritten. Those statements remain accurate for their own anchor:
+
+```text
+ORIGINAL ALLOCATION STATE (section 27 and the HADR, preserved):
+  B9.87 = ALLOCATED
+  B9.87 = NOT IMPLEMENTED
+  B9.87 = NOT VERIFIED
+  B9.87 = NOT CLOSED
+  no `search` command existed at anchor aacbc8e
+
+CURRENT CLOSURE STATE (this section, authoritative):
+  B9.87 = ALLOCATED    (section 27 NAR, 5f0431166a06289aa455e080ed02e002119186ea)
+  B9.87 = IMPLEMENTED   (df99949f922789f2b1cc4a507a090c86a01c5e84)
+  B9.87 = VERIFIED      (section 28.7)
+  B9.87 = CLOSED        (this section)
+```
+
+B9.87 was not allocated as closed, and no historical record has been rewritten
+to suggest that it was. The supersession is stated by cross-reference only:
+inside section 27.2, inside section 27.6, inside the HADR, and here. No
+allocation evidence — corpus count, corpus digest, identifier set, corpus/HEAD
+anchor, tree object or candidate-number analysis — was altered.
+
+### 28.12 Product Vision alignment
 
 `docs/product-vision-adr.md` is authoritative for product direction. B9.87
-applies it without reopening any of its decisions. The register's own closure
-language (26.12) already records `GUI: NOT AUTHORIZED` and
-`Model Library UX: NOT ALLOCATED`; this allocation preserves both statements.
+applied it and did not reopen any of its decisions.
 
 ```text
-D1  — ENGAGED: reduces the uncertainty of finding an appropriate model.
-D3  — ENGAGED: makes the "find" stage of the JTBD reachable.
-D5  — ENGAGED: exposes an existing core discovery step; extends nothing.
+D1  — ENGAGED AND SATISFIED: reduces the uncertainty between user intent and
+       local runtime invocation. The README states that results are remote,
+       unverified metadata — what a source declares, not what a machine can
+       run.
+D3  — ENGAGED AND SATISFIED: makes the "find" stage of the JTBD reachable; it
+       is now the first step of the CLI usage flow.
+D5  — ENGAGED AND SATISFIED: exposes an existing core discovery step. No
+       domain, no provider and no core-chain step was added or extended.
 D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
-D7  — NOT ENGAGED: no Chat change; the lifecycle migration remains deferred and
-      unauthorized here.
-D8  — RESPECTED: GUI remains NOT AUTHORIZED.
-D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
-D10 — ENGAGED: the surface consumes the shared application capability.
-D11 — ENGAGED: this allocation exists precisely to give an already-allocated,
-      caller-less core capability a real caller, using an existing surface,
-      before any new surface is considered.
-D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
-      is made or implied by this allocation.
+       The adapter presents what the boundary returns and interprets nothing.
+D7  — NOT ENGAGED: no Chat change; the lifecycle migration remains deferred.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED; none was built.
+D9  — RESPECTED: fine-tuning remains out of scope and still requires a
+       separate ADR.
+D10 — ENGAGED AND SATISFIED: the CLI surface consumes the shared application
+       capability and adds no domain logic of its own.
+D11 — ENGAGED AND SATISFIED: this block existed precisely to give an
+       already-allocated, caller-less core capability a real caller, using an
+       already-existing surface, before any new surface was considered.
+D12 — RESPECTED, NOT ASSERTED: the product thesis remains an UNVALIDATED
+       HYPOTHESIS. B9.87 makes and implies no claim of market demand, adoption
+       or product-market fit, and does not present implementation completion as
+       evidence of product validation. The two remain distinct, exactly as the
+       ADR section 2 requires.
 ```
 
-### 27.8 Human approval reference
+### 28.13 Repository state
 
 ```text
-HADR STATUS:           HUMAN-RATIFIED
-ARCHITECTURAL SCOPE:   APPROVED
-NUMBER ALLOCATION:     APPROVED BY THIS NAR
-IMPLEMENTATION:        NOT STARTED
+Implementation commit published successfully:  YES
+HEAD == origin/main at closure time:             YES
+                        both df99949f922789f2b1cc4a507a090c86a01c5e84
+Implementation files remaining modified:        none
+Production code changed by the closure:         none
+Tests changed by the closure:                    none
+Generated files added:                           none
+Dependencies added:                              none
 ```
 
-> Implementation is **not** authorized by this record. The next required step
-> is a separate implementation task that consumes B9.87. No source file, test,
-> surface or refactoring is authorized here.
+The implementation commit is the verified artifact and remains immutable; it is
+never rewritten or amended. Only
+`docs/roadmap-register-and-numbering-policy.md` and
+`docs/B9.87-cli-catalog-query-caller-decision.md` are modified by this closure.
+`docs/product-vision-adr.md` and `README.md` were not modified by it.
 
-B9.80 through B9.86 are not modified by this record.
+### 28.14 Closure authorization
+
+```text
+B9.87 STATUS: CLOSED
+B9.87 IMPLEMENTATION: COMPLETE
+B9.87 VERIFICATION: COMPLETE
+B9.87 PUBLICATION: COMPLETE
+B9.87 CLOSURE: COMPLETE
+
+B9.88+: NOT ALLOCATED
+Model Library UX: NOT ALLOCATED
+Model Library GUI: NOT ALLOCATED
+GUI: NOT AUTHORIZED
+Product thesis: UNVALIDATED HYPOTHESIS (D12), unchanged by this closure
+```
+
+The HADR's ratified scope was realized exactly as decided: a minimal read-only
+CLI adapter that presents what the closed B9.86 boundary returns and interprets
+nothing. It is explicitly not a Model Library surface. No decision was reopened,
+reinterpreted or amended. This closure allocates no successor identifier and
+authorizes no future capability.
