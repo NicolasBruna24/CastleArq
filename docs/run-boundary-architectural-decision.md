@@ -476,3 +476,143 @@ IMPLEMENTATION: NOT AUTHORIZED
 This record supersedes the deferrals recorded in B9.87 HADR section 5.2 and
 B9.88 HADR section 10 for this question only. Those sections are not rewritten;
 this record states the ruling they were waiting for.
+
+---
+
+## 16. AMENDMENT A — human decisions on the B9.89 observable contract
+
+> **Status: HUMAN-RATIFIED ARCHITECTURAL DECISION.** This section was added after
+> the B9.89 implementation and its formal verification audit, which returned
+> **VERIFICATION BLOCKED**. It records human decisions on two points that
+> section 8 left to be "reconciled deliberately rather than silently"
+> (section 8, finding F6 and the Negative/trade-offs entry). It **amends** the
+> section 8 interpretation of what "preserve the observable contract" requires
+> for B9.89. Sections 1-15 above are otherwise unchanged and are not rewritten.
+>
+> The historical sequence is preserved and must not be collapsed:
+>
+> ```text
+> allocation (9fdd60da6d4b4b308f7c9a09b518b3da3d7d2344)
+>   -> implementation (5ee4bb5b20560ec11f7c05e2ad93a49967410068)
+>     -> verification (BLOCKED)
+>       -> verification finding (this section, 16.1)
+>         -> human decision (this section, 16.2 and 16.3)
+>           -> corrective implementation (NOT YET AUTHORIZED OR PERFORMED)
+>             -> re-verification (PENDING)
+>               -> closure (NOT CLOSED)
+> ```
+>
+> This amendment does **not** retroactively claim that commit
+> `5ee4bb5b20560ec11f7c05e2ad93a49967410068` satisfied the amended contract. It
+> did not; it is non-conforming on 16.2 and is pending a corrective
+> implementation.
+
+### 16.1 What the verification audit found
+
+The B9.89 implementation commit routed the CLI `run` command through
+`run_service.run_once()` as allocated. The formal verification audit confirmed
+C1-C4, C7-C10 and scope integrity, and returned **VERIFICATION BLOCKED** on two
+observable-contract points:
+
+```text
+(a) LOST RUNTIME STDERR — the pre-B9.89 CLI printed result.stderr to the CLI's
+    stderr stream on both the success and the failure path. RunOutcome carries
+    only (model_id, output, exit_code, warnings); it has no stderr field, and
+    run_service never reads result.stderr. Runtime diagnostics are therefore
+    silently discarded.
+
+(b) WARNING MULTIPLICITY — the pre-B9.89 failure path concatenated
+    _error_warnings(error) + _prepare_warnings(error) and could print the same
+    warning line more than once. The boundary exposes a deduplicated merge.
+```
+
+Finding (a) is a genuine loss of a pre-existing user-visible line. This is the
+exact regression class the section 8 rationale attributes to B9.88, and the
+test suite did not catch it because the pre-existing success-path test asserted
+only the exit code.
+
+Both points are governed by section 8, which made the observable contract the
+specification and required that the CLI adapter and the boundary projection be
+"reconciled deliberately rather than silently". The implementation reconciled
+(b) by assumption. This amendment now supplies the human ruling for both.
+
+### 16.2 Decision A — PRESERVE RUNTIME STDERR
+
+The owner ruled:
+
+> **RUNTIME STDERR IS PRESERVED.** The pre-B9.89 CLI emitted the runtime's
+> `result.stderr` to the CLI's stderr stream on both the successful and the
+> failing path. That is part of the B9.89 observable CLI contract. Runtime
+> diagnostics must remain user-visible on CLI stderr and must not be silently
+> discarded by the application boundary's result projection.
+
+Consequences:
+
+- The application boundary must transport runtime stderr to its caller. This may
+  require an additive, defaulted stderr field on `RunOutcome`; this amendment
+  deliberately does not prescribe the exact mechanism, only the contract.
+- The CLI adapter must print it on stderr with the pre-B9.89 newline
+  normalization, on both the success and the failure path.
+- Any such change is an **additive** extension to the application boundary and
+  must not alter the boundary's "never prints, never touches the CLI" property.
+
+Implementation is **not authorized by this section**. It requires a separate
+corrective implementation task.
+
+### 16.3 Decision B — RATIFY WARNING DEDUPLICATION
+
+The owner ruled:
+
+> **WARNING DEDUPLICATION IS RATIFIED.** The intended B9.89 contract preserves
+> the complete distinct warning set, the warning text, the `Warning: `
+> presentation, the stderr destination and first-occurrence ordering. Duplicate
+> occurrences of the same warning are **not** independently meaningful
+> user-visible events and must not be intentionally reproduced.
+
+Consequences:
+
+- The section 8 warning-preservation requirement is satisfied for B9.89 by the
+  deduplicated projection. The F6(b) multiplicity difference is **resolved by
+  decision, not by oversight**, and is no longer an open verification item.
+- This ratifies the warning behavior already present in commit
+  `5ee4bb5b20560ec11f7c05e2ad93a49967410068`. It does not ratify 16.2.
+- No warning implementation change is required or authorized by this section.
+
+### 16.4 Amended B9.89 observable contract
+
+| Surface                     | Decision                          |
+| --------------------------- | --------------------------------- |
+| stdout                      | Preserve existing successful output |
+| runtime stderr              | **PRESERVE** (16.2)               |
+| warnings                    | **DEDUPLICATE** (16.3)            |
+| warning text                | Preserve                          |
+| warning ordering            | Preserve first occurrence         |
+| warning destination         | stderr                            |
+| `Run error:` presentation   | Preserve                          |
+| success exit code           | 0                                 |
+| runtime/preparation failure | 1                                 |
+| usage error                 | 2                                 |
+| admission ownership         | CLI (section 5, Q2)               |
+| admission identity          | Preserve — exact object forwarded |
+| compatibility evaluation    | Exactly once                      |
+| run/execute convergence     | Out of scope (section 9)          |
+| `ModelExecutionService`     | Does not participate (Q5)         |
+
+### 16.5 Standing of this amendment
+
+```text
+AMENDMENT A:  HUMAN-RATIFIED ARCHITECTURAL DECISION
+              (recorded in this document, section 16)
+
+B9.89 STATE:  ALLOCATED
+              IMPLEMENTED
+              NOT VERIFIED   (verification returned BLOCKED)
+              NOT CLOSED
+
+16.3 warnings:   RESOLVED by decision — no corrective change required
+16.2 stderr:     OUTSTANDING  — corrective implementation required
+                 NOT YET AUTHORIZED, NOT IMPLEMENTED
+```
+
+Sections 1-15 of this record remain in force. Only the section 8 interpretation
+of observable-contract preservation is amended, and only as stated above.

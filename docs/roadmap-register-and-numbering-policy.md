@@ -7650,3 +7650,34 @@ IMPLEMENTATION:          NOT STARTED
 > surface or refactoring is authorized here.
 
 B9.80 through B9.88 are not modified by this record.
+
+### 31.11 Cross-reference — HADR Amendment A
+
+Recorded for traceability only. This subsection changes nothing allocated in
+31.1-31.10.
+
+```text
+HADR Amendment A:   HUMAN-RATIFIED ARCHITECTURAL DECISION
+                    (docs/run-boundary-architectural-decision.md, section 16)
+                    recorded after the formal verification audit, which
+                    returned VERIFICATION BLOCKED.
+
+Allocation record:  UNCHANGED (number, identity, allocation commit)
+Implementation:     UNCHANGED — IMPLEMENTED at
+                    5ee4bb5b20560ec11f7c05e2ad93a49967410068
+Verification:       NOT VERIFIED — audit returned BLOCKED; not marked passed
+Closure:            NOT CLOSED
+```
+
+Amendment A records two human decisions on the B9.89 observable contract:
+
+```text
+16.2 runtime stderr      PRESERVE   — corrective implementation REQUIRED,
+                                      NOT YET AUTHORIZED, NOT IMPLEMENTED
+16.3 warning multiplicity DEDUPLICATE — RATIFIED, no corrective change required
+```
+
+No closure record is created by this subsection, and verification is not marked
+passed. The historical chain (allocation -> implementation -> verification ->
+finding -> human decision -> corrective implementation -> re-verification ->
+closure) is preserved and remains open at "human decision".
