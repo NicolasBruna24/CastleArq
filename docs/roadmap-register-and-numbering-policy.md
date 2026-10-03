@@ -7851,3 +7851,481 @@ This closure modifies only `docs/roadmap-register-and-numbering-policy.md` and
 
 B9.80 through B9.88 are not modified by this closure. This closure allocates no
 successor identifier and authorizes no future capability.
+---
+
+## 33. B9.90 — Number Allocation Record
+
+`B9.90` is allocated as the next main block under section 6, on the evidence of
+a section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.90 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified Human Architectural Decision Record for the revision-aware
+acquisition locator (DownloadPlanner as sole primary authority for the
+`revision ↔ download_url` invariant), which was preceded by a READ-ONLY
+architectural decision audit, a READ-ONLY ADR-preparation audit, a human
+architectural decision, and a READ-ONLY formal roadmap allocation audit. This
+section allocates the number that carries that scope; it does not widen,
+reinterpret or extend it.
+
+### 33.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.90
+
+Title:
+  Planner-Canonicalized Revision-Aware Acquisition Locator
+
+Allocation Date:
+  2026-10-03
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash.
+```
+  Recorded by the two-step mechanism already stated in section 11 and used
+  identically by sections 19, 21, 23, 25, 27, 29 and 31: at authoring time the
+  hash did not exist and the field read "PENDING — fixed by the next controlled
+  commit that sets it to that hash"; a commit hash cannot be known before the
+  commit exists, and writing a guessed value would be a fabricated identifier.
+  The allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 32 — B9.89 Closure Record
+Section for this allocation:
+  section 33 — this record
+
+Human Architectural Decision Record:
+  Planner-as-canonical-authority decision for revision ↔ download_url
+  STATUS: HUMAN-RATIFIED
+  DECISION: ADOPT
+  Primary authority:            DownloadPlanner
+  URL construction authority:   DownloadPlanner (canonical derivation + validation)
+  Defensive validation:         Downloader, aligned to the planner rule only
+  Transport-only:               HuggingFaceDiscoveryProvider, B9.84 selection,
+                                B9.82 acquisition mapper
+  ArtifactSpec:                 declared-provenance carrier only; no
+                                construction-time cross-field invariant
+  NUMBER (at ratification): NONE — the decision record itself assigned no
+                            identifier; this section performs the allocation
+
+Corpus/HEAD Anchor:
+Corpus File Count:
+  recorded by the allocation audit at the anchor above.
+
+Identifier Set:
+  Highest main identifier in real use after this section: B9.90 (this section)
+  Preceding closed block: B9.89 (sections 31-32), CLOSED at
+    55b1cbabe2714d3bdbe931273d3714398c818f34.
+  B9.90 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.90 in the anchor corpus: 2
+  Both are explicit non-allocations:
+    - section 31.1 (B9.89 candidate analysis): "B9.90 and above —
+      CONSIDERED AND DECLINED. Section 6 requires the integer"
+    - section 32 header block: "B9.90+: NOT ALLOCATED"
+  None of them allocates B9.90. No competing, competing-pending or
+  conflicting identifier was found.
+
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.90.x sub-block
+    is assigned by this record.
+
+Preceding Block:
+  B9.89 — CLI Run Through Application Boundary
+
+Preceding Block Status:
+  ALLOCATED (section 31), IMPLEMENTED, VERIFIED, CLOSED (section 32),
+  published state main == HEAD == origin/main at the anchor above.
+
+Highest Verified Allocation:
+  B9.89
+```
+
+Candidate Numbers Considered:
+
+```text
+B9.90 — SELECTED. highest_verified_allocated_block + 1 = B9.89 + 1. No
+  allocation, reservation, provisional assignment or competing higher main
+  identifier exists for it; every pre-existing occurrence is an explicit
+  non-allocation or a recorded decline inside this document.
+B9.91 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+  immediately following the highest verified block; selecting 91 or above
+  would leave 90 permanently unused and would contradict the prospective
+  monotonic rule. B9.91+ REMAINS NOT ALLOCATED by this record.
+B9.90.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+  integers of the form B9.x raise the main-block floor.
+Any lower or gap-filling identifier — CONSIDERED AND DECLINED. Section 6 fixes
+  the floor at the highest VERIFIED allocated identifier; section 9 declares
+  gaps NOT REUSED prospectively. No gap is claimed abandoned, freed, reserved
+  or erroneous (section 13).
+```
+
+Selected Number:
+
+```text
+B9.90
+```
+
+Validity Reason:
+
+```text
+B9.89 is the highest main block assigned, implemented, verified and closed in
+the activation corpus at the anchor recorded above. B9.90 is the integer
+immediately following it, as section 6 requires. Every pre-existing
+occurrence of B9.90 in the corpus is an explicit non-allocation or a recorded
+decline, so no competing allocation exists. The number is therefore valid
+under the active rule.
+```
+
+Release Association:
+
+```text
+NOT YET DEFINED
+```
+
+Supersession:
+
+```text
+none — the earlier "B9.90+: NOT ALLOCATED" statements remain the
+accurate description of the corpus at their own anchors and are not rewritten;
+they are superseded by this record as a cross-reference only
+```
+
+Documented?:
+
+```text
+YES — this document (section 33) plus the human-ratified planner-authority
+decision record referenced in 33.1
+```
+
+Number Allocation Record:
+
+```text
+PRESENT — section 33
+```
+
+Retrospective Record:
+
+```text
+NO — prospective allocation record
+```
+
+Human decisions pending:
+
+```text
+none — the planner-authority decision record is HUMAN-RATIFIED with DECISION: ADOPT
+```
+
+  55b1cbabe2714d3bdbe931273d3714398c818f34
+  ("docs: close roadmap block B9.89"; main == HEAD == origin/main)
+
+Branch:
+  main
+
+### 33.2 Register entry for B9.90
+
+```text
+Block ID:                 B9.90
+Name:                     Planner-Canonicalized Revision-Aware Acquisition Locator
+Status:                   ALLOCATED
+Origin:                   this document, section 33 (NAR)
+Scope:                    see 33.3 — fixed by the HADR, recorded without reinterpretation
+Non-goals:                see 33.4
+Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
+                          (planner-as-canonical-authority for revision ↔ download_url),
+                          DECISION: ADOPT, preceding this allocation
+Current State:            ALLOCATED — allocated by section 33
+Implementation Commit:    NONE — NOT IMPLEMENTED
+Verification Result:      NONE — NOT VERIFIED
+Closure Commit:           NONE — NOT CLOSED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document + the decision record
+Number Allocation Record: PRESENT — section 33
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.90 = ALLOCATED
+B9.90 = NOT IMPLEMENTED
+B9.90 = NOT VERIFIED
+B9.90 = NOT CLOSED
+```
+
+> **SUPERSESSION NOTE.** Earlier records in this document state that B9.90 and
+> higher identifiers are not allocated (section 31.1; section 32 header block).
+> Those statements remain the accurate description of the corpus **at their own
+> anchors** and are **not** rewritten by this section. The current,
+> authoritative state of B9.90 is the one asserted above.
+
+### 33.3 Scope attached to this allocation
+
+The scope was fixed by the HUMAN-RATIFIED decision record and is recorded here
+without reinterpretation.
+
+```text
+Planner-Canonicalized Revision-Aware Acquisition Locator
+```
+
+**Canonical invariant, as decided:**
+
+```text
+revision == None
+    → acquisition URL path uses /resolve/main/
+
+revision == R (R satisfies the existing 40-hex revision contract)
+    → acquisition URL path uses /resolve/R/
+```
+
+**Architectural authority, as decided:**
+
+```text
+Primary authority:          DownloadPlanner
+URL construction authority: DownloadPlanner (canonical derivation + validation)
+Defensive validation:       Downloader, aligned to the planner rule only
+Transport-only:             HuggingFaceDiscoveryProvider, B9.84 selection,
+                            B9.82 acquisition mapper
+ArtifactSpec:               declared-provenance carrier only; no
+                            construction-time cross-field invariant
+```
+
+**Key semantic change planned for B9.90:**
+
+```text
+Planner:
+reject revision/URL mismatch
+        ↓
+canonicalize revision-aware locator
+        ↓
+validate canonical locator
+```
+
+The planner becomes the sole canonical acquisition-locator derivation
+authority. The downloader remains defensive only and MUST NOT become an
+independent URL-construction authority.
+
+**Dependency on already-closed contracts (consumed as-is, not redesigned):**
+
+```text
+B9.80 — Model Discovery domain contract (DiscoveredArtifact / provider port)
+B9.81 — Hugging Face discovery provider (L1 remote metadata, R1
+         zero-acquisition-coupling)
+B9.82 — Discovery-to-Acquisition Boundary (pure 1:1 translation)
+B9.83 — Revision-aware acquisition (ArtifactSpec.revision, manifest
+         persistence, revision-aware planner URL contract, OD-1)
+B9.84 — Selection boundary (revision as selection criterion, before mapping,
+         mapper stays pure)
+B9.85 — Production chain (provider → selection → mapper → planner →
+         downloader → ModelStore)
+B9.89 — Previous closed roadmap block / numbering predecessor
+```
+
+**In scope:**
+
+```text
+- planner derives the canonical acquisition locator from trusted artifact
+  fields (repository, filename, revision) and validates it
+- revision == None → canonical locator uses /resolve/main/, revision stays absent
+- revision == R (40-hex per the existing contract) → canonical locator uses
+  /resolve/R/, including canonicalizing an incoming /resolve/main/ locator
+  that declares R, rather than terminally rejecting the mismatch
+- malformed revisions remain rejected; revision syntax is NOT broadened
+```
+
+- malformed revisions remain rejected; revision syntax is NOT broadened
+- existing URL security validation (scheme, host, credentials, port, query,
+  fragment, repository, filename, path safety, allowed-host constraints)
+  remains enforced; the canonical locator is validated under that model
+- downloader defensive validation is aligned to the planner canonical
+  contract; no second URL-construction mechanism is introduced
+- end-to-end revision path: a genuine provider-produced 40-hex revision with
+  the provider's existing main-form URL flows through
+  provider → selection → mapper → ArtifactSpec → planner → downloader,
+  with the planner producing the canonical revision-aware READY plan
+- revision remains outside artifact_id (OD-1 preserved)
+- focused tests for planner canonicalization, main fallback, downloader
+  alignment, security preservation, and the end-to-end revision path
+```
+
+**Implementation surface:**
+
+```text
+MUST CHANGE:      castlearq/downloads/planner.py
+MUST CHANGE:      castlearq/downloads/downloader.py (defensive alignment only)
+MUST CHANGE:      corresponding tests
+MUST NOT CHANGE:  castlearq/models.py
+MUST NOT CHANGE:  B9.82 acquisition mapper (castlearq/acquisition_mapping.py)
+MUST NOT CHANGE:  B9.81 HuggingFaceDiscoveryProvider
+                  (castlearq/sources/huggingface_discovery.py)
+MUST NOT CHANGE:  B9.84 selection boundary (castlearq/discovery_selection.py)
+MUST NOT CHANGE:  ModelStore architecture
+MUST NOT CHANGE:  legacy ModelSource acquisition (castlearq/sources/*, resolver,
+                  legacy source command)
+MUST NOT CHANGE:  CLI wiring, GUI / Model Library UX, identity / portfolio metadata
+```
+
+### 33.4 Explicit non-goals
+
+```text
+GUI implementation
+Model Library UX
+Hugging Face model browser
+GGUF catalog UX
+model search UI
+variant-selection UI
+ModelStore redesign (identity, multi-revision storage, paths, manifest schema)
+provider redesign or replacement; new providers; any change to B9.81 R1
+revision syntax broadening beyond the existing 40-hex contract
+ArtifactSpec redesign (__post_init__ invariant, identity changes,
+  revision entering artifact_id)
+artifact identity redesign
+CLI redesign
+legacy acquisition convergence (ModelSource / HuggingFaceSource / resolver /
+  legacy source command untouched)
+portfolio/identity work
+unrelated refactoring
+B9.91+ or any speculative future block
+```
+
+This allocation authorizes none of the above, opens no identifier for any of
+them, and reserves none of them.
+
+### 33.5 Acceptance criteria
+
+Persisted from the READ-ONLY allocation audit and not weakened here.
+
+```text
+AC1  Planner canonicalization — given revision R (40-hex), planner output uses
+     /resolve/R/ (incoming /resolve/main/ with declared R is canonicalized,
+     not terminally rejected)
+AC2  Main fallback — given no revision, planner output uses /resolve/main/
+     and the revision remains absent
+AC3  Provider boundary — B9.81 provider behavior and zero-acquisition-coupling
+     boundary remain unchanged (no provider source change)
+AC4  Mapper purity — B9.82 mapper remains pure; no URL construction,
+     normalization, acquisition imports, or cross-field validation enter it
+AC5  Downloader alignment — downloader validation agrees with the planner
+     canonical contract (revision-aware defensive validation) and introduces
+     no independent URL construction or second URL template
+AC6  Security preservation — existing URL security invariants (scheme, host,
+     credentials, port, query, fragment, repository, filename, path safety)
+     remain enforced after canonicalization
+AC7  End-to-end revision path — a real provider-produced 40-hex revision
+     flows provider → selection → mapper → planner → downloader with the
+     planner producing the canonical revision-aware locator (READY plan)
+AC8  Identity preservation — artifact identity semantics unchanged;
+     revision ∉ artifact_id (OD-1)
+AC9  Legacy boundary preservation — legacy acquisition remains unchanged and
+     outside the B9.90 implementation scope
+AC10 Regression safety — existing relevant tests for B9.80–B9.85 and legacy
+     behavior remain passing
+```
+
+### 33.6 Verification plan
+
+```text
+V1 Planner unit tests: None+main, R+/resolve/R/, R+main→canonicalized to R,
+   malformed revision rejected, security cases preserved
+V2 Downloader tests: R+/resolve/R/ accepted defensively; no construction logic
+V3 End-to-end test with a genuine provider-produced 40-hex revision through
+   provider → selection → mapper → planner → downloader
+V4 Regression run over B9.80–B9.85 and legacy acquisition tests
+V5 Diff-surface check: only planner, downloader (alignment), and tests change
+```
+
+Verification is NOT performed by this record.
+
+### 33.7 Architectural invariants approved with this allocation
+
+```text
+I1 Planner is the sole primary authority for revision ↔ download_url
+I2 Canonical locator derivation lives only in the planner
+I3 Provider, selection, mapper are transport-only for this correspondence
+I4 ArtifactSpec carries declared provenance; no construction-time invariant
+I5 Downloader is READY-gated and defensive-only; no URL construction
+I6 40-hex revision contract is authoritative for B9.90; no broadening
+I7 URL security model is preserved, not redesigned
+I8 OD-1 identity (revision ∉ artifact_id) is preserved
+```
+
+### 33.8 Allocation versus implementation state
+
+```text
+NUMBER ALLOCATION:        APPROVED BY THIS NAR
+IMPLEMENTATION AUTHORIZED: NO — a separate implementation task consumes B9.90
+IMPLEMENTATION:           NOT STARTED
+VERIFICATION AUTHORIZED:  NO
+VERIFICATION:             NOT PERFORMED
+CLOSURE AUTHORIZED:       NO
+CLOSURE:                  NOT CLOSED
+```
+
+At this anchor the planner still rejects revision/URL mismatch, the downloader
+still validates main-only, and no canonicalization exists. Nothing in this
+record changes that.
+
+```text
+ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
+```
+
+### 33.9 Product Vision alignment
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.90
+applies it without reopening any of its decisions. The register's closure
+language (30.14; section 32) already records `GUI: NOT AUTHORIZED` and
+`Model Library UX: NOT ALLOCATED`; this allocation preserves both statements.
+
+```text
+D1-D4 — NOT ENGAGED: no claim about the product problem, the user population,
+         the Job To Be Done or the runtime thesis is made.
+D5  — RESPECTED: no new runtime and no new core-chain stage.
+D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
+D7  — RESPECTED: no Chat change; the chat boundary is untouched.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — RESPECTED: no new user-facing surface is created by this allocation.
+D11 — RESPECTED: the existing acquisition chain is consumed; the planner
+      locator authority is made coherent without new surfaces.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
+      is made or implied. B9.90 is not product validation.
+```
+
+### 33.10 Human approval reference
+
+```text
+DECISION RECORD STATUS:  HUMAN-RATIFIED
+DECISION:                ADOPT
+NUMBER ALLOCATION:       APPROVED BY THIS NAR
+IMPLEMENTATION:          NOT STARTED
+```
+
+> Implementation is **not** authorized by this record. The next required step
+> is a separate implementation task that consumes B9.90. No source file, test,
+> surface or refactoring is authorized here.
+
+B9.80 through B9.89 are not modified by this record. B9.91+ is NOT allocated
+by this record.
+
+### 33.11 Register entry state summary
+
+```text
+B9.90 STATUS:        ALLOCATED
+B9.90 IMPLEMENTATION: NOT STARTED
+B9.90 VERIFICATION:   NOT PERFORMED
+B9.90 CLOSURE:        NOT CLOSED
+B9.89:               CLOSED — preserved verbatim (sections 31–32), immutable
+B9.91+:              NOT ALLOCATED
+```
+
+Working tree at anchor:
+  tracked tree clean; git diff --check clean; ahead/behind origin/main 0/0.
+```
