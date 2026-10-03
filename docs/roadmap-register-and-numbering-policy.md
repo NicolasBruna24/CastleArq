@@ -6505,33 +6505,63 @@ Human decisions pending:
 ```text
 Block ID:                 B9.88
 Name:                     Chat Application Boundary: CLI Caller
-Status:                   ALLOCATED
-Origin:                   this document, section 29 (NAR)
+Status:                   CLOSED
+Origin:                   this document, sections 29 (NAR) and 30 (Closure
+                          Record)
 Scope:                    see 29.3 — approved by the HADR
 Non-goals:                see 29.4
 Architectural decision:   HUMAN-RATIFIED Human Architectural Decision Record
                           (docs/B9.88-chat-application-boundary-cli-caller-decision.md),
                           preceding this allocation
-Current State:            ALLOCATED — allocated by section 29
-Implementation Commit:    NONE — NOT IMPLEMENTED
-Verification Result:      NONE — NOT VERIFIED
-Closure Commit:           NONE — NOT CLOSED
+Current State:            CLOSED — allocated by section 29, implemented at
+                          ee5844fdc694e50e430a8b860d33a1c4d1e9ae58, corrected at
+                          4459386dd8e3e9945a9ee35c307f616d628e42f1, verified
+                          PASS, closed by section 30
+Implementation Commit:    ee5844fdc694e50e430a8b860d33a1c4d1e9ae58
+                          ("feat: route CLI chat through application service")
+Correction Commit:        4459386dd8e3e9945a9ee35c307f616d628e42f1
+                          ("fix: preserve chat selection warnings";
+                          HADR Amendment A)
+Allocation Commit:        66b3dcd4b9b5f1718e0034b37649053b91fc266b
+                          ("docs: allocate roadmap block B9.88")
+Allocation Anchor:        036669c2c923989f79e25631f98b0b06f59de971
+                          ("docs: close roadmap block B9.87") — preserved from 29.1
+Verification Result:      PASS — see section 30.7
+Closure Commit:           PENDING — fixed by the next controlled commit that sets
+                          it to that hash, per the two-step mechanism stated in
+                          section 11 and used identically by sections 19, 21, 23,
+                          25 and 27. A commit hash cannot be known before the
+                          commit exists, and writing a guessed value would be a
+                          fabricated identifier. The same field is left PENDING in
+                          section 23.1 for B9.85 and section 26.2 for B9.86.
 Release Association:      NOT YET DEFINED
-Supersession:             none
+Supersession:             none — the allocation-time state below is preserved
+                          and superseded by explicit cross-reference only
 Documented?:              YES — this document + the HADR
 Number Allocation Record: PRESENT — section 29
 Retrospective Record:     NO — prospective allocation record
 Human decisions pending:  none
 ```
 
-The lifecycle state asserted by this record is, in full and without implication
-of anything further:
+The lifecycle state asserted by this record **at allocation time** is, in full
+and without implication of anything further:
 
 ```text
 B9.88 = ALLOCATED
 B9.88 = NOT IMPLEMENTED
 B9.88 = NOT VERIFIED
 B9.88 = NOT CLOSED
+```
+
+Those four statements remain the accurate description of B9.88 **at the
+allocation anchor recorded in 29.1** and are **not** rewritten. The current,
+authoritative lifecycle state is asserted by section 30.11:
+
+```text
+B9.88 = ALLOCATED   (section 29 NAR, 66b3dcd4b9b5f1718e0034b37649053b91fc266b)
+B9.88 = IMPLEMENTED  (ee5844fdc694e50e430a8b860d33a1c4d1e9ae58)
+B9.88 = VERIFIED     (section 30.7)
+B9.88 = CLOSED       (section 30)
 ```
 
 > **SUPERSESSION NOTE.** Earlier records in this document state that B9.88 and
@@ -6771,3 +6801,375 @@ IMPLEMENTATION:        NOT STARTED
 > surface or refactoring is authorized here.
 
 B9.80 through B9.87 are not modified by this record.
+
+---
+
+## 30. B9.88 — Closure Record
+
+### 30.1 Closure status
+
+B9.88 is formally **CLOSED**. The allocation record (section 29) and the Human
+Architectural Decision Record
+`docs/B9.88-chat-application-boundary-cli-caller-decision.md` both precede this
+record and are not rewritten by it; where their status statements are
+superseded, that supersession is stated explicitly as a cross-reference inside
+section 29 and inside the HADR, and recorded here. This section attests that the
+verified implementation exists, was published, and matches the allocated scope
+exactly.
+
+An independent READ-ONLY closure eligibility audit was performed before this
+closure and returned `CLOSURE ELIGIBLE`. All ten criteria C1-C10 passed. Its
+findings are dispositioned in 30.10 and none of them is blocking.
+
+### 30.2 Implementation identity
+
+```text
+Block ID:
+  B9.88
+
+Name:
+  Chat Application Boundary: CLI Caller
+
+Allocation commit:
+  66b3dcd4b9b5f1718e0034b37649053b91fc266b
+    ("docs: allocate roadmap block B9.88")
+
+Implementation commit:
+  ee5844fdc694e50e430a8b860d33a1c4d1e9ae58
+    ("feat: route CLI chat through application service")
+
+Correction commit:
+  4459386dd8e3e9945a9ee35c307f616d628e42f1
+    ("fix: preserve chat selection warnings"; HADR Amendment A)
+
+Allocation anchor (preserved from 29.1):
+  036669c2c923989f79e25631f98b0b06f59de971
+    ("docs: close roadmap block B9.87")
+
+Branch:
+  main
+
+Publication state:
+  pushed to origin/main (HEAD == origin/main at closure time)
+
+Parent chain:
+  4459386 -> ee5844f -> 66b3dcd -> 036669c (B9.87 closure)
+```
+
+Committed files, per commit, exclusively:
+
+```text
+66b3dcd  A  docs/B9.88-chat-application-boundary-cli-caller-decision.md
+         M  docs/roadmap-register-and-numbering-policy.md   (section 29 NAR)
+
+ee5844f  M  castlearq/main.py                       (+82 / -)  chat delegates to the boundary
+         M  tests/test_main_chat.py                  (+176)     fixture retarget + boundary tests
+         M  tests/test_main.py                       (+28 / -)   stale patch targets retargeted
+         M  tests/test_shared_preparation.py         (+8 / -)    stale patch target retargeted
+
+4459386  M  castlearq/run_service.py                (+11 / -2)  additive ChatSessionOpened.warnings
+         M  castlearq/main.py                        (+6)        restore warning output
+         M  docs/B9.88-...-decision.md               (+111)      Amendment A recorded
+         M  tests/test_main_chat.py                  (+87)       warning preservation tests
+         M  tests/test_chat_sessions.py              (+48 / -1)  propagation tests + stub field
+```
+
+`castlearq/api.py`, `castlearq/chat.py` and
+`castlearq/application_wiring.py` were **not** modified by B9.88.
+
+### 30.3 Human architectural decision reference
+
+```text
+docs/B9.88-chat-application-boundary-cli-caller-decision.md
+
+DECISION:              HUMAN-RATIFIED
+ARCHITECTURAL SCOPE:  APPROVED
+IMPLEMENTATION:       approved by a separate implementation task
+                       (ee5844fdc694e50e430a8b860d33a1c4d1e9ae58)
+
+AMENDMENT A:           HUMAN-RATIFIED CLARIFICATION
+                       (recorded in that document, section 15)
+                       implemented at 4459386dd8e3e9945a9ee35c307f616d628e42f1
+```
+
+No decision in the HADR was reopened, reinterpreted or amended beyond the
+narrowly authorized Amendment A. Sections 1-14 and Amendment A itself are
+preserved verbatim.
+
+### 30.4 Allocation reference
+
+```text
+Allocation record:      section 29 (B9.88 — Number Allocation Record)
+Allocation commit:      66b3dcd4b9b5f1718e0034b37649053b91fc266b
+Allocation anchor:      036669c2c923989f79e25631f98b0b06f59de971
+Allocated scope:        section 29.3
+Allocated non-goals:    section 29.4
+Boundary invariants:    section 29.5
+Preserved records:      section 29.6
+Human-ratified scope:   "Route the existing CLI `chat` command through the
+                        already-established application boundary
+                        run_service.open_chat_session, replacing the CLI's
+                        duplicated resolver -> admission -> preparation ->
+                        runtime-session pipeline with the shared application
+                        service."
+```
+
+### 30.5 Implemented scope
+
+B9.88 implemented exactly the scope allocated in 29.3. The realized production
+path is:
+
+```text
+CLI
+  castlearq/main.py :: chat_model
+  -> CLI-owned compatibility evaluation and admission
+       _admit_for_preparation()
+  -> application boundary
+       run_service.open_chat_session()
+  -> existing preparation and session pipeline
+       resolver -> prepare -> session factory
+  -> existing ChatSession
+  -> existing CLI interaction loop
+```
+
+Realized as:
+
+```text
+- the CLI chat path no longer constructs ModelArtifactResolver, calls
+  resolver.resolve(), calls _prepare(), or starts a session itself
+- resolution, capability preparation and session opening are delegated to
+  run_service.open_chat_session, the boundary the HTTP API already consumes
+- the admission minted by the CLI is forwarded unchanged into the service
+- the existing ChatDependencies.session_factory seam carries the CLI chunk
+  callback, preserving incremental streaming without any new streaming
+  contract
+- existing CLI behaviour, output, exit codes, warnings, prompts, /exit, EOF,
+  Ctrl+C, cancellation, session close and the interaction loop are preserved
+- focused regression coverage for delegation, admission identity, single
+  evaluation, streaming and service error mapping
+```
+
+The separation was verified by AST inspection of `chat_model`: `ModelArtifactResolver`,
+`resolver`, `_prepare` and `prepare` are all absent from that function.
+
+### 30.6 Amendment A — warning preservation
+
+The closure eligibility audit confirmed that the first implementation commit
+dropped one pre-existing user-visible behaviour: successful-path
+`selection_warnings`, printed by the CLI before B9.88, were no longer surfaced,
+because `open_chat_session` computed them during preparation but
+`ChatSessionOpened` did not return them. That was a genuine regression against
+the ratified warning-preservation invariant, and it was classified
+`HUMAN DECISION REQUIRED`.
+
+The owner authorized exactly one additive correction (HADR Amendment A). The
+preserved chain is:
+
+```text
+RuntimeBackendSelector.select()      # MARGINAL verdict only
+  -> ExecutionPreparation.selection_warnings
+  -> ChatSessionOpened.warnings      # additive, defaulted to ()
+  -> CLI stderr, "Warning: {warning}", before the successful banner
+```
+
+Implementation commit `4459386`. The API is unaffected: it reads only
+`opened.session` and `opened.model_id`, and every existing `ChatSessionOpened`
+construction site uses keyword arguments, so the defaulted field is compatible.
+
+The sibling one-shot path already propagated the same data through
+`RunOutcome.warnings`; this correction brings the chat path into consistency
+with it and introduces no new concept.
+
+### 30.7 Verification evidence
+
+```text
+python3 -m pytest tests/test_main_chat.py -q
+  -> 21 passed
+
+python3 -m pytest tests/test_chat_sessions.py -q
+  -> 70 passed
+
+python3 -m pytest tests/test_chat.py -q
+  -> 26 passed
+
+python3 -m pytest tests/test_main.py tests/test_shared_preparation.py -q
+  -> 57 passed, 19 subtests passed
+
+python3 -m pytest -q
+  -> 2142 passed, 2706 subtests passed
+
+git diff --check
+  -> clean
+```
+
+Every one of these was executed on the final committed tree during the closure
+eligibility audit. No test was skipped, deselected or excluded to reach these
+results. The declared validator is the one recorded in `pyproject.toml`
+(`[project.optional-dependencies] dev -> pytest==9.1.1`); no lint, coverage or
+type-check tool is configured by this repository and none was introduced.
+
+### 30.8 Architectural boundary compliance
+
+```text
+CLI -> Application -> existing chat runtime:         preserved
+One evaluation per chat invocation:                 proven (test_chat_evaluates_compatibility_exactly_once)
+One admission per chat invocation:                  proven (test_chat_forwards_the_cli_admission_unchanged,
+                                                   identity-level)
+One preparation operation:                          preserved (inside the boundary only)
+Direct CLI resolver/preparation/session startup:    removed
+chunk_callback added to open_chat_session:          NO — signature unchanged
+Streaming mechanism:                                existing ChatDependencies.session_factory seam
+API endpoint or contract introduced:                NO
+Product expansion:                                  NONE
+```
+
+### 30.9 Explicit non-goals
+
+B9.88 did **not** implement any of the following. Each was verified absent from
+the B9.88 commits `ee5844f` and `4459386`:
+
+```text
+a Conversation domain object            NOT IMPLEMENTED
+conversation persistence                NOT IMPLEMENTED
+chat history storage                    NOT IMPLEMENTED
+generic history policy                  NOT IMPLEMENTED
+prompt templating / system-prompt policy NOT IMPLEMENTED
+session persistence                     NOT IMPLEMENTED
+conversation listing                    NOT IMPLEMENTED
+model selection UX                      NOT IMPLEMENTED
+chat marketplace / chat library         NOT IMPLEMENTED
+a streaming application contract        NOT IMPLEMENTED
+run / execute convergence               NOT IMPLEMENTED
+run_service.run_once redesign           NOT IMPLEMENTED
+run_service.run_model migration         NOT IMPLEMENTED
+ModelExecutionService adoption          NOT IMPLEMENTED
+execution policy or API changes        NOT IMPLEMENTED
+GUI                                     NOT IMPLEMENTED
+Model Library UX                        NOT IMPLEMENTED
+Model Library GUI                       NOT IMPLEMENTED
+new HTTP endpoints                      NOT IMPLEMENTED
+new CLI commands                        NOT IMPLEMENTED
+second runtime / Ollama / multi-GPU     NOT IMPLEMENTED
+distributed execution                   NOT IMPLEMENTED
+LoRA / QLoRA / datasets / training      NOT IMPLEMENTED
+checkpoints / fine-tuning               NOT IMPLEMENTED
+telemetry / accounts / cloud            NOT IMPLEMENTED
+persistence                             NOT IMPLEMENTED
+new dependencies                        NOT IMPLEMENTED
+```
+
+`run_model` retains its own CLI-owned pipeline untouched, as HADR section 10
+requires. `ModelExecutionService` remains recorded architectural debt and was
+not adopted, per HADR section 11.
+
+### 30.10 Findings and disposition
+
+```text
+F1  The first implementation commit (ee5844f) dropped successful-path
+    selection_warnings from the CLI chat output.
+    -> GENUINE REGRESSION, DISPOSITIONED
+    Classified by the READ-ONLY compliance audit as HUMAN DECISION REQUIRED.
+    The owner authorized an additive ChatSessionOpened.warnings field
+    (HADR Amendment A), implemented at 4459386 and verified in 30.7. Resolved;
+    not blocking.
+
+F2  Three pre-existing test fixtures patched castlearq.main seams that B9.88
+    deliberately removed (ModelArtifactResolver, _prepare,
+    start_chat_session).
+    -> MECHANICAL FIXTURE ADAPTATION, DISPOSITIONED
+    Patch targets were retargeted to the module that now owns each seam. No
+    behavioral assertion was weakened or removed. The full suite passes.
+```
+
+No finding is blocking. No lint finding was fixed and no unrelated code was
+touched.
+
+### 30.11 State transition and history preservation
+
+Section 29 and the HADR record the state of B9.88 **at allocation time** and are
+not rewritten. Those statements remain accurate for their own anchor:
+
+```text
+ORIGINAL ALLOCATION STATE (section 29 and the HADR, preserved):
+  B9.88 = ALLOCATED
+  B9.88 = NOT IMPLEMENTED
+  B9.88 = NOT VERIFIED
+  B9.88 = NOT CLOSED
+  the CLI chat pipeline was still duplicated at anchor 036669c
+
+CURRENT CLOSURE STATE (this section, authoritative):
+  B9.88 = ALLOCATED    (section 29 NAR, 66b3dcd4b9b5f1718e0034b37649053b91fc266b)
+  B9.88 = IMPLEMENTED   (ee5844fdc694e50e430a8b860d33a1c4d1e9ae58)
+  B9.88 = VERIFIED      (section 30.7)
+  B9.88 = CLOSED        (this section)
+```
+
+B9.88 was not allocated as closed, and no historical record has been rewritten
+to suggest that it was. The supersession is stated by cross-reference only:
+inside section 29.2 and inside the HADR. No allocation evidence — corpus count,
+corpus digest, identifier set, corpus/HEAD anchor or candidate-number analysis —
+was altered.
+
+### 30.12 Product Vision alignment
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.88
+applied it and did not reopen any of its decisions.
+
+```text
+D1-D4 — NOT ENGAGED: no claim about the product problem, the user population,
+         the Job To Be Done or the runtime thesis is made.
+D5  — RESPECTED: no new runtime and no new core-chain stage.
+D6  — RESPECTED: Model Library UX remains NOT ALLOCATED and NOT authorized.
+D7  — ENGAGED AND SATISFIED: B9.88 is precisely the application-boundary seam
+       D7 names for future Chat work. The CLI now consumes the boundary the API
+       already used. No Conversation abstraction was invented; D7 states none
+       exists in the repository and forbids reconstructing one.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — ENGAGED AND SATISFIED: the CLI and the API now consume one shared
+       application capability instead of each owning lifecycle logic.
+D11 — RESPECTED: no new user-facing surface was created; the existing `chat`
+       surface is consumed.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit is
+       made or implied. B9.88 is not product validation.
+```
+
+### 30.13 Repository state
+
+```text
+Implementation commit published successfully:  YES
+Correction commit published successfully:        YES
+HEAD == origin/main at closure time:             YES
+Implementation files remaining modified:        none
+Production code changed by the closure:         none
+Tests changed by the closure:                    none
+Generated files added:                           none
+Dependencies added:                              none
+```
+
+The implementation and correction commits are the verified artifacts and remain
+immutable; neither was amended or rewritten. This closure modifies only
+`docs/roadmap-register-and-numbering-policy.md` and
+`docs/B9.88-chat-application-boundary-cli-caller-decision.md`.
+
+### 30.14 Closure authorization
+
+```text
+B9.88 STATUS: CLOSED
+B9.88 IMPLEMENTATION: COMPLETE
+B9.88 VERIFICATION: COMPLETE
+B9.88 PUBLICATION: COMPLETE
+B9.88 CLOSURE: COMPLETE
+
+B9.89+: NOT ALLOCATED
+Model Library UX: NOT ALLOCATED
+Model Library GUI: NOT ALLOCATED
+GUI: NOT AUTHORIZED
+Product thesis: UNVALIDATED HYPOTHESIS (D12), unchanged by this closure
+```
+
+The HADR's ratified scope was realized exactly as decided: the existing CLI
+`chat` command now consumes the existing application boundary, and no new Chat
+product architecture was introduced. No decision was reopened, reinterpreted or
+amended beyond the owner's authorized Amendment A. This closure allocates no
+successor identifier and authorizes no future capability.
