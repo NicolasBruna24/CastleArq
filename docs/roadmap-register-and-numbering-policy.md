@@ -8562,17 +8562,23 @@ Non-goals:                see 34.4
 Architectural decision:   HUMAN-RATIFIED HADR — Internal Dynamic Model Library
                           Capability; DECISION: AUTHORIZE, preceding this
                           allocation
-Current State:            ALLOCATED — allocated by section 34. Not implemented,
-                          not verified, not closed.
-Implementation Commit:    NONE — implementation is not authorized by this NAR
-Verification Result:      NOT PERFORMED
-Closure Commit:           NONE — closure is not authorized by this NAR
+Current State:            CLOSED — allocated by section 34; implemented, verified
+                          and closed by the controlled closure transition
+                          recorded in this section
+Implementation Commit:    f6ed4dc97a75692bd3404f59d2340ab9757f3278
+                          ("feat: implement B9.91 dynamic model library")
+Verification Result:      COMPLETE — evidence audit PASSED WITH OBSERVATIONS;
+                          focused suite 51 tests passed; full suite 2211 passed,
+                          2718 subtests passed, 0 failures, 0 errors, 0 skipped
+Closure Commit:           the commit that contains this closure update
+                          (a commit cannot contain its own hash; this record is
+                          committed in that commit — the section 32.2 convention)
 Release Association:      NOT YET DEFINED
 Supersession:             none (cross-reference only, as recorded above)
 Documented?:              YES — this document + the decision record
 Number Allocation Record: PRESENT — section 34
 Retrospective Record:     NO — prospective allocation record
-Human decisions pending:  none as to allocation
+Human decisions pending:  none
 ```
 
 The lifecycle state asserted by this record is, in full and without implication
@@ -8580,6 +8586,9 @@ of anything further:
 
 ```text
 B9.91 = ALLOCATED
+B9.91 = IMPLEMENTED
+B9.91 = VERIFIED
+B9.91 = CLOSED
 ```
 
 > **SUPERSESSION NOTE.** Section 33 states that B9.91 and higher identifiers are
@@ -9010,17 +9019,23 @@ D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
 
 ```text
 NUMBER ALLOCATION:         APPROVED BY THIS NAR
-IMPLEMENTATION AUTHORIZED: NO — by this NAR
-IMPLEMENTATION:            NOT PERFORMED
-VERIFICATION AUTHORIZED:   NO — by this NAR
-VERIFICATION:              NOT PERFORMED
-CLOSURE AUTHORIZED:        NO — by this NAR
-CLOSURE:                   NOT PERFORMED
+IMPLEMENTATION AUTHORIZED: NO — by this NAR; executed by the separate
+                           implementation task, commit
+                           f6ed4dc97a75692bd3404f59d2340ab9757f3278
+                           ("feat: implement B9.91 dynamic model library")
+IMPLEMENTATION:           COMPLETE
+VERIFICATION AUTHORIZED:   NO — by this NAR; executed by the separate
+                           READ-ONLY evidence audit
+VERIFICATION:             COMPLETE — evidence audit PASSED WITH OBSERVATIONS;
+                           focused suite 51 tests passed; full suite 2211 passed,
+                           2718 subtests passed, 0 failures, 0 errors, 0 skipped
+CLOSURE AUTHORIZED:        YES — formal closure operation (this transition)
+CLOSURE:                   CLOSED
 ```
 
-At this anchor no Dynamic Model Library capability exists in the repository, no
-source file, test, surface or refactoring is authorized here, and nothing in this
-record changes that.
+The implementation and verification above were performed by separate tasks and
+are recorded here by this closure transition only. Nothing in this section
+retroactively authorized them.
 
 ```text
 ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
@@ -9033,14 +9048,17 @@ DECISION RECORD STATUS: HUMAN-RATIFIED
 DECISION:               AUTHORIZE — internal stateless Dynamic Model Library
                         capability
 NUMBER ALLOCATION:      APPROVED BY THIS NAR
-IMPLEMENTATION:         NOT AUTHORIZED by this record
-VERIFICATION:           NOT PERFORMED
-CLOSURE:                NOT PERFORMED
+IMPLEMENTATION:         COMPLETE — by the separate implementation task, commit
+                        f6ed4dc97a75692bd3404f59d2340ab9757f3278
+                        (not by this NAR)
+VERIFICATION:           COMPLETE — by the separate READ-ONLY evidence audit
+                        (not by this NAR)
+CLOSURE:                CLOSED — by this controlled closure transition
 ```
 
-> Implementation is **not** authorized by this record. The next required step is
-> a separate implementation task consuming B9.91. No source file, test, surface
-> or refactoring is authorized here.
+> Implementation and verification were **not** authorized by the NAR; they were
+> executed by the separate tasks referenced above. This closure transition only
+> records their completed state in the register.
 
 B9.80 through B9.90 are not modified by this record. B9.92+ is NOT allocated by
 this record.
@@ -9048,13 +9066,18 @@ this record.
 ### 34.16 Register entry state summary
 
 ```text
-B9.91 STATUS:         ALLOCATED
-B9.91 IMPLEMENTATION: NOT PERFORMED
-B9.91 VERIFICATION:   NOT PERFORMED
-B9.91 CLOSURE:        NOT PERFORMED
+B9.91 STATUS:         CLOSED
+B9.91 IMPLEMENTATION: COMPLETE
+B9.91 VERIFICATION:   COMPLETE
+B9.91 CLOSURE:        CLOSED
 B9.90:                CLOSED — preserved verbatim (section 33), immutable
 B9.92+:               NOT ALLOCATED
 ```
+
+B9.91 closure transition (this section, commit "docs: close roadmap block
+B9.91") modified only this document. Source, tests, configuration, packaging,
+ADRs and the pre-existing untracked decision-preparation document were not
+touched by this transition.
 
 Working tree at anchor:
   tracked tree clean apart from this allocation record; git diff --check clean;
