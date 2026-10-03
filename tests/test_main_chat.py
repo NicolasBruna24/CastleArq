@@ -132,7 +132,7 @@ def pipeline(tmp_path, monkeypatch):
         return session
 
     class FakeResolver:
-        def __init__(self, store):
+        def __init__(self, store, models=None):
             pass
 
         def resolve(self, model_id, *, quantization=None, filename=None):
@@ -150,8 +150,12 @@ def pipeline(tmp_path, monkeypatch):
                 checksum_verified=True,
             )
 
+    # B9.88: resolution and preparation now happen inside the application
+    # boundary (castlearq.run_service), not in castlearq.main. These seams are
+    # therefore patched on run_service_module. The CLI still owns capability
+    # detection and admission, which remain patched on main_module below.
     monkeypatch.setattr(main_module, "ModelStore", lambda: object())
-    monkeypatch.setattr(main_module, "ModelArtifactResolver", FakeResolver)
+    monkeypatch.setattr(run_service_module, "ModelArtifactResolver", FakeResolver)
     monkeypatch.setattr(
         run_service_module, "detect_hardware", lambda: SimpleNamespace(gpus=())
     )
@@ -319,13 +323,16 @@ def test_chat_resolution_failure_returns_1(pipeline, monkeypatch):
     from castlearq.resolver import ModelArtifactResolutionError
 
     class FailingResolver:
-        def __init__(self, store):
+        def __init__(self, store, models=None):
             pass
 
         def resolve(self, model_id, *, quantization=None, filename=None):
             raise ModelArtifactResolutionError("model not found")
 
-    monkeypatch.setattr(main_module, "ModelArtifactResolver", FailingResolver)
+    # B9.88: the resolver now runs inside the application boundary.
+    monkeypatch.setattr(
+        run_service_module, "ModelArtifactResolver", FailingResolver
+    )
     err = io.StringIO()
     code = chat_model(
         "unknown-model",
@@ -404,3 +411,164 @@ def test_chat_unavailable_runtime_returns_1(pipeline, monkeypatch, tmp_path):
     assert "no invocable runtime" in err.getvalue()
     assert len(pipeline.sessions) == 0  # never reached the session
 
+
+
+# ---------------------------------------------------------------------------
+# B9.88 — caller convergence regression coverage.
+#
+# The CLI owns compatibility evaluation and admission; the application
+# boundary owns resolution, preparation and session opening. These tests prove
+# that ownership split, and that the admission is forwarded unchanged.
+# ---------------------------------------------------------------------------
+
+
+def test_chat_delegates_session_opening_to_the_application_boundary(
+    pipeline, monkeypatch
+):
+    """The CLI must consume open_chat_session, not build the session itself."""
+    recorded = {}
+    real_open = main_module.open_chat_session
+
+    def spy(*args, **kwargs):
+        recorded["args"] = args
+        recorded["kwargs"] = kwargs
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(main_module, "open_chat_session", spy)
+
+    code, _ = run_chat(pipeline, ["hello", "/exit"])
+
+    assert code == 0
+    assert recorded, "the CLI must call the application boundary"
+    # The service received the CLI's arguments unchanged, including admission.
+    assert recorded["args"][0] == "some-model"
+    assert recorded["kwargs"]["admission"] is not None
+    assert isinstance(
+        recorded["kwargs"]["dependencies"], main_module.ChatDependencies
+    )
+
+
+def test_chat_forwards_the_cli_admission_unchanged(pipeline, monkeypatch):
+    """The admission the CLI mints is the exact object handed to the boundary."""
+    minted = EvaluationAdmission(status="evaluated", verdict="compatible")
+    captured = {}
+    real_open = main_module.open_chat_session
+
+    def spy(*args, **kwargs):
+        captured["admission"] = kwargs.get("admission")
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(main_module, "open_chat_session", spy)
+    # Identity, not equality: no re-wrapping and no second admission.
+    monkeypatch.setattr(
+        main_module,
+        "_admit_for_preparation",
+        lambda *args, **kwargs: minted,
+    )
+
+    code, _ = run_chat(pipeline, ["hello", "/exit"])
+
+    assert code == 0
+    assert captured["admission"] is minted
+
+
+def test_chat_evaluates_compatibility_exactly_once(pipeline, monkeypatch):
+    """One evaluation and one admission per invocation."""
+    evaluations = []
+    admissions = []
+
+    def counting_evaluate(*args, **kwargs):
+        evaluations.append(1)
+        return SimpleNamespace(evaluation=SimpleNamespace(result=None))
+
+    def counting_to_admission(result):
+        admissions.append(1)
+        return EvaluationAdmission(status="evaluated", verdict="compatible")
+
+    monkeypatch.setattr(
+        main_module, "evaluate_model_compatibility", counting_evaluate
+    )
+    monkeypatch.setattr(main_module, "to_admission", counting_to_admission)
+
+    code, _ = run_chat(pipeline, ["hello", "/exit"])
+
+    assert code == 0
+    assert len(evaluations) == 1, "the CLI must not evaluate twice"
+    assert len(admissions) == 1, "the CLI must not admit twice"
+
+
+def test_chat_streams_through_the_session_factory_seam(pipeline):
+    """Streaming survives because chunk_callback travels via session_factory."""
+    code, output = run_chat(pipeline, ["hello", "/exit"])
+    assert code == 0
+    assert pipeline.sessions[0].chunk_callback is not None
+    # Chunks are written incrementally by the callback, not assembled by the CLI.
+    assert "Hello " in output
+    assert "world!" in output
+
+
+def test_chat_maps_service_launch_failure_to_chat_error(pipeline, monkeypatch):
+    """ChatLaunchFailedError keeps the current exit code and message prefix."""
+    from castlearq.run_service import ChatLaunchFailedError
+
+    def raising_open(*args, **kwargs):
+        raise ChatLaunchFailedError("chat runtime failed to start")
+
+    monkeypatch.setattr(main_module, "open_chat_session", raising_open)
+
+    err = io.StringIO()
+    code = chat_model(
+        "some-model",
+        input_fn=make_inputs([]),
+        out=io.StringIO(),
+        err=err,
+        session_factory=pipeline.factory,
+    )
+    assert code == 1
+    assert "Chat error: chat runtime failed to start" in err.getvalue()
+    assert len(pipeline.sessions) == 0
+
+
+def test_chat_maps_preparation_failure_warnings_to_stderr(pipeline, monkeypatch):
+    """Warnings carried by a preparation failure are still surfaced."""
+    from castlearq.run_service import RunPreparationFailedError
+
+    def raising_open(*args, **kwargs):
+        raise RunPreparationFailedError(
+            "final artifact missing", warnings=("artifact is unverified",)
+        )
+
+    monkeypatch.setattr(main_module, "open_chat_session", raising_open)
+
+    err = io.StringIO()
+    code = chat_model(
+        "some-model",
+        input_fn=make_inputs([]),
+        out=io.StringIO(),
+        err=err,
+        session_factory=pipeline.factory,
+    )
+    assert code == 1
+    assert "Chat error: final artifact missing" in err.getvalue()
+    assert "Warning: artifact is unverified" in err.getvalue()
+
+
+def test_chat_maps_unknown_model_to_chat_error(pipeline, monkeypatch):
+    """ModelNotFoundError keeps exit 1 and the Chat error: prefix."""
+    from castlearq.run_service import ModelNotFoundError
+
+    def raising_open(*args, **kwargs):
+        raise ModelNotFoundError("Model not found in the local catalog: nope")
+
+    monkeypatch.setattr(main_module, "open_chat_session", raising_open)
+
+    err = io.StringIO()
+    code = chat_model(
+        "nope",
+        input_fn=make_inputs([]),
+        out=io.StringIO(),
+        err=err,
+        session_factory=pipeline.factory,
+    )
+    assert code == 1
+    assert "Chat error: Model not found in the local catalog: nope" in err.getvalue()

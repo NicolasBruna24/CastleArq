@@ -24,9 +24,14 @@ from types import SimpleNamespace
 
 from .api import serve
 from .run_service import (
+    ChatDependencies,
+    ChatLaunchFailedError,
     ExecutionPreparation,
+    ModelNotFoundError,
     PreparationError,
+    RunPreparationFailedError,
     detect_runtime_statuses as _detect_runtime_statuses,
+    open_chat_session,
     prepare as _prepare,
 )
 from .compatibility import CompatibilityConfig, CompatibilityStatus, assess_model, load_config, recommend_models
@@ -1830,18 +1835,11 @@ def chat_model(
         print("Usage: python3 -m castlearq.main chat <model-id>", file=err)
         return 2
 
-    try:
-        model_store = model_store if model_store is not None else ModelStore()
-        resolver = ModelArtifactResolver(model_store)
-        resolved = resolver.resolve(
-            model_id,
-            quantization=quantization,
-            filename=filename,
-        )
-    except ModelArtifactResolutionError as error:
-        print(f"Chat error: {error}", file=err)
-        return 1
-
+    # B9.88 — caller convergence. The CLI owns compatibility evaluation and
+    # admission (one evaluation, one admission per invocation); resolution,
+    # preparation and session opening are delegated to the existing
+    # application boundary that the HTTP API already consumes. The admission is
+    # forwarded unchanged: open_chat_session validates it, it never mints one.
     capability = detect_llama_capability()
     if not capability.invocable:
         print(
@@ -1850,6 +1848,8 @@ def chat_model(
         )
         return 1
 
+    model_store = model_store if model_store is not None else ModelStore()
+
     admission = _admit_for_preparation(
         model_id,
         capability,
@@ -1857,35 +1857,49 @@ def chat_model(
         filename=filename,
         model_store=model_store,
     )
-    try:
-        preparation = _prepare(
-            resolved.model, resolved.artifact, capability, model_store,
-            admission=admission,
-        )
-    except (PreparationError, ExecuteAdmissionDeniedError) as error:
-        print(f"Chat error: {_error_message(error)}", file=err)
-        for warning in _prepare_warnings(error):
-            print(f"Warning: {warning}", file=err)
-        return 1
-
-    for warning in preparation.selection_warnings:
-        print(f"Warning: {warning}", file=err)
 
     def stream(chunk: str) -> None:
         out.write(chunk)
         out.flush()
 
-    if session_factory is not None:
-        session = session_factory(
-            capability, preparation.executable_artifact, preparation.target, chunk_callback=stream
-        )
-    else:
-        session = start_chat_session(
-            capability,
-            preparation.executable_artifact,
-            preparation.target,
+    # The existing ChatDependencies.session_factory seam carries the CLI's
+    # chunk callback into the runtime session. open_chat_session does not
+    # expose chunk_callback itself and its application contract is unchanged by
+    # B9.88; this is the injection point the API tests already use.
+    def factory(capability_, executable_artifact, target):
+        if session_factory is not None:
+            return session_factory(
+                capability_, executable_artifact, target, chunk_callback=stream
+            )
+        return start_chat_session(
+            capability_,
+            executable_artifact,
+            target,
             chunk_callback=stream,
         )
+
+    try:
+        opened = open_chat_session(
+            model_id,
+            quantization=quantization,
+            filename=filename,
+            dependencies=ChatDependencies(
+                model_store=model_store,
+                capability=capability,
+                session_factory=factory,
+            ),
+            admission=admission,
+        )
+    except ModelNotFoundError as error:
+        print(f"Chat error: {_error_message(error)}", file=err)
+        return 1
+    except (RunPreparationFailedError, ChatLaunchFailedError) as error:
+        print(f"Chat error: {_error_message(error)}", file=err)
+        for warning in _error_warnings(error):
+            print(f"Warning: {warning}", file=err)
+        return 1
+
+    session = opened.session
 
     print("CastleArq — chat", file=out)
     print(f"Model: {model_id}", file=out)

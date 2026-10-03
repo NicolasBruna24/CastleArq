@@ -261,13 +261,30 @@ class MainRunTests(unittest.TestCase):
         resolver_mock.resolve.return_value = self.resolved
         session_mock = Mock()
         session_mock.state = Mock(value="closed")
-        capability = Mock()
-        capability.invocable = True
-        with patch("castlearq.main.ModelArtifactResolver", return_value=resolver_mock), patch(
+        # B9.88: chat now opens its session through the application boundary.
+        # The seam that previously mocked castlearq.main.start_chat_session is
+        # the session_factory argument chat_model already accepts, so the test
+        # keeps injecting a fake session and still asserts resolver forwarding.
+        from castlearq.runtimes import RuntimeCapability
+
+        capability = RuntimeCapability(
+            name="llama.cpp CLI", executable_path="/tmp/llama", version="0.4",
+            supported_formats=("GGUF",), supported_backends=("CPU",),
+            prompt_input_modes=("argument",), supports_one_shot=True,
+            available=True,
+            backend_arguments=(("CPU", "none"),),
+        )
+        preparation = SimpleNamespace(
+            executable_artifact=Mock(),
+            target=ExecutionTarget("llama.cpp CLI", "CPU"),
+            compatibility_warnings=(),
+            selection_warnings=(),
+        )
+        with patch("castlearq.run_service.ModelArtifactResolver", return_value=resolver_mock), patch(
             "castlearq.main.detect_llama_capability", return_value=capability
         ), patch(
-            "castlearq.main._prepare", return_value=self.preparation
-        ), patch("castlearq.main.start_chat_session", return_value=session_mock):
+            "castlearq.run_service.prepare", return_value=preparation
+        ):
             out = io.StringIO()
             err = io.StringIO()
             code = chat_model(
@@ -277,6 +294,7 @@ class MainRunTests(unittest.TestCase):
                 input_fn=lambda: "/exit",
                 out=out,
                 err=err,
+                session_factory=lambda *args, **kwargs: session_mock,
             )
             self.assertEqual(code, 0)
             resolver_mock.resolve.assert_called_once_with(

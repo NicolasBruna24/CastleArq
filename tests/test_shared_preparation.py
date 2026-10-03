@@ -220,11 +220,13 @@ class SharedPreparationTests(unittest.TestCase):
         session.send.return_value = SimpleNamespace(
             user="hi", assistant="Hello!", chunks=("Hello!",), metrics=None
         )
-        with patch("castlearq.main.ModelArtifactResolver") as resolver, patch(
+        with patch("castlearq.run_service.ModelArtifactResolver") as resolver, patch(
             "castlearq.main.detect_llama_capability", return_value=_invocable_capability()
         ), patch(
-            "castlearq.main._prepare", return_value=preparation
-        ) as prepare, patch("castlearq.main.start_chat_session", return_value=session):
+            "castlearq.run_service.prepare", return_value=preparation
+        ) as prepare, patch(
+            "castlearq.chat.start_chat_session", return_value=session
+        ):
             resolver.return_value.resolve.return_value = self.resolved
             out = io.StringIO()
             err = io.StringIO()
