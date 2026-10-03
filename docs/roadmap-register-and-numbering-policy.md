@@ -7681,3 +7681,173 @@ No closure record is created by this subsection, and verification is not marked
 passed. The historical chain (allocation -> implementation -> verification ->
 finding -> human decision -> corrective implementation -> re-verification ->
 closure) is preserved and remains open at "human decision".
+
+---
+
+## 32. B9.89 — Closure Record
+
+```text
+B9.89 STATUS:        CLOSED
+B9.89 IMPLEMENTATION: COMPLETE
+B9.89 VERIFICATION:   COMPLETE
+B9.89 PUBLICATION:    NOT PERFORMED (local only; not pushed at closure time)
+B9.89 CLOSURE:        COMPLETE
+
+B9.90+: NOT ALLOCATED
+Model Library UX: NOT ALLOCATED
+Model Library GUI: NOT ALLOCATED
+GUI: NOT AUTHORIZED
+```
+
+Sections 31.1 through 31.11 are preserved verbatim. In particular, 31.8 and 31.10
+remain the **allocation-time** statement ("NOT IMPLEMENTED", "NOT VERIFIED",
+"NOT CLOSED") and are not rewritten by this closure; this section is the
+contemporaneous lifecycle record that follows them, exactly as section 30
+followed section 29 for B9.88.
+
+### 32.1 Title and allocation
+
+```text
+Title:              B9.89 — CLI Run Through Application Boundary
+Allocation Commit:  9fdd60da6d4b4b308f7c9a09b518b3da3d7d2344
+Allocation anchor:  fe9cd03d19962059e76520d06d3b6acb30f0d139
+                    (the pre-implementation B9.88 closure state)
+Decision record:    docs/run-boundary-architectural-decision.md
+                    (HUMAN-RATIFIED, DECISION REFERENCE FOR B9.89)
+```
+
+### 32.2 Commit chain
+
+```text
+Allocation commit:              9fdd60da6d4b4b308f7c9a09b518b3da3d7d2344
+                                ("docs: allocate roadmap block B9.89")
+Original implementation commit: 5ee4bb5b20560ec11f7c05e2ad93a49967410068
+                                ("feat: route CLI run through application service")
+Amendment commit:               b356488f324cebf2d35e0d75ff4f5e69ffa419c7
+                                ("docs: record B9.89 observable contract amendment")
+Corrective implementation:      b266c887fd30a26d0bf1ee0a775ea69b52b6e486
+                                ("fix: preserve runtime stderr through run boundary")
+Closure commit:                 the commit that contains this section 32
+                                (a commit cannot contain its own hash; this
+                                record is committed in that commit)
+```
+
+### 32.3 Corrective history — stated accurately
+
+The first formal verification did **not** pass. It found two deviations from the
+observable contract and returned BLOCKED:
+
+```text
+(1) RUNTIME STDERR WAS NOT TRANSPORTED. The pre-B9.89 CLI emitted the
+    runtime's result.stderr to CLI stderr on both the success and the failure
+    path. RunOutcome carried only (model_id, output, exit_code, warnings) and
+    RunExecutionFailedError carried only (message, error_code), so runtime
+    diagnostics were silently discarded.
+
+(2) WARNING MULTIPLICITY DIFFERED. The pre-B9.89 failure path concatenated
+    _error_warnings(error) + _prepare_warnings(error) and could repeat a
+    warning line; the application boundary exposes a deduplicated merge.
+```
+
+Human Amendment A (HADR section 16) then decided both points explicitly:
+
+```text
+RUNTIME STDERR:       PRESERVE    — corrective implementation required
+WARNING MULTIPLICITY: DEDUPLICATE — RATIFIED, no corrective change required
+```
+
+The corrective implementation resolved (1) by transporting
+`ExecutionResult.stderr` through `RunOutcome.stderr` on success and
+`RunExecutionFailedError.stderr` on failure, and by printing it from the CLI. It
+retained the human-ratified deduplication from (2) unchanged.
+
+The original implementation at 5ee4bb5 did **not** satisfy the amended
+observable contract and was never retroactively recorded as having done so; it
+remained non-conforming until the corrective commit.
+
+### 32.4 Final implementation result
+
+The final B9.89 implementation:
+
+- routes the CLI one-shot `run` through `run_once`;
+- keeps compatibility evaluation and admission minting at the CLI/application
+  surface, which is Q2's surface-owned admission decision;
+- forwards the **exact** admission object into `run_once`;
+- removes the CLI's direct resolution, preparation and runtime invocation
+  orchestration;
+- preserves runtime stderr through the application boundary;
+- preserves success ordering: stdout -> runtime stderr -> warnings;
+- preserves failure ordering: runtime stderr -> `Run error:` -> warnings;
+- preserves warning deduplication as ratified by Amendment A;
+- preserves exit codes 0 (success), 1 (runtime/preparation failure) and
+  2 (usage error);
+- leaves `run` and `execute` separate; convergence remains deferred (Q4);
+- does not involve `ModelExecutionService` (Q5).
+
+No architectural claim beyond the ratified HADR is made by this closure.
+
+### 32.5 Verification result
+
+```text
+Formal verification (first pass):          BLOCKED
+Human Amendment A (decisions recorded):    b356488
+Formal corrective re-verification:         PASSED
+Formal closure eligibility audit:          PASSED
+
+Focused tests:   71 passed, 23 subtests passed
+Full suite:      2151 passed, 2706 subtests passed
+                 0 failed, 0 skipped, exit 0
+git diff --check: PASS
+
+Final verified HEAD before closure: b266c887fd30a26d0bf1ee0a775ea69b52b6e486
+```
+
+### 32.6 Scope
+
+Files touched by the original implementation commit (5ee4bb5):
+
+```text
+castlearq/main.py
+castlearq/run_service.py
+tests/test_main.py
+tests/test_shared_preparation.py
+tests/test_compatibility_report.py
+tests/test_gpu_diagnosis_cli.py
+```
+
+The two extra test files were audited as mechanical retargeting required to
+preserve their "no runtime invoked" guards after `castlearq.main.LlamaCppRunner`
+ceased to exist; that decision is not reopened here.
+
+Files touched by the corrective implementation commit (b266c88):
+
+```text
+castlearq/main.py
+castlearq/run_service.py
+tests/test_main.py
+tests/test_run_service_errors.py
+```
+
+Not modified by B9.89: `castlearq/api.py`, `castlearq/chat.py`,
+`castlearq/runner.py`, `castlearq/execute_model.py`,
+`castlearq/execution_service.py`, and no product-vision document. No telemetry,
+persistence, accounts, GUI, Model Library, Hugging Face UX, fine-tuning, second
+runtime, Ollama or multi-GPU work was introduced.
+
+### 32.7 Repository state at closure
+
+```text
+Working tree clean:                              YES
+Production code changed by this closure:         none
+Tests changed by this closure:                   none
+Documentation changed by this closure:           this file, plus the HADR
+Branches pushed at closure time:                 none
+```
+
+The implementation, amendment and corrective commits are the verified
+artifacts and remain immutable; none was amended or rewritten by this closure.
+This closure modifies only `docs/roadmap-register-and-numbering-policy.md` and
+`docs/run-boundary-architectural-decision.md`.
+
+B9.80 through B9.88 are not modified by this closure. This closure allocates no
+successor identifier and authorizes no future capability.

@@ -616,3 +616,86 @@ B9.89 STATE:  ALLOCATED
 
 Sections 1-15 of this record remain in force. Only the section 8 interpretation
 of observable-contract preservation is amended, and only as stated above.
+
+---
+
+## 17. B9.89 — Closure Record
+
+```text
+STATUS:        CLOSED
+IMPLEMENTATION: COMPLETE
+VERIFICATION:   COMPLETE
+CLOSURE:        COMPLETE
+PUBLICATION:    NOT PERFORMED (local only; not pushed at closure time)
+```
+
+Sections 1-16 above, including Amendment A, are preserved verbatim and are not
+rewritten by this closure. This section records that the ratified scope was
+realized exactly as decided.
+
+### 17.1 Closure precondition chain
+
+Closure occurred only after, and in this order:
+
+```text
+1. allocation                  9fdd60da6d4b4b308f7c9a09b518b3da3d7d2344
+2. implementation              5ee4bb5b20560ec11f7c05e2ad93a49967410068
+3. corrective implementation   b266c887fd30a26d0bf1ee0a775ea69b52b6e486
+   (authorized by the human Amendment A recorded at b356488)
+4. formal verification         PASSED (corrective re-verification)
+5. formal closure eligibility  PASSED
+   -> this closure
+```
+
+No decision in sections 1-15 was reopened, reinterpreted or amended by this
+closure.
+
+### 17.2 Corrective history
+
+The first formal verification of commit 5ee4bb5 **failed** and returned BLOCKED,
+finding that runtime stderr was not transported through `run_once` and that
+warning multiplicity differed because the boundary deduplicates. The human owner
+recorded Amendment A (section 16, commit b356488) deciding runtime stderr
+PRESERVED and warning deduplication RATIFIED. The corrective implementation at
+b266c88 restored the stderr transport and retained the ratified deduplication.
+
+Commit 5ee4bb5 did not satisfy the amended observable contract and was never
+recorded as having done so; it remained non-conforming until b266c88.
+
+### 17.3 Final result
+
+```text
+CLI run            -> routed through run_once
+Admission          -> surface-owned; exact object forwarded; one evaluation
+CLI orchestration  -> resolution/preparation/runtime removed from the CLI
+Runtime stderr     -> transported and preserved (success and failure)
+Success ordering   -> stdout -> runtime stderr -> warnings
+Failure ordering   -> runtime stderr -> Run error -> warnings
+Warnings           -> deduplicated (ratified by Amendment A)
+Exit codes         -> 0 success / 1 failure / 2 usage
+run vs execute     -> separate; convergence deferred (Q4)
+ModelExecutionService -> does not participate (Q5)
+```
+
+### 17.4 Verification evidence
+
+```text
+Formal corrective re-verification: PASSED
+
+Focused:  71 passed, 23 subtests passed
+Full:     2151 passed, 2706 subtests passed
+          0 failed, 0 skipped, exit 0
+git diff --check: PASS
+
+Final verified HEAD before closure:
+  b266c887fd30a26d0bf1ee0a775ea69b52b6e486
+
+Closure commit: the commit that contains this section 17.
+```
+
+The closure commit hash is not written here because a commit cannot contain its
+own hash; this record is committed in that commit. The implementation,
+amendment and corrective commits are immutable and were not rewritten. This
+closure changed documentation only.
+
+Roadmap counterpart: `docs/roadmap-register-and-numbering-policy.md` section 32.
