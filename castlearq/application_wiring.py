@@ -85,6 +85,7 @@ from typing import Callable, Sequence
 from .acquisition_service import ModelAcquisitionService
 from .catalog_query_service import ModelCatalogQueryService
 from .discovery import ModelDiscovery
+from .dynamic_model_library import DynamicModelLibrary
 from .downloads.downloader import Downloader
 from .downloads.planner import DownloadPlanner
 from .execute_model import ExecuteModelDependencies
@@ -387,4 +388,43 @@ def compose_catalog_query_service(
             if discovery_provider is not None
             else HuggingFaceDiscoveryProvider()
         ),
+    )
+# ----------------------------------------------------------------------
+# Dynamic Model Library composition (B9.91: internal capability, no surface)
+# ----------------------------------------------------------------------
+
+
+def compose_dynamic_model_library(
+    *,
+    discovery_provider: ModelDiscovery | None = None,
+    selection_delegate=None,
+):
+    """Compose the B9.91 ``DynamicModelLibrary`` capability from real collaborators.
+
+    This is the composition point for the internal Dynamic Model Library
+    capability, in the same spirit as ``compose_catalog_query_service`` for the
+    query use case and ``compose_acquisition_service`` for the download use
+    case.
+
+    One call is ONE capability instance. The capability is never cached between
+    invocations and holds no state: every search is one discovery round-trip and
+    every selection is one delegation to the existing B9.84 authority.
+
+    Scope (register section 34): this function wires an application capability
+    and nothing else. It authorizes no CLI command, no API endpoint, no GUI and
+    no Model Library surface, and it exposes no acquisition status: acquirability
+    is unspecified in B9.91. The capability is internal; it is not exported from
+    ``castlearq/__init__.py``.
+
+    The capability imports only the discovery port and the selection boundary;
+    no second dependency-injection mechanism is introduced and no existing
+    factory is modified.
+    """
+    return DynamicModelLibrary(
+        discovery_provider=(
+            discovery_provider
+            if discovery_provider is not None
+            else HuggingFaceDiscoveryProvider()
+        ),
+        selection_delegate=selection_delegate,
     )
