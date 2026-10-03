@@ -8348,3 +8348,715 @@ B9.91+:              NOT ALLOCATED
 Working tree at anchor:
   tracked tree clean; git diff --check clean; ahead/behind origin/main 0/0.
 ```
+---
+
+## 34. B9.91 — Number Allocation Record
+
+`B9.91` is allocated as the next main block under section 6, on the evidence of a
+section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.91 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified Human Architectural Decision Record for the **Internal Dynamic
+Model Library Capability**, which was preceded by a READ-ONLY architectural
+analysis, a READ-ONLY decision-preparation audit, a human architectural
+decision, and a READ-ONLY formal roadmap allocation audit (which concluded
+`Allocation Readiness: READY FOR ALLOCATION`). This section allocates the number
+that carries that scope; it does not widen, reinterpret or extend it.
+
+### 34.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.91
+
+Title:
+  Internal Dynamic Model Library Capability (Live/Stateless)
+
+Allocation Date:
+  2026-10-03
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash
+  ("docs: allocate roadmap block B9.91")
+```
+  Recorded by the two-step mechanism stated in section 11 and used identically
+  by sections 14, 16, 19, 21, 23, 25, 27, 29, 31 and 33: at authoring time the
+  hash did not exist and the field reads PENDING; a commit hash cannot be known
+  before the commit exists, and writing a guessed value would be a fabricated
+  identifier. The allocation itself is unchanged.
+
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 33 — B9.90 Closure Record
+Section for this allocation:
+  section 34 — this record
+
+Human Architectural Decision Record:
+  Internal Dynamic Model Library Capability
+  STATUS: HUMAN-RATIFIED
+  DECISION: AUTHORIZE
+  Discovery authority:        ModelDiscovery (B9.80)
+  Selection authority:        B9.84 — deterministic selection
+  Translation authority:      B9.82 — discovery-to-acquisition mapping
+  Locator authority:          B9.90 / DownloadPlanner — canonical locator
+  Download authority:         Downloader
+  Persistence authority:      ModelStore
+  Orchestration authority:    ModelAcquisitionService (B9.85)
+  NUMBER (at ratification):   NONE — the decision record assigned no identifier;
+                              this section performs the allocation
+
+Corpus/HEAD Anchor:
+  1fe09421924b64b5eb91a8ae2bd70be7f3465856
+Corpus File Count:
+  227 versioned files (git ls-files at the anchor above)
+
+Corpus Integrity Evidence:
+  The corpus is fixed by the anchor commit itself: HEAD and origin/main both
+  name 1fe09421924b64b5eb91a8ae2bd70be7f3465856, the tracked working tree is
+  clean (git diff --check empty; git diff and git diff --cached empty), and the
+  only untracked file at the anchor is the pre-existing, deliberately unstaged
+  docs/post-b990-architectural-decision-preparation.md. Identifier discovery was
+  performed across the whole tracked corpus with git grep, not by reading
+  documents alone (section 6 requires corpus inspection, not document reading).
+
+Identifier Set:
+  Highest main identifier in real use before this section: B9.90
+  Preceding closed block: B9.90 (section 33), CLOSED.
+  B9.91 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.91 in the anchor corpus: 5
+  All five are explicit non-allocations; none allocates B9.91:
+    - section 33.1: "B9.91 and above — CONSIDERED AND DECLINED ..."
+    - section 33.1: "B9.91+ REMAINS NOT ALLOCATED by this record."
+    - section 33.3: "B9.91+ or any speculative future block"
+    - section 33.10: "B9.91+ is NOT allocated by this record."
+    - section 33.11: "B9.91+: NOT ALLOCATED"
+  No competing, competing-pending, reserved or conflicting identifier was found
+  in the corpus. The identifier "Dynamic Model Library" appears zero times in
+  tracked content at this anchor.
+
+  Sub-block identifiers in use: B9.80.1, B9.80.2, B9.80.3, B9.83.1 —
+    pre-existing and illustrative, per the section 8 rule. No B9.91.x sub-block
+    is assigned by this record.
+
+Preceding Block:
+  B9.90 — Planner-Canonicalized Revision-Aware Acquisition Locator
+
+Preceding Block Status:
+  ALLOCATED (section 33), IMPLEMENTED, VERIFIED, CLOSED (section 33),
+  published state main == HEAD == origin/main at the anchor above.
+
+Highest Verified Allocation:
+  B9.90
+
+Branch:
+  main
+```
+Candidate Numbers Considered:
+
+```text
+B9.91 — SELECTED. highest_verified_allocated_block + 1 = B9.90 + 1. No
+  allocation, reservation, provisional assignment, sub-block or competing
+  claim exists for it anywhere in the anchor corpus; every pre-existing
+  occurrence is an explicit non-allocation or a recorded decline.
+
+B9.90 and below — CONSIDERED AND DECLINED. Section 6 fixes the floor at the
+  highest VERIFIED allocated identifier; section 9 declares gaps NOT REUSED
+  prospectively. B9.90 is already allocated, implemented, verified and closed.
+  No gap is claimed abandoned, freed, reserved or erroneous (section 13).
+
+B9.92 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+  immediately following the highest verified main block. B9.92 would skip
+  B9.91 and is therefore invalid.
+
+B9.91.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+  integers of the form B9.x raise the main-block floor, and a sub-block does
+  not by itself advance the next main block number.
+
+Any alias, umbrella or renamed identifier — CONSIDERED AND DECLINED. Section 6
+  admits only the integer form; no alias is minted.
+```
+
+Selected Number:
+
+```text
+B9.91
+```
+
+Validity Reason:
+
+```text
+B9.90 is the highest main block assigned, implemented, verified and closed in
+the activation corpus at the anchor recorded above. B9.91 is the integer
+immediately following it, as section 6 requires. Every pre-existing occurrence
+of B9.91 in the corpus is an explicit non-allocation or a recorded decline, so
+no competing allocation exists. The number is therefore valid under the active
+rule, and the section 7 corpus inspection record is present above.
+```
+
+Release Association:
+
+```text
+NOT YET DEFINED
+```
+
+Supersession:
+
+```text
+none as to B9.90 — the B9.90 closure record (section 33) remains the accurate
+description of B9.90 and is not rewritten by this section.
+
+cross-reference only — the five "B9.91+: NOT ALLOCATED" statements in section 33
+remain the accurate description of the corpus at their own anchors and are not
+rewritten. They are superseded by this record as a cross-reference only.
+```
+
+Documented?:
+
+```text
+YES — this document (section 34), plus the human-ratified Internal Dynamic
+Model Library Capability decision record referenced in 34.1
+```
+
+Number Allocation Record:
+
+```text
+PRESENT — section 34
+```
+
+Retrospective Record:
+
+```text
+NO — prospective allocation record
+```
+
+Human decisions pending:
+
+```text
+none as to allocation — the Internal Dynamic Model Library Capability decision
+record is HUMAN-RATIFIED with DECISION: AUTHORIZE, and the READ-ONLY allocation
+audit concluded READY FOR ALLOCATION.
+
+Future human decisions NOT discharged by this record:
+  - implementation authorization (a separate task, not this NAR)
+  - any presentation surface (GUI / UX / CLI / API), which remains NOT AUTHORIZED
+  - any persistent catalog, provider federation, ModelStore redesign, legacy
+    convergence, model-domain unification or compatibility-evaluation integration
+```
+
+### 34.2 Register entry for B9.91
+
+```text
+Block ID:                 B9.91
+Name:                     Internal Dynamic Model Library Capability
+                           (Live/Stateless)
+Status:                   ALLOCATED
+Origin:                   this document, section 34 (NAR)
+Scope:                    see 34.3 — fixed by the HADR, recorded without
+                           reinterpretation
+Non-goals:                see 34.4
+Architectural decision:   HUMAN-RATIFIED HADR — Internal Dynamic Model Library
+                          Capability; DECISION: AUTHORIZE, preceding this
+                          allocation
+Current State:            ALLOCATED — allocated by section 34. Not implemented,
+                          not verified, not closed.
+Implementation Commit:    NONE — implementation is not authorized by this NAR
+Verification Result:      NOT PERFORMED
+Closure Commit:           NONE — closure is not authorized by this NAR
+Release Association:      NOT YET DEFINED
+Supersession:             none (cross-reference only, as recorded above)
+Documented?:              YES — this document + the decision record
+Number Allocation Record: PRESENT — section 34
+Retrospective Record:     NO — prospective allocation record
+Human decisions pending:  none as to allocation
+```
+
+The lifecycle state asserted by this record is, in full and without implication
+of anything further:
+
+```text
+B9.91 = ALLOCATED
+```
+
+> **SUPERSESSION NOTE.** Section 33 states that B9.91 and higher identifiers are
+> not allocated. Those statements remain the accurate description of the corpus
+> **at their own anchors** and are **not** rewritten by this section. The
+> current, authoritative state of B9.91 is the one asserted above.
+### 34.3 Scope attached to this allocation
+
+The scope was fixed by the HUMAN-RATIFIED decision record and is recorded here
+without reinterpretation.
+
+```text
+Internal Dynamic Model Library Capability (Live/Stateless)
+```
+
+**Purpose, as decided:**
+
+> Establish the internal Dynamic Model Library capability as a live, stateless,
+> model-oriented composition over the existing discovery architecture, so that
+> discovered candidates, variants and artifacts can be organized through one
+> model-oriented capability while preserving existing discovery, selection and
+> acquisition authorities.
+
+This is an **architectural capability allocation**. It is NOT an allocation for
+a visible Model Library product surface.
+
+**Authorized behavior, as decided:**
+
+```text
+internal capability
+live / dynamic behavior
+stateless operation (no persistent state, no catalog, no cache)
+model-oriented organization of discovery results
+reuse of the existing ModelDiscovery boundary
+reuse of the existing deterministic selection authority
+handoff to the existing acquisition pipeline
+Hugging Face as the initial discovery provider through the existing port
+existing GGUF discovery capability as the initial format focus
+```
+
+**In scope:**
+
+```text
+- live model discovery consumption
+- model-oriented organization of discovery results
+- repository inspection composition
+- candidate organization
+- variant organization
+- artifact organization
+- GGUF artifact visibility
+- declared quantization metadata
+- declared architecture metadata where already available
+- declared provider metadata
+- declared revision/provenance metadata
+- reuse of existing deterministic selection
+- handoff to existing acquisition
+- Hugging Face as the initial discovery provider through the existing port
+```
+
+The allocation fixes the responsibility. It does not prescribe an unnecessary
+implementation structure.
+
+### 34.4 Non-goals
+
+The following are explicit B9.91 non-goals. None of them is silently included in
+the allocated capability.
+
+```text
+Presentation:
+  - GUI
+  - Model Library UX
+  - visible Model Library
+  - visual model browser
+  - new CLI Model Library command
+  - new API endpoint
+  - web UI
+  - marketplace presentation
+
+Persistence:
+  - persistent catalog
+  - database
+  - filesystem catalog
+  - cache
+  - offline index
+### 34.5 Architectural authorities consumed, not replaced
+
+B9.91 composes existing authorities. Composing them grants the capability no
+technical authority over them.
+
+```text
+ModelDiscovery / HuggingFaceDiscoveryProvider (B9.80, B9.81)
+    → discovery authority
+
+B9.84 selection
+    → deterministic selection authority
+
+B9.82 mapping
+    → discovery-to-acquisition translation authority
+
+B9.90 / DownloadPlanner
+    → canonical acquisition locator authority
+
+Downloader
+    → download execution and defensive validation
+
+ModelStore
+    → model persistence
+
+ModelAcquisitionService / B9.85
+    → acquisition orchestration
+```
+
+Acquisition relationship as decided:
+
+```text
+Dynamic Model Library
+        ↓
+existing deterministic selection (B9.84)
+        ↓
+existing acquisition (B9.82 / B9.85)
+        ↓
+planner (B9.90)
+        ↓
+downloader
+        ↓
+ModelStore
+```
+
+B9.91 does **not** own, and must not duplicate:
+
+```text
+- URL construction
+- download validation
+- downloading
+- acquisition planning
+- ModelStore persistence
+- acquisition orchestration
+```
+
+### 34.6 Dependencies (verified closed)
+
+```text
+B9.80 — Model Discovery domain contract                  CLOSED
+B9.81 — Hugging Face discovery provider                 CLOSED
+B9.82 — Discovery-to-Acquisition Boundary                CLOSED
+B9.83 — Revision-Aware Acquisition                       CLOSED
+B9.84 — Selection Boundary                               CLOSED
+B9.85 — Production Acquisition Chain                     CLOSED
+B9.86 — Catalog Query Boundary                           CLOSED
+B9.90 — Canonical Acquisition Locator                    CLOSED
+```
+
+`B9.87` (CLI search caller) is recorded as **contextual precedent** for the
+separation between an application boundary and any product surface; it is not a
+technical dependency of B9.91.
+
+No additional prerequisite was identified. No dependency is invented, and none
+of the following is a dependency: GUI, UX, presentation, persistence, legacy
+migration, ModelStore redesign, multi-provider acquisition, model-domain
+unification, compatibility evaluation.
+
+### 34.7 Identity, revision, GGUF and variant semantics
+
+**Identity.** B9.91 does not authorize a new persistent identity system. The
+existing distinctions are preserved and remain distinct:
+
+```text
+provider identity
+repository identity
+candidate identity
+variant identity ((provider, repository, declared_quantization), derived live)
+artifact identity (repository + filename)
+acquisition locator (planner-owned canonical)
+revision / provenance
+storage identity (content_id, or the OD-1 provenance digest; revision-blind)
+```
+
+A stateless capability operates on existing live identities. Persistent
+identity is therefore **not** a B9.91 dependency. An artifact that lacks a
+logical model identity required by an unrelated downstream consumer is a future
+policy/architecture question and is **not** a B9.91 blocker.
+
+**Revision.**
+
+```text
+revision = selection/provenance metadata
+revision ≠ persistent library identity
+```
+
+B9.91 may expose and transport existing revision/provenance information. It
+must not redefine revision, broaden revision syntax, make revision a persistent
+library identity, redesign ModelStore identity, or introduce revision
+coexistence. B9.83 and B9.90 are unchanged.
+
+**GGUF / variants.** B9.91 may organize already-existing declared variant
+information such as Q4_K_M, Q5_K_M, Q6_K, Q8_0 and any further declared value
+produced by the existing discovery architecture. It does not allocate
+quantization ranking, quality inference, recommendation, or a new quantization
+taxonomy. Provider-declared values remain **declared / unverified** unless an
+existing contract establishes otherwise.
+
+### 34.8 ModelStore, legacy and persistence boundaries
+
+```text
+ModelStore         = UNCHANGED by B9.91
+Legacy acquisition = NOT A DEPENDENCY of B9.91
+B9.91              = LIVE / STATELESS
+```
+
+- The existing revision-coexistence limitation (same repository, same filename,
+  different revision sharing one storage identity by OD-1; recorded limitation
+  19.7.3) remains a **future concern** and is not addressed, solved or worsened
+  by this allocation.
+- Legacy acquisition (`ModelSource`, `HuggingFaceSource`, the legacy CLI path)
+  is untouched, is not migrated, removed, deprecated or converged by B9.91, and
+  remains operational. Legacy consolidation remains a future architectural
+  decision.
+- No database, cache, index, snapshot, synchronization or freshness mechanism is
+  allocated. Persistence is an explicit non-goal, not an omission.
+  - snapshots
+  - synchronization
+  - invalidation
+  - freshness management
+
+Search intelligence:
+  - ranking
+  - recommendations
+  - fuzzy search
+  - semantic search
+  - embeddings
+  - popularity scoring
+  - quality scoring
+
+Provider expansion:
+  - provider federation
+  - provider registry redesign
+  - provider normalization framework
+  - second acquisition backend
+
+Storage:
+  - ModelStore redesign
+  - multi-revision coexistence
+  - persistent library identity
+  - storage identity redesign
+
+Legacy:
+  - ModelSource migration
+  - HuggingFaceSource removal
+  - legacy acquisition convergence
+  - legacy CLI migration
+
+Other domains:
+  - execution
+  - chat lifecycle
+  - fine-tuning
+  - evaluation
+  - datasets
+  - multi-GPU
+  - cluster orchestration
+
+Representation:
+  - broad model_domain unification
+  - a third parallel model representation
+  - a large Model / ModelFamily / ModelVariant / ModelArtifact / CatalogEntry
+    hierarchy, unless independently justified during implementation
+```
+
+### 34.9 Acceptance criteria
+
+Objective architectural criteria for B9.91. No numeric test target is invented.
+
+```text
+AC1  — Discovery boundary: the capability consumes the existing ModelDiscovery
+       boundary for search/inspect and does not bypass it.
+
+AC2  — Model-oriented organization: the capability provides a coherent
+       model-oriented organization of existing candidates, variants and
+       artifacts without introducing an unnecessary parallel domain hierarchy.
+
+AC3  — Metadata preservation: existing provider-declared metadata remains
+       available without being silently normalized, reinterpreted or promoted
+       to verified facts.
+
+AC4  — Variant/artifact distinction: variants and artifacts remain distinct
+       concepts and existing GGUF/quantization metadata remains available.
+
+AC5  — Selection authority: existing B9.84 deterministic selection remains
+       authoritative; its semantics are not re-implemented.
+
+AC6  — Revision semantics: revision remains provenance/selection metadata and
+       is not promoted to persistent library identity.
+
+AC7  — Acquisition handoff: selected artifacts can hand off to the existing
+       B9.82 / B9.85 / B9.90 acquisition chain without duplicating planner,
+       downloader or ModelStore responsibilities.
+
+AC8  — Statelessness: the capability introduces no persistent catalog,
+       database, cache or offline index.
+
+AC9  — Presentation isolation: no GUI, UX, CLI command, API endpoint or other
+       presentation surface is introduced by B9.91.
+
+AC10 — Provider scope: Hugging Face remains the initial provider through the
+       existing discovery boundary; no provider federation is introduced.
+
+AC11 — Storage isolation: ModelStore remains unchanged.
+
+AC12 — Legacy isolation: legacy acquisition remains untouched and is not
+       required for B9.91.
+
+AC13 — Representation containment: no broad model_domain unification and no
+       unnecessary third model representation is introduced.
+
+AC14 — Scope integrity: B9.91 does not modify or absorb responsibilities
+       belonging to B9.80–B9.90.
+```
+
+### 34.10 Implementation boundary
+
+B9.91 fixes the **responsibility boundary and architectural contracts**, not a
+specific file layout or implementation mechanism.
+
+Implementation may later determine whether the capability is best represented by:
+
+```text
+- a new internal service
+- an extension of an existing application service
+- a formal composition
+- another architecture-compatible mechanism
+```
+
+That choice is intentionally deferred to the implementation phase. No module is
+prescribed by this allocation.
+
+### 34.11 Closure evidence expected
+
+Before closure, B9.91 will require:
+
+```text
+- an implementation commit
+- implementation verification
+- relevant focused tests
+- the full repository test suite where applicable
+- an explicit scope audit
+- confirmation that B9.80–B9.90 remain unchanged
+- confirmation that GUI / UX, persistence, provider federation, ModelStore
+  redesign and legacy migration were not introduced
+- evidence that AC1–AC14 are satisfied
+- a closure transition in this roadmap register
+```
+
+**None** of this evidence is produced, claimed or implied by this allocation
+record.
+
+### 34.12 Relationship to the prior Model Library restriction (narrowing)
+
+The prior restriction is recorded normatively in:
+
+```text
+register section 25.5         — "Application boundary ≠ Model Library UX";
+                                Model Library / UX / GUI remains NOT ALLOCATED
+                                and NOT AUTHORIZED; a future block requiring any
+                                presentation mechanism is a different block and
+                                requires its own architectural decision
+docs/product-vision-adr.md D6 — Model Library UX remains unallocated and is NOT
+                                authorized for implementation by this ADR
+docs/product-vision-adr.md D8 — GUI is NOT authorized for implementation by this ADR
+docs/product-vision-adr.md §15 — Model Library UX: NOT ALLOCATED, NOT AUTHORIZED
+```
+
+**None of those records is modified by this allocation.** They remain accurate
+and authoritative.
+
+B9.91 **narrows the semantic interpretation** of the prior restriction by
+authorizing an internal capability while leaving every presentation and
+product-surface restriction unchanged:
+
+```text
+Model Library capability ≠ Model Library UX
+Model Library capability ≠ GUI
+Model Library capability ≠ persistent catalog
+Model Library capability ≠ marketplace
+Model Library capability ≠ generic presentation layer
+```
+
+After this record:
+
+```text
+Model Library UX      = NOT AUTHORIZED (unchanged)
+GUI                   = NOT AUTHORIZED (unchanged)
+Persistent catalog    = NOT AUTHORIZED (unchanged)
+Visible Model Library = NOT AUTHORIZED (unchanged)
+
+Internal Dynamic Model Library capability = ALLOCATED (this record)
+```
+
+The narrowing is semantic, not textual: the prior records are cited, not
+rewritten, in the manner established by `docs/B9.59` §6 and section 13 of this
+document. A reader encountering `Model Library` in an earlier record must read it
+against this section for the capability/UX distinction.
+
+### 34.13 Product Vision alignment
+
+`docs/product-vision-adr.md` is authoritative for product direction. B9.91
+applies it without reopening any of its decisions.
+
+```text
+D1-D4 — NOT ENGAGED: no claim about the product problem, the user population,
+         the Job To Be Done or the runtime thesis is made.
+D5  — RESPECTED: no new runtime and no new core-chain stage.
+D6  — RESPECTED AND NARROWED (34.12): Model Library UX remains NOT ALLOCATED
+       and NOT authorized; an internal capability substrate is allocated. The
+       D6 clause "must not be reduced conceptually to a generic model search
+       interface", and D6's inclusion of compatibility evaluation against the
+       user's environment, remain NOT DISCHARGED by this allocation and remain a
+       future obligation.
+D7  — RESPECTED: no Chat change; the chat boundary is untouched.
+D8  — RESPECTED: GUI remains NOT AUTHORIZED.
+D9  — RESPECTED: fine-tuning remains out of scope and requires a separate ADR.
+D10 — RESPECTED: no new user-facing surface is created by this allocation.
+D11 — RESPECTED: the closed discovery/acquisition chain is consumed; no new
+       surface is created.
+D12 — RESPECTED: no claim of validated demand, adoption or product-market fit
+       is made or implied. B9.91 is not product validation.
+```
+
+### 34.14 Allocation versus implementation state
+
+```text
+NUMBER ALLOCATION:         APPROVED BY THIS NAR
+IMPLEMENTATION AUTHORIZED: NO — by this NAR
+IMPLEMENTATION:            NOT PERFORMED
+VERIFICATION AUTHORIZED:   NO — by this NAR
+VERIFICATION:              NOT PERFORMED
+CLOSURE AUTHORIZED:        NO — by this NAR
+CLOSURE:                   NOT PERFORMED
+```
+
+At this anchor no Dynamic Model Library capability exists in the repository, no
+source file, test, surface or refactoring is authorized here, and nothing in this
+record changes that.
+
+```text
+ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
+```
+
+### 34.15 Human approval reference
+
+```text
+DECISION RECORD STATUS: HUMAN-RATIFIED
+DECISION:               AUTHORIZE — internal stateless Dynamic Model Library
+                        capability
+NUMBER ALLOCATION:      APPROVED BY THIS NAR
+IMPLEMENTATION:         NOT AUTHORIZED by this record
+VERIFICATION:           NOT PERFORMED
+CLOSURE:                NOT PERFORMED
+```
+
+> Implementation is **not** authorized by this record. The next required step is
+> a separate implementation task consuming B9.91. No source file, test, surface
+> or refactoring is authorized here.
+
+B9.80 through B9.90 are not modified by this record. B9.92+ is NOT allocated by
+this record.
+
+### 34.16 Register entry state summary
+
+```text
+B9.91 STATUS:         ALLOCATED
+B9.91 IMPLEMENTATION: NOT PERFORMED
+B9.91 VERIFICATION:   NOT PERFORMED
+B9.91 CLOSURE:        NOT PERFORMED
+B9.90:                CLOSED — preserved verbatim (section 33), immutable
+B9.92+:               NOT ALLOCATED
+```
+
+Working tree at anchor:
+  tracked tree clean apart from this allocation record; git diff --check clean;
+  ahead/behind origin/main 0/0; the only untracked file is the pre-existing,
+  unstaged docs/post-b990-architectural-decision-preparation.md.
