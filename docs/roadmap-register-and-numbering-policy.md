@@ -9871,14 +9871,15 @@ Allocation Date:
   2026-10-03
 
 Allocation Commit:
-  PENDING — fixed by the next controlled commit that sets it to that hash
+  b8d754b41234880b0d83fee6f31de1a8c5c07691
   ("docs: allocate roadmap block B9.93")
 ```
-  Recorded by the two-step mechanism stated in section 11 and used identically
-  by sections 14, 16, 19, 21, 23, 25, 27, 29, 31, 33, 34 and 35: at authoring
-  time the hash did not exist and the field reads PENDING; a commit hash cannot
-  be known before the commit exists, and writing a guessed value would be a
-  fabricated identifier. The allocation itself is unchanged.
+  Fixed by the next controlled commit, per the two-step mechanism stated in
+  section 11 and used identically by sections 14, 16, 19, 21, 23, 25, 27, 29,
+  31, 33, 34 and 35. At allocation-authoring time the hash did not exist and
+  the field read PENDING; a commit hash cannot be known before the commit
+  exists, and writing a guessed value would be a fabricated identifier. The
+  allocation itself is unchanged by this fix.
 
 ```text
 Roadmap file:
