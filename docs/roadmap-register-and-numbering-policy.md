@@ -9993,10 +9993,11 @@ Validity Reason:
 
 ```text
 B9.93 — Model Identity Expansion (Explicit Multi-Layer Identity Model)
-STATUS: ALLOCATED
-IMPLEMENTATION: NOT PERFORMED
-VERIFICATION:   NOT PERFORMED
-CLOSURE:        NOT PERFORMED
+STATUS: CLOSED
+IMPLEMENTATION: PERFORMED — 44e04261f42b179dc9f91c60a594f305dfa2512e
+VERIFICATION:   PASS — see 36.11
+CLOSURE:        PERFORMED — by this record (closure commit PENDING by the
+                section 11 two-step mechanism)
 ```
 
 ### 36.3 Scope attached to this allocation
@@ -10193,7 +10194,12 @@ Before closure, B9.93 will require:
 
 ### 36.8 Allocation versus implementation state (as asserted by this NAR)
 
+This subsection recorded the ALLOCATION-TIME state and is preserved verbatim
+as history; the authoritative post-implementation state is recorded in 36.11.
+
 ```text
+AT ALLOCATION TIME (preserved, historical):
+
 B9.93 IS:     an allocated identifier carrying a ratified scope
 B9.93 IS NOT: implemented
 B9.93 IS NOT: verified
@@ -10229,9 +10235,126 @@ The decision is not reopened, re-compared or re-scored by this record.
 
 ```text
 B9.92  CLOSED
-B9.93  ALLOCATED
+B9.93  CLOSED
 B9.94+ NOT ALLOCATED
 ```
 
 B9.94+ remains NOT ALLOCATED. No new block, scope, decision or capability is
-introduced by this record beyond the B9.93 allocation stated above.
+introduced by this record beyond the B9.93 closure stated above.
+
+### 36.11 B9.93 Closure Record
+
+This record transitions B9.93 from ALLOCATED to CLOSED. It was preceded by the
+implementation commit
+44e04261f42b179dc9f91c60a594f305dfa2512e
+("feat: formalize B9.93 model identity layer contract"), which was itself
+preceded by the human-ratified decision record and by three READ-ONLY audits:
+Implementation Evidence, Evidence Completion, and Closure Audit. The Closure
+Audit returned PASS — READY FOR FORMAL CLOSURE.
+
+```text
+IMPLEMENTATION COMMIT:
+  44e04261f42b179dc9f91c60a594f305dfa2512e
+  "feat: formalize B9.93 model identity layer contract"
+  Parent: 792493be4f48fd6c5387a0e5433a06d3ed3f4318
+
+Files changed by the implementation commit (exactly 2):
+  castlearq/model_identity.py                     (documentation only)
+  tests/test_b993_layer_separation_contract.py    (new, 9 tests / 5 classes)
+```
+
+**Scope evidence.** The implementation is exactly the scope allocated in
+36.3: CONTRACT DECLARATION + CONTRACT TESTS ONLY, with no behaviour change.
+
+```text
+castlearq/model_identity.py
+  documentation-only change: 97 insertions, 0 deletions
+  executable AST IDENTICAL between the parent commit and the working tree
+    non-docstring executable statements: 15
+    sha256(ast-dump, docstrings stripped):
+      0bed473b971fc2aa70bbb5254a8bc40a076d7b22a56d07efb783e54d532d80b4
+  no new def, class, constant, mapping, import or public symbol
+  no change to SOURCE_REPOSITORY_TO_MODEL_ID, SUPPORTED_DOWNLOAD_SOURCES,
+    logical_model_id, source_repositories_for_logical_model,
+    downloadable_locator
+```
+
+**Verification evidence (AC1-AC12).**
+
+```text
+AC1  PASS  logical model identity canonical, still str; unmapped repository
+            yields no identity
+AC2  PASS  ModelVariant untouched, provider-owned, identity-free
+AC3  PASS  quantization shapes artifact_id while model_id is unchanged
+AC4  PASS  differing revision yields identical artifact_id (OD-1)
+AC5  PASS  supported model resolves to its locator; unknown model resolves
+            to None
+AC6  PASS  ModelStore layout, artifact_id formula and manifest schema
+            unchanged; no storage migration
+AC7  PASS  DiscoveredArtifact.model_id is None
+AC8  PASS  provider-declared model_id is non-authoritative and creates no
+            registry entry
+AC9  PASS  zero locators -> None; two locators -> None (exactly-one gate)
+AC10 PASS  model_domain.py unchanged; B8.1 remains parallel / not converged
+AC11 PASS  no runtime redesign; executable AST identical; 1 modified source
+            file and 1 new test file only
+AC12 PASS  full regression verification green
+
+Test evidence:
+  tests/test_b993_layer_separation_contract.py     9 passed
+  tests/test_model_identity.py                   14 passed, 11 subtests
+  B9.80-B9.92 focused regression set (9 files)   275 passed, 31 subtests
+  full suite                                   2246 passed, 2718 subtests
+  failures: 0   errors: 0
+```
+
+**Boundary and dependency evidence.**
+
+```text
+Protected architecture diff at 44e0426: EMPTY
+  model_domain.py, discovery.py, sources/huggingface_discovery.py,
+  discovery_selection.py, acquisition_mapping.py, acquisition_service.py,
+  downloads/planner.py, downloads/downloader.py, model_store.py,
+  manifest_migration.py, api.py, main.py, application_wiring.py, models.py,
+  tests/test_model_identity.py
+
+No roadmap record above section 36 was modified by this closure.
+No ADR or preparation document was modified by this closure.
+No prior B9.80-B9.92 decision was reopened or superseded by B9.93.
+```
+
+**Preserved decisions.** The ratified Option D architecture is unchanged by
+this closure: Option D (Explicit Multi-Layer Identity Model); INCREMENTAL /
+MINIMAL posture; the Logical Model / Variant / Artifact / Revision / Locator /
+Storage Identity separation with the governing rule that no layer may
+substitute for or be silently promoted to another; 1 repository -> 1 logical
+model cardinality; discovery identity-free; provider-declared identity not
+authoritative; B8.1 parallel and unconverged. Every non-goal in 36.4 remains in
+force, including no GUI, no persistent Model Library, no ModelStore redesign, no
+provider federation, no 1 -> N identity expansion and no legacy convergence.
+No acceptance criterion, dependency, non-goal or scope item was added, removed or
+weakened by this closure.
+
+**Allocation evidence.** 36.1 records `Allocation Commit:
+b8d754b41234880b0d83fee6f31de1a8c5c07691`, fixed by
+792493be4f48fd6c5387a0e5433a06d3ed3f4318
+("docs: fix B9.93 allocation commit anchor"). That anchor is unchanged by this
+closure and must not be confused with the implementation commit above.
+
+**Publication state.** NOT PERFORMED. This closure exists locally only; at the
+time of this record `main` is two commits ahead of `origin/main`
+(792493be4f48fd6c5387a0e5433a06d3ed3f4318) and nothing has been pushed.
+
+**Closure statement.**
+
+```text
+IMPLEMENTATION:   PERFORMED — 44e04261f42b179dc9f91c60a594f305dfa2512e
+VERIFICATION:     PASS
+PUBLICATION:      NOT PERFORMED
+CLOSURE:          PERFORMED — by this record
+
+B9.93 = CLOSED
+```
+
+B9.94+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record.
