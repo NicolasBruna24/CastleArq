@@ -10358,3 +10358,498 @@ B9.93 = CLOSED
 
 B9.94+ remains NOT ALLOCATED. No new block, scope, decision or capability is
 introduced by this record.
+
+---
+
+## 37. B9.94 — Number Allocation Record
+
+`B9.94` is allocated as the next main block under section 6, on the evidence of a
+section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.94 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified product/architectural decision recorded in
+`docs/b994-acquisition-first-human-architectural-decision-record.md`, which was
+preceded by a READ-ONLY Human Architectural Decision Audit and a READ-ONLY Formal
+Roadmap Allocation Audit, both of which returned PASS. This section allocates the
+number that carries that scope; it does not widen, reinterpret or extend it.
+
+### 37.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.94
+
+Title:
+  Acquisition-First Product Direction
+
+Allocation Date:
+  2026-10-04
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash
+  ("docs: allocate roadmap block B9.94")
+```
+  Recorded by the two-step mechanism stated in section 11 and used identically
+  by sections 14, 16, 19, 21, 23, 25, 27, 29, 31, 33, 34, 35 and 36: at
+  authoring time the hash did not exist and the field reads PENDING; a commit
+  hash cannot be known before the commit exists, and writing a guessed value
+  would be a fabricated identifier. The allocation itself is unchanged.
+
+```text
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 36 — B9.93 Number Allocation Record and closure transition
+Section for this allocation:
+  section 37 — this record
+
+Origin:
+  controlled B9.94 human architectural decision and formal allocation audit
+
+Human Product / Architectural Decision Record:
+  Acquisition-First Product Direction
+  docs/b994-acquisition-first-human-architectural-decision-record.md
+  STATUS: HUMAN-RATIFIED
+  DECISION: OPTION 1 — ACQUISITION-FIRST (ratified)
+  DECISION AUTHORITY: PROJECT OWNER
+  POSTURE: INCREMENTAL / IDENTITY-PRESERVING
+  NUMBER (at ratification): NONE — the decision record assigned no identifier;
+                              this section performs the allocation
+
+Corpus/HEAD Anchor:
+  3fc5231f3569b2f2331f56b01ea1b6eb71def5d6
+Corpus File Count:
+  231 versioned files (git ls-files at the anchor above)
+
+Corpus Integrity Evidence:
+  The corpus is fixed by the anchor commit itself: HEAD, origin/main and
+  refs/remotes/origin/main all name
+  3fc5231f3569b2f2331f56b01ea1b6eb71def5d6, the tracked working tree is clean
+  (git diff and git diff --cached empty), and the only untracked files at the
+  anchor are the pre-existing, deliberately unstaged
+  docs/post-b990-architectural-decision-preparation.md, the ratified but
+  deliberately unstaged
+  docs/b993-model-identity-expansion-human-architectural-decision-record.md and
+  the ratified but deliberately unstaged
+  docs/b994-acquisition-first-human-architectural-decision-record.md.
+  Identifier discovery was performed across the whole tracked corpus, not by
+  reading documents alone (section 6 requires corpus inspection, not document
+  reading).
+
+Identifier Set:
+  Highest main identifier in real use before this section: B9.93
+  Preceding closed block: B9.93 (section 36), ALLOCATED / IMPLEMENTED /
+    VERIFIED / CLOSED, published at
+    3fc5231f3569b2f2331f56b01ea1b6eb71def5d6.
+  B9.94 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.94 in the anchor corpus:
+  They are explicit non-allocations or historical declines; none allocates
+  B9.94:
+    - section 36.2 candidate analysis: "B9.94 and above — CONSIDERED AND
+      DECLINED ... B9.94 would skip B9.93 and is therefore invalid."
+    - section 36.4 non-goals: "B9.94 and any later identifier"
+    - section 36.10: "B9.94+ NOT ALLOCATED"
+    - section 36.11 closure statement: "B9.94+ remains NOT ALLOCATED."
+  Each of those statements was accurate at its own anchor, when B9.93 was
+  already the highest verified main block, and each is preserved as history
+  rather than rewritten. The current authoritative state of B9.94 is the one
+  asserted by this section.
+    - Untracked, non-allocating: line 32 and line 1064 of
+      docs/b993-model-identity-expansion-human-architectural-decision-record.md
+      ("does NOT open, reserve or imply B9.94 or any later identifier").
+    - Untracked, non-allocating: the B9.94 decision record itself, whose
+      sections 1, 3 and 14 state that it does not allocate B9.94 and that
+      B9.94 / B9.95+ remain NOT ALLOCATED.
+
+  No competing, pending, provisional, reserved or conflicting identifier was
+  found in the corpus. No B9.95 or later main block, sub-block or alias is
+  assigned by this record.
+
+Preceding Block:
+  B9.93 — Model Identity Expansion (Explicit Multi-Layer Identity Model)
+
+Preceding Block Status:
+  ALLOCATED (section 36), IMPLEMENTED (44e0426), VERIFIED, CLOSED
+  (section 36.11), published state main == HEAD == origin/main at the anchor
+  above.
+
+Highest Verified Main Block:
+  B9.93
+
+Rule in Force:
+  Section 6 — next_main_block = highest_verified_main_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled human allocation. The strategic direction was selected by the
+  project owner; the number is assigned by this section under the section 6 and
+  section 7 procedure. No sub-block, alias or renamed identifier is minted.
+
+Candidate Numbers Considered:
+```text
+B9.94 — SELECTED. highest_verified_allocated_block + 1 = B9.93 + 1. No
+  allocation, reservation, provisional assignment, sub-block or competing
+  claim exists for it anywhere in the anchor corpus; every pre-existing
+  occurrence is an explicit non-allocation or the historical decline recorded
+  at section 36.2, which was accurate at its own anchor and is preserved
+  rather than rewritten.
+
+B9.93 and below — CONSIDERED AND DECLINED. Section 6 fixes the floor at the
+  highest VERIFIED allocated identifier; B9.93 is already allocated,
+  implemented, verified, closed and published. No gap is claimed abandoned,
+  freed, reserved or erroneous (section 9, section 13).
+
+B9.95 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+  immediately following the highest verified main block. B9.95 would skip
+  B9.94 and is therefore invalid.
+
+B9.94.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+  integers of the form B9.x raise the main-block floor, and a sub-block does
+  not by itself advance the next main block number.
+
+Any alias, umbrella or renamed identifier — CONSIDERED AND DECLINED. Section 6
+  admits only the integer form; no alias is minted.
+```
+
+Selected Number:
+
+```text
+B9.94
+```
+
+Validity Reason:
+  B9.93 is the highest allocated, implemented, verified, closed and published
+  main block in the corpus anchor named above, and B9.94 was free of any
+  competing claim there. The assignment therefore satisfies section 6 and is
+  accompanied by the complete section 11 record.
+
+Release Association:
+
+```text
+NOT YET DEFINED
+```
+
+Supersession:
+
+```text
+none as to B9.93 or any earlier block — those allocation and closure records
+remain the accurate description of those blocks and are not rewritten by this
+section.
+
+cross-reference only — the "B9.94 and above — CONSIDERED AND DECLINED",
+"B9.94 and any later identifier", "B9.94+ NOT ALLOCATED" and "B9.94+ remains
+NOT ALLOCATED" statements in section 36 remain the accurate description of the
+corpus at their own anchors and are not rewritten. They are superseded by this
+record as a cross-reference only.
+```
+
+Documented?:
+
+```text
+YES — this section.
+```
+
+### 37.2 Register entry for B9.94
+
+```text
+B9.94 — Acquisition-First Product Direction
+STATUS: ALLOCATED
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+```
+
+### 37.3 Scope attached to this allocation
+
+```text
+PRODUCT / ARCHITECTURAL DIRECTION ALLOCATION ONLY.
+No source, test, configuration, packaging, CLI or roadmap-surface change is
+performed or authorized by this section.
+```
+
+The ratified direction encoded by this allocation:
+
+> Evolve CastleArq from its current curated model-acquisition admission
+> boundary toward a user-selected Hugging Face GGUF acquisition flow, while
+> preserving the explicit separation between logical model identity,
+> repository, variant, artifact, revision, locator, and storage identity.
+
+Architectural boundary preserved by this allocation:
+
+```text
+CURRENT (as ratified by B9.93 and unchanged by this allocation):
+  arbitrary discovery / inspection
+      -> curated identity admission
+          -> acquisition
+
+TARGET DIRECTION (authorized direction, mechanism undecided):
+  user-selected GGUF repository / artifact
+      -> explicit acquisition admission
+          -> existing acquisition chain
+```
+
+The admission gate remains a gate. What may change is what is permitted to pass
+through it, and under which explicit, tested, fail-closed contract.
+
+Constraints preserved in full and binding on any future B9.94 implementation:
+
+```text
+Logical Model    !=  Repository
+Logical Model    !=  Variant
+Logical Model    !=  Artifact
+Logical Model    !=  Revision
+Logical Model    !=  Locator
+Logical Model    !=  Storage Identity
+
+Governing rule (restated from B9.93, unchanged):
+  No layer may be substituted for or be silently promoted to another layer.
+
+CARDINALITY:              1 repository -> 1 logical model, PRESERVED
+DISCOVERY:                IDENTITY-FREE
+PROVIDER-DECLARED ID:     NOT AUTHORITATIVE
+REVISION:                 SEPARATE from logical identity; excluded from artifact
+                          identity under the ratified OD-1 decision
+B8.1 ModelIdentity:       PARALLEL / NOT CONVERGED
+```
+
+The existing curated registry behaviour remains valid unless and until a B9.94
+implementation design explicitly supersedes it. The concept of the gate is not
+deleted in order to widen it.
+
+### 37.4 Identity-admission mechanism is NOT prescribed
+
+The B9.94 decision deliberately leaves the identity-admission mechanism
+undecided. This allocation therefore MUST NOT, and does not, prescribe:
+
+```text
+user-supplied identity as the final mechanism
+deterministic identity derivation as the final mechanism
+automatic registry insertion as the final mechanism
+repository-backed identity registration as the final mechanism
+any database identity mechanism
+any provider-declared identity mechanism
+any filename-derived identity
+any revision-derived identity
+any URL- or locator-derived identity
+any storage-path-derived identity
+```
+
+The seam is preserved as a seam:
+
+```text
+user-selected repository / artifact
+    -> identity / acquisition admission boundary
+        -> existing acquisition chain
+```
+
+The concrete mechanism must be determined during the B9.94 implementation-design
+phase, subject in full to the B9.94 decision record and to the constraints
+recorded in 37.3. If an implementation appears to require collapsing two identity
+layers, that is evidence that the mechanism is wrong, not evidence that the
+constraint may be relaxed.
+
+### 37.5 Non-goals
+
+B9.94 MUST NOT include, and this allocation does not authorize:
+
+```text
+GUI
+Model Library UI
+persistent user-facing Model Library
+persistent catalog
+database
+semantic search
+fuzzy search
+ranking
+recommendation
+multiple providers
+provider federation
+ModelStore redesign
+manifest redesign
+filesystem layout redesign
+migration redesign
+multi-revision storage coexistence
+1 -> N repository/model cardinality
+provider-declared identity becoming authoritative
+repository, filename or quantization becoming a logical model identity
+hardware-aware planning
+context / KV-cache calculation
+GPU layer-offload planning
+execution-parameter emission
+llama.cpp provisioning
+runtime / binary preparation
+Windows support
+macOS support
+WSL2 support
+any non-Linux execution claim
+B8.1 ModelIdentity convergence
+legacy ModelSource removal or convergence
+run versus execute redesign
+ModelExecutionService redesign
+B9.95 and any later identifier
+```
+
+No future work is added to B9.94 by this record.
+
+### 37.6 Dependencies
+
+```text
+REQUIRED (B9.94 cannot be implemented without these; all are CLOSED):
+
+  B9.80  Model Discovery domain contract
+  B9.81  Hugging Face discovery provider
+  B9.82  Discovery-to-Acquisition mapping boundary
+  B9.85  Production acquisition chain
+  B9.90  Revision-aware acquisition
+  B9.93  Explicit multi-layer identity model
+
+HELPFUL (improve B9.94 but are NOT required; must NOT become requirements):
+
+  B9.84  Selection boundary
+  B9.91  Internal Dynamic Model Library (live / stateless)
+  B9.92  CLI Discovery-to-Acquisition inspection flow
+
+SEPARATE FUTURE DECISION SURFACES (must NOT become B9.94 dependencies):
+
+  Model Library UX
+  hardware-aware planning
+  runtime autonomy / llama.cpp provisioning
+  Windows / macOS / WSL2
+  B8.1 ModelIdentity convergence
+  legacy ModelSource convergence
+  ModelStore / manifest / migration redesign
+  multi-provider / federation
+
+PARALLEL (explicitly not converged):
+  B8.1 model_domain.ModelIdentity / ModelArtifact
+
+PREREQUISITE BLOCKS: NONE beyond the REQUIRED set above, all already CLOSED.
+```
+
+### 37.7 Acceptance criteria basis
+
+Carried forward from the B9.94 decision record, section 13. These are the
+architectural basis on which a later implementation would be drafted and
+verified. This section neither satisfies nor verifies any of them, and it does not
+convert them into implementation steps.
+
+```text
+AC1  User-selected GGUF acquisition becomes possible WITHOUT collapsing
+     repository into logical model identity.
+
+AC2  Logical model, repository, variant, artifact, revision, locator and
+     storage identity remain distinct and separately governed.
+
+AC3  Revision-aware acquisition semantics remain valid, including the
+     ratified OD-1 decision that revision does not participate in artifact
+     identity.
+
+AC4  Discovery remains identity-free: repository and artifact inspection stays
+     independent of acquisition identity.
+
+AC5  Acquisition admission is explicit and fails closed when required identity
+     information is unavailable. No identity is fabricated, guessed or
+     defaulted, and no fuzzy, basename or inference heuristic is used.
+
+AC6  The 1 -> 1 repository/logical-model cardinality contract remains intact
+     unless a separate architectural decision explicitly authorizes another
+     cardinality; any such need is escalated, not resolved incidentally.
+
+AC7  Existing curated acquisition behaviour remains valid unless and until
+     explicitly superseded by the B9.94 implementation design.
+
+AC8  No GUI, database, persistent catalog, multi-provider, hardware-planning or
+     runtime-provisioning behaviour is introduced unless separately authorized.
+
+AC9  Existing B9.80 - B9.93 contracts remain regression-safe.
+
+AC10 B9.94 does not pre-empt the later decisions concerning hardware-aware
+     planning, runtime autonomy, cross-platform support, Model Library UX or
+     identity convergence.
+```
+
+### 37.8 Closure evidence expected
+
+```text
+Before closure, B9.94 will require:
+  - the implementation commit actually performed;
+  - the focused B9.94 test results and the full regression-suite result;
+  - confirmation that AC1-AC10 are evaluated against observable behaviour;
+  - the explicitly designed and documented acquisition-admission contract,
+    including its fail-closed behaviour;
+  - confirmation that the identity-admission mechanism chosen by the
+    implementation design is recorded and does not collapse any identity layer;
+  - confirmation that the 1 -> 1 cardinality contract is preserved, or that a
+    separate architectural decision was taken before any change;
+  - confirmation that curated acquisition behaviour was preserved or explicitly
+    superseded;
+  - confirmation that the protected architecture diff is EMPTY for every
+    module outside the declared implementation surface;
+  - confirmation that no roadmap record above this section was modified;
+  - confirmation that no ADR was amended by the implementation;
+  - the two-step allocation-commit field resolved to a real hash.
+```
+
+### 37.9 Allocation versus implementation state (as asserted by this NAR)
+
+```text
+AT ALLOCATION TIME:
+
+B9.94 IS:     an allocated identifier carrying a ratified scope
+B9.94 IS NOT: implemented
+B9.94 IS NOT: verified
+B9.94 IS NOT: closed
+
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+PUBLICATION:    NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+
+Protected architecture diff at this anchor: EMPTY
+  source, tests, configuration and packaging are unchanged by this section;
+  the only file mutated by this allocation is
+  docs/roadmap-register-and-numbering-policy.md itself.
+```
+
+Lifecycle separation asserted by this section:
+
+```text
+allocation    !=  implementation
+implementation !=  verification
+verification  !=  closure
+```
+
+### 37.10 Human approval reference
+
+```text
+Human Architectural Decision:
+  SELECTED — OPTION 1 — ACQUISITION-FIRST
+  Decision Authority: PROJECT OWNER
+  Source record:
+    docs/b994-acquisition-first-human-architectural-decision-record.md
+  READ-ONLY audits preceding the allocation:
+    Human Architectural Decision Audit — PASS
+    Formal Roadmap Allocation Audit — PASS (outcome A — READY FOR FORMAL
+    ALLOCATION)
+
+The decision is not reopened, re-compared, re-scored, widened, weakened or
+strengthened by this record.
+```
+
+### 37.11 Register entry state summary
+
+```text
+B9.92  CLOSED
+B9.93  CLOSED
+B9.94  ALLOCATED — implementation, verification and closure NOT PERFORMED
+B9.95+ NOT ALLOCATED
+```
+
+B9.95+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record beyond the B9.94 allocation stated above.
