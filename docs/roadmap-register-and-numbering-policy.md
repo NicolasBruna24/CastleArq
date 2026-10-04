@@ -9839,3 +9839,398 @@ B9.92 = CLOSED
 
 B9.93+ remains NOT ALLOCATED. No new block, scope, decision or capability is
 introduced by this record.
+
+---
+
+## 36. B9.93 — Number Allocation Record
+
+`B9.93` is allocated as the next main block under section 6, on the evidence of a
+section 7 corpus inspection performed at allocation time. This section is the
+section 11 record for that assignment. At allocation time B9.93 is **an
+allocation only**: no implementation, no verification and no closure is claimed
+by this section.
+
+The scope was **not chosen by this record**. It was fixed beforehand by the
+human-ratified architectural decision recorded in
+`docs/b993-model-identity-expansion-human-architectural-decision-record.md`,
+which was preceded by a READ-ONLY Human Architectural Decision Preparation
+Audit and a READ-ONLY Formal Roadmap Allocation Audit, both of which returned
+PASS. This section allocates the number that carries that scope; it does not
+widen, reinterpret or extend it.
+
+### 36.1 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.93
+
+Title:
+  Model Identity Expansion — Explicit Multi-Layer Identity Model
+
+Allocation Date:
+  2026-10-03
+
+Allocation Commit:
+  PENDING — fixed by the next controlled commit that sets it to that hash
+  ("docs: allocate roadmap block B9.93")
+```
+  Recorded by the two-step mechanism stated in section 11 and used identically
+  by sections 14, 16, 19, 21, 23, 25, 27, 29, 31, 33, 34 and 35: at authoring
+  time the hash did not exist and the field reads PENDING; a commit hash cannot
+  be known before the commit exists, and writing a guessed value would be a
+  fabricated identifier. The allocation itself is unchanged.
+
+```text
+Roadmap file:
+  docs/roadmap-register-and-numbering-policy.md
+Highest existing section before this one:
+  section 35 — B9.92 Number Allocation Record and closure transition
+Section for this allocation:
+  section 36 — this record
+
+Origin:
+  controlled B9.93 human architectural decision and formal allocation audit
+
+Human Product / Architectural Decision Record:
+  Model Identity Expansion — Explicit Multi-Layer Identity Model
+  docs/b993-model-identity-expansion-human-architectural-decision-record.md
+  STATUS: HUMAN-RATIFIED
+  DECISION: OPTION D — EXPLICIT MULTI-LAYER IDENTITY MODEL (ratified)
+  POSTURE: INCREMENTAL / MINIMAL
+  NUMBER (at ratification): NONE — the decision record assigned no identifier;
+                              this section performs the allocation
+
+Corpus/HEAD Anchor:
+  3e293e936387c3ec6420a9e7ef0e8ce22b05507a
+Corpus File Count:
+  230 versioned files (git ls-files at the anchor above)
+
+Corpus Integrity Evidence:
+  The corpus is fixed by the anchor commit itself: HEAD and origin/main both
+  name 3e293e936387c3ec6420a9e7ef0e8ce22b05507a, the tracked working tree is
+  clean (git diff and git diff --cached empty), and the only untracked files at
+  the anchor are the pre-existing, deliberately unstaged
+  docs/post-b990-architectural-decision-preparation.md and the ratified but
+  deliberately unstaged
+  docs/b993-model-identity-expansion-human-architectural-decision-record.md.
+  Identifier discovery was performed across the whole tracked corpus, not by
+  reading documents alone (section 6 requires corpus inspection, not document
+  reading).
+
+Identifier Set:
+  Highest main identifier in real use before this section: B9.92
+  Preceding closed block: B9.92 (section 35), ALLOCATED / IMPLEMENTED /
+    VERIFIED / CLOSED, published at 3e293e936387c3ec6420a9e7ef0e8ce22b05507a.
+  B9.93 does not previously appear as an allocation anywhere in the corpus.
+
+Pre-existing occurrences of B9.93 in the anchor corpus:
+  They are explicit non-allocations or historical declines; none allocates
+  B9.93:
+    - section 35.1: "no B9.93 or later main block, sub-block or alias is
+      assigned by this record."
+    - section 35.2 candidate analysis: "B9.93 and above — CONSIDERED AND
+      DECLINED ... B9.93 would skip B9.92 and is therefore invalid." That
+      decline was accurate at its own anchor, when B9.92 was still
+      unallocated, and is preserved as history rather than rewritten, exactly
+      as section 35 itself recorded for B9.92.
+    - section 35.13: "B9.93+ is NOT allocated by this record."
+    - section 35.14: "B9.93+: NOT ALLOCATED"
+    - section 35.11 closure statement: "B9.93+ remains NOT ALLOCATED."
+
+Highest Verified Main Block:
+  B9.92
+
+Rule in Force:
+  Section 6 — next_main_block = highest_verified_main_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+
+Actor/Process:
+  Controlled human allocation. The architectural direction was selected by the
+  project owner; the number is assigned by this section under the section 6
+  and section 7 procedure. No sub-block, alias or renamed identifier is minted.
+
+Candidate Numbers Considered:
+```text
+B9.93 — SELECTED. highest_verified_allocated_block + 1 = B9.92 + 1. No
+  allocation, reservation, provisional assignment, sub-block or competing
+  claim exists for it anywhere in the anchor corpus; every pre-existing
+  occurrence is an explicit non-allocation or the historical decline recorded
+  at section 35.2, which was accurate at its own anchor and is preserved
+  rather than rewritten.
+
+B9.92 and below — CONSIDERED AND DECLINED. Section 6 fixes the floor at the
+  highest VERIFIED allocated identifier; B9.92 is already allocated,
+  implemented, verified, closed and published. No gap is claimed abandoned,
+  freed, reserved or erroneous (section 13).
+
+B9.94 and above — CONSIDERED AND DECLINED. Section 6 requires the integer
+  immediately following the highest verified main block. B9.94 would skip
+  B9.93 and is therefore invalid.
+
+B9.93.x and every other sub-block — CONSIDERED AND DECLINED. Section 8: only
+  integers of the form B9.x raise the main-block floor, and a sub-block does
+  not by itself advance the next main block number.
+
+Any alias, umbrella or renamed identifier — CONSIDERED AND DECLINED. Section 6
+  admits only the integer form; no alias is minted.
+```
+
+Selected Number:
+```text
+B9.93
+```
+
+Validity Reason:
+  B9.92 is the highest allocated, implemented, verified, closed and published
+  main block in the corpus anchor named above, and B9.93 was free of any
+  competing claim there. The assignment therefore satisfies section 6 and is
+  accompanied by the complete section 11 record.
+
+### 36.2 Register entry for B9.93
+
+```text
+B9.93 — Model Identity Expansion (Explicit Multi-Layer Identity Model)
+STATUS: ALLOCATED
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+```
+
+### 36.3 Scope attached to this allocation
+
+```text
+CONTRACT DECLARATION + CONTRACT TESTS ONLY
+No behaviour change.
+```
+
+The ratified architectural decision encoded by this allocation:
+
+```text
+DECISION:            Option D — Explicit Multi-Layer Identity Model
+IMPLEMENTATION
+POSTURE:             INCREMENTAL / MINIMAL
+CARDINALITY:         1 repository -> 1 logical model
+DISCOVERY:           IDENTITY-FREE
+PROVIDER IDENTITY:   NOT AUTHORITATIVE
+B8.1 ModelIdentity:  PARALLEL / NOT CONVERGED
+```
+
+Layer separation ratified as an architectural conceptual contract:
+
+```text
+1. Logical Model
+2. Variant
+3. Artifact
+4. Revision
+5. Locator
+6. Storage Identity
+
+Governing rule:
+  No layer may be substituted for or silently promoted to another layer.
+```
+
+Logical identity under this allocation:
+
+```text
+model_id: str remains the canonical logical model identity.
+logical_model_id(...) remains the single identity authority.
+No new nominal identity type is introduced.
+SOURCE_REPOSITORY_TO_MODEL_ID remains in place and remains in use.
+downloadable_locator remains the download gate.
+```
+
+Intended minimal implementation surface (declared here, NOT performed by this
+record):
+
+```text
+castlearq/model_identity.py   documentation contract only; zero executable
+                              statement may change
+tests/                        focused B9.93 layer-contract tests, following the
+                              per-block focused-test convention used by B9.80-B9.92
+```
+
+All other modules are outside the implementation surface, including
+`model_domain.py`, `discovery.py`, `sources/huggingface_discovery.py`,
+`discovery_selection.py`, `acquisition_mapping.py`, `acquisition_service.py`,
+`downloads/planner.py`, `downloads/downloader.py`, `model_store.py`,
+`manifest_migration.py`, `api.py`, `main.py`, `application_wiring.py` and
+`models.py`.
+
+### 36.4 Non-goals
+
+B9.93 MUST NOT include, and this allocation does not authorize:
+
+```text
+GUI
+Model Library UI
+persistent catalog
+database
+provider federation
+second provider
+fuzzy search
+semantic search
+ranking
+recommendation
+download progress
+resumable downloads
+ModelStore redesign
+filesystem redesign
+manifest redesign
+migration redesign
+multi-revision coexistence
+multi-GPU
+fine-tuning
+LoRA / QLoRA
+datasets
+evaluation infrastructure
+legacy convergence
+CLI redesign
+B8.1 convergence
+provider-declared identity
+1 -> N repository/model mapping
+concrete model registry expansion
+B9.94 and any later identifier
+```
+
+No future work is added to B9.93 by this record.
+
+### 36.5 Dependencies (verified closed)
+
+```text
+NOT A DEPENDENCY (consumed as-is, unchanged by B9.93):
+  B9.80  discovery domain
+  B9.81  Hugging Face discovery provider
+  B9.82  discovery -> acquisition mapping
+  B9.83  revision-aware acquisition (OD-1)
+  B9.84  selection boundary
+  B9.85  acquisition service
+  B9.86  catalog query boundary
+  B9.87  CLI catalog query caller
+  B9.88  chat / application boundary CLI caller
+  B9.89  run boundary
+  B9.90  canonical revision-aware locator
+  B9.91  internal Dynamic Model Library
+  B9.92  CLI discover -> inspect -> select -> acquire
+
+PARALLEL (explicitly not converged):
+  B8.1 model_domain.ModelIdentity / ModelArtifact
+
+NOT A DEPENDENCY (untouched):
+  legacy ModelSource architecture
+  ModelStore
+
+PREREQUISITE BLOCKS: NONE
+```
+
+### 36.6 Acceptance criteria
+
+Drafted at allocation time. They are objective and do not weaken, weaken-and-
+reinterpret or relax any ratified invariant.
+
+```text
+AC1  Logical identity semantics: `model_id` remains a str;
+     `logical_model_id` remains the sole authority; no nominal identity
+     type is introduced.
+
+AC2  Variant separation: `ModelVariant` remains provider-owned,
+     identity-free and ungrouped by B9.93.
+
+AC3  Artifact separation: `ArtifactSpec.model_id` remains a REFERENCE to
+     the logical identity; no artifact field redefines model identity.
+
+AC4  Revision separation: revision remains distinct from logical identity
+     and remains EXCLUDED from `artifact_id`; an absent revision stays
+     None; the B9.83/B9.90 revision contract is unchanged.
+
+AC5  Locator separation: `downloadable_locator` remains an acquisition
+     concern; a locator is never stored as identity and never becomes
+     logical model identity.
+
+AC6  Storage identity separation: ModelStore layout, the `artifact_id`
+     formula and the manifest schema are unchanged; no storage migration
+     occurs; storage identity remains a persistence concern.
+
+AC7  Discovery remains identity-free: `DiscoveredArtifact.model_id`
+     remains None; no logical identity is added to the discovery domain.
+
+AC8  Provider remains non-authoritative: provider-declared identity is
+     not trusted; the contradictory-declared-identity rejection in the
+     acquisition service is unchanged; B9.82 and B9.85 are not reopened.
+
+AC9  Cardinality preserved: 1 repository -> 1 logical model;
+     `downloadable_locator` still returns None when the locator count is
+     not exactly one; no 1 -> N mapping is introduced.
+
+AC10 B8.1 remains parallel: `model_domain.py`, `evaluation_adapter.py` and
+     `ModelArtifact.identifier` are unmodified; no convergence occurs.
+
+AC11 Acquisition behaviour preserved: `model_identity.py` has zero change
+     to any executable statement; discovery, mapping, planner, downloader,
+     store and migration contracts are unchanged.
+
+AC12 Regression suite: the full existing test suite remains green; the new
+     B9.93 tests cover the layer-separation contract only and do not
+     weaken any existing test.
+```
+
+### 36.7 Closure evidence expected
+
+```text
+Before closure, B9.93 will require:
+  - the implementation commit actually performed;
+  - the focused B9.93 test results;
+  - confirmation that AC1-AC12 are evaluated against observable behaviour;
+  - confirmation that model_identity.py changed documentation only;
+  - confirmation that the protected architecture diff is EMPTY;
+  - confirmation that no roadmap record above this section was modified;
+  - confirmation that no source file outside the declared implementation
+    surface changed;
+  - the two-step allocation-commit field resolved to a real hash.
+```
+
+### 36.8 Allocation versus implementation state (as asserted by this NAR)
+
+```text
+B9.93 IS:     an allocated identifier carrying a ratified scope
+B9.93 IS NOT: implemented
+B9.93 IS NOT: verified
+B9.93 IS NOT: closed
+
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+PUBLICATION:    NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+
+Protected architecture diff at this anchor: EMPTY
+  model_domain.py, discovery.py, sources/huggingface_discovery.py,
+  discovery_selection.py, acquisition_mapping.py, acquisition_service.py,
+  downloads/, model_store.py, manifest_migration.py, api.py, main.py,
+  application_wiring.py, models.py
+```
+
+### 36.9 Human approval reference
+
+```text
+Human Architectural Decision:
+  SELECTED — OPTION D — EXPLICIT MULTI-LAYER IDENTITY MODEL
+  Source record:
+    docs/b993-model-identity-expansion-human-architectural-decision-record.md
+  READ-ONLY audits preceding the allocation:
+    Human Architectural Decision Preparation Audit
+    Formal Roadmap Allocation Audit — PASS
+
+The decision is not reopened, re-compared or re-scored by this record.
+```
+
+### 36.10 Register entry state summary
+
+```text
+B9.92  CLOSED
+B9.93  ALLOCATED
+B9.94+ NOT ALLOCATED
+```
+
+B9.94+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record beyond the B9.93 allocation stated above.
