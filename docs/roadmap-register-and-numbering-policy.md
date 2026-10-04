@@ -9295,22 +9295,27 @@ Future human decisions NOT discharged by this record:
 ```text
 Block ID:                 B9.92
 Name:                     CLI Discovery-to-Acquisition Product Flow
-Status:                   ALLOCATED
+Status:                   CLOSED
 Origin:                   controlled B9.92 product/architectural decision and
                            formal allocation audit
 Scope:                    see 35.3 — fixed by the ratified decision, recorded
                            without reinterpretation
-Boundary decision:        OPTION A — CLI uses ModelCatalogQueryService.search
+Boundary decision:        OPTION A — CLI uses ModelCatalogQueryService.query
                            for search and ModelDiscovery.inspect(repository)
                            for repository-keyed inspection
 Non-goals:                see 35.4
 Architectural decision:   HUMAN-RATIFIED product/architectural decision,
                            preceding this allocation
-Current State:            ALLOCATED — allocated by section 35. Not implemented,
-                           not verified, not closed.
-Implementation Commit:    NONE — implementation is not authorized by this NAR
-Verification Result:      NOT PERFORMED
-Closure Commit:           NONE — closure is not authorized by this NAR
+Current State:            CLOSED — allocated by section 35, implemented at
+                           faf24123540ba5a9590de4eeb5757faf64911e1c, verified,
+                           and closed. See 35.11 for the closure evidence.
+Implementation Commit:    faf24123540ba5a9590de4eeb5757faf64911e1c
+                           ("feat: add CLI model inspection flow"), published at
+                           origin/main
+Verification Result:      PASS — see 35.11
+Closure Commit:           PENDING — fixed by the controlled commit that carries
+                           this closure record ("docs: close roadmap block
+                           B9.92"), by the section 11 two-step mechanism
 Release Association:      NOT YET DEFINED
 Supersession:             none (cross-reference only, as recorded above)
 Documented?:              YES — this document + the decision record
@@ -9323,7 +9328,7 @@ The lifecycle state asserted by this record is, in full and without implication
 of anything further:
 
 ```text
-B9.92 = ALLOCATED
+B9.92 = CLOSED
 ```
 
 > **SUPERSESSION NOTE.** Section 34 states that B9.92 and higher identifiers are
@@ -9357,7 +9362,7 @@ Option A
 
 CLI
  ↓
-ModelCatalogQueryService.search        (search, B9.86 boundary, unchanged)
+ModelCatalogQueryService.query         (search, B9.86 boundary, unchanged)
 ModelDiscovery.inspect(repository)     (repository-keyed inspection, B9.80/81)
 ```
 
@@ -9652,7 +9657,7 @@ Before closure, B9.92 will require:
 **None** of this evidence is produced, claimed or implied by this allocation
 record.
 
-### 35.8 Allocation versus implementation state
+### 35.8 Allocation versus implementation state (as asserted by this NAR)
 
 ```text
 NUMBER ALLOCATION:         APPROVED BY THIS NAR
@@ -9664,10 +9669,16 @@ CLOSURE AUTHORIZED:        NO — by this NAR
 CLOSURE:                   NOT PERFORMED
 ```
 
-At this anchor no `inspect` CLI command exists, no JSON support exists for it,
-no README change has been made, and no application, discovery, selection,
-acquisition, storage or identity code is authorized here. Nothing in this record
-changes that.
+The statements below are **historical**: they describe the corpus **at the
+allocation anchor recorded in 35.1**, before any B9.92 implementation existed.
+They were accurate at that anchor and are preserved verbatim as the
+allocation-time record. They are **not** the current state of B9.92, which is
+recorded in 35.2 and evidenced in 35.11.
+
+> Historical, allocation-anchor statement (not current state): at this anchor no
+> `inspect` CLI command exists, no JSON support exists for it, no README change
+> has been made, and no application, discovery, selection, acquisition, storage
+> or identity code is authorized here. Nothing in this record changes that.
 
 ```text
 ALLOCATION != IMPLEMENTATION != VERIFICATION != CLOSURE
@@ -9695,15 +9706,136 @@ this record.
 ### 35.10 Register entry state summary
 
 ```text
-B9.92 STATUS:         ALLOCATED
-B9.92 IMPLEMENTATION: NOT PERFORMED
-B9.92 VERIFICATION:   NOT PERFORMED
-B9.92 CLOSURE:        NOT PERFORMED
+B9.92 STATUS:         CLOSED
+B9.92 IMPLEMENTATION: PERFORMED — faf24123540ba5a9590de4eeb5757faf64911e1c
+B9.92 VERIFICATION:   PASS — see 35.11
+B9.92 CLOSURE:        PERFORMED — by this record (closure commit PENDING by the
+                      section 11 two-step mechanism)
 B9.91:                CLOSED / PUBLISHED — preserved verbatim (section 34)
 B9.93+:               NOT ALLOCATED
 ```
 
-Working tree at anchor:
+Working tree at the allocation anchor (historical, see 35.8):
   tracked tree clean apart from this allocation record; git diff --check clean;
   ahead/behind origin/main 0/0; the only untracked file is the pre-existing,
   unstaged docs/post-b990-architectural-decision-preparation.md.
+
+### 35.11 B9.92 Closure Record
+
+This record transitions B9.92 from ALLOCATED to CLOSED. It was preceded by a
+READ-ONLY Implementation Readiness Audit, the implementation task, a READ-ONLY
+Evidence Completion Audit, a READ-ONLY Publication Preflight, a fast-forward
+publication, and a READ-ONLY Closure / Roadmap Completion Audit. Each gate is
+recorded below with the evidence it actually produced.
+
+**Implementation commit (published):**
+
+```text
+faf24123540ba5a9590de4eeb5757faf64911e1c
+feat: add CLI model inspection flow
+```
+
+Changed paths, exactly:
+
+```text
+README.md                      command-reference row and read-only command list
+castlearq/main.py              inspect_command, projection, composition adapter,
+                               and the additive CLI registration points
+tests/test_b9765_json_cli.py   exact _JSON_COMMANDS tuple extension
+tests/test_b992_cli_inspect.py focused B9.92 tests (new)
+```
+
+**Verification evidence, as actually measured:**
+
+```text
+Focused B9.92 tests:        26 passed
+Relevant regression tests:  435 passed, 71 subtests passed
+Full repository suite:      2237 passed, 2718 subtests passed
+Failures:                   0
+Errors:                     0
+AC1-AC14:                   PASS (individually evidenced)
+```
+
+**Acceptance criteria results.** Each criterion was audited separately against
+source, tests, observed CLI behaviour and published repository state. No
+criterion was weakened, merged or removed, and no criterion was added.
+
+```text
+AC1   PASS  read-only inspect reaches the B9.80 ModelDiscovery boundary; the
+            legacy HuggingFaceSource path is not used
+AC2   PASS  inspection succeeds for repositories absent from the identity
+            table; no identity entry is created or required
+AC3   PASS  repository, variant/declared_quantization, filename,
+            declared_size, declared_sha256 and revision are exposed; nothing
+            is invented
+AC4   PASS  metadata stays DECLARED/unverified; absent values print Unknown and
+            are never defaulted or promoted
+AC5   PASS  discovery-produced variant grouping and artifact order are
+            reproduced, not re-derived, re-sorted or re-grouped
+AC6   PASS  B9.84 remains the sole deterministic selection authority; no
+            selection algorithm, ranking, preference or fallback was added
+AC7   PASS  acquisition unchanged; no ArtifactSpec, URL, planner, downloader or
+            ModelStore state is constructed, and no second acquisition path exists
+AC8   PASS  revision is display-only; B9.90 locator semantics are untouched
+AC9   PASS  model_identity.py, model_domain.py, model_store.py, downloads/* and
+            the B9.80-B9.91 contracts are unmodified
+AC10  PASS  additive only; no existing command renamed, removed or re-scoped
+AC11  PASS  legacy source/plan/run commands remain functional and unmigrated
+AC12  PASS  no GUI, persistence, catalog, cache, ranking, recommendation,
+            fuzzy/semantic search, provider federation or new model hierarchy
+AC13  PASS  exit codes follow the documented 0/1/2 convention; errors remain
+            categorized (inspect_discovery_failed)
+AC14  PASS  focused B9.92 tests cover the inspection behaviour and the full
+            suite passes
+```
+
+**Boundary and dependency evidence.**
+
+```text
+Protected architecture diff at faf2412: EMPTY
+  discovery.py, sources/huggingface_discovery.py, catalog_query_service.py,
+  discovery_selection.py, application_wiring.py, acquisition_service.py,
+  acquisition_mapping.py, downloads/, model_identity.py, model_domain.py,
+  dynamic_model_library.py, model_store.py
+
+Dependencies CLOSED:
+  B9.80  d49a909  B9.81  ef452b2  B9.84  5a40421  B9.85  c2eeb44
+  B9.86  aacbc8e  B9.90  8575468  B9.91  d50809d
+```
+
+**Publication evidence.**
+
+```text
+origin/main = faf24123540ba5a9590de4eeb5757faf64911e1c
+Remote transition: e843ebd -> faf2412, a normal fast-forward.
+No force push, no --force-with-lease, and no history rewrite were used.
+```
+
+**Terminology reconciliation.** Sections 35.2 and 35.3 previously named the
+application-boundary method `ModelCatalogQueryService.search(...)`. The actual
+existing service contract is `ModelCatalogQueryService.query(...)`. B9.92 does
+not invoke that method directly, so the mismatch was non-blocking documentation
+drift. Only the two B9.92 references were corrected; the method was **not**
+renamed in code and no B9.80-B9.91 record was modified. Other blocks already
+describe the same method as `query()`.
+
+**Allocation commit field.** Section 35.1 records `Allocation Commit: PENDING`
+by the section 11 two-step mechanism. No separate commit titled "docs: allocate
+roadmap block B9.92" exists in the rewritten history, so no authoritative
+allocation SHA can be proven. The field therefore **remains PENDING** and no
+hash was fabricated. The implementation, verification and closure evidence in
+this record is authoritative; it does not depend on that field.
+
+**Closure statement.**
+
+```text
+IMPLEMENTATION:   PERFORMED
+VERIFICATION:     PASS
+PUBLICATION:      PERFORMED (origin/main == faf2412)
+CLOSURE:          PERFORMED
+
+B9.92 = CLOSED
+```
+
+B9.93+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record.
