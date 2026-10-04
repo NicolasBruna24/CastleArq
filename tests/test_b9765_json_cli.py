@@ -400,6 +400,10 @@ class SurfaceAndParityTests(_ShouldCase):
                 # catalog/query application boundary through the same
                 # envelope, with no new envelope shape.
                 "search",
+                # B9.92 adds the inspect surface: it exposes the existing
+                # B9.80 ModelDiscovery.inspect port through the same
+                # envelope, with no new envelope shape.
+                "inspect",
             ),
         )
 

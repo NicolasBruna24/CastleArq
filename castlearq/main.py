@@ -757,6 +757,8 @@ _JSON_COMMANDS = (
     "plan",
     # B9.87: the search surface exposes the B9.86 catalog/query boundary.
     "search",
+    # B9.92: the inspect surface exposes the B9.80 discovery.inspect port.
+    "inspect",
 )
 
 
@@ -1307,6 +1309,155 @@ def search_command(
         print(f"  Next cursor: {outcome.next_cursor}", file=out)
     else:
         print("  Next cursor: none", file=out)
+    return 0
+# B9.92: the read-only inspection half of the CLI discovery-to-acquisition
+# product flow. ``castlearq inspect <repository>`` is a presentation adapter
+# only. It reaches the existing B9.80 ``ModelDiscovery.inspect(repository)``
+# port, receives the provider's own ``ModelVariant``/``DiscoveredArtifact``
+# tuples, and presents them unchanged.
+#
+# What this adapter deliberately does NOT do:
+#   * it is identity-free -- the repository is a discovery locator, not a
+#     logical model identity, and nothing here touches ``model_identity.py``;
+#   * it performs no acquisition -- no ArtifactSpec, no URL construction, no
+#     DownloadPlanner, no Downloader, no ModelAcquisitionService;
+#   * it adds no revision semantics -- the declared revision is displayed as
+#     the provider declared it. B9.90 remains the only locator authority.
+#
+# Selection stays with B9.84 and acquisition stays with B9.85: after reading
+# the variants here, the user passes the existing ``--quantization`` /
+# ``--filename`` inputs to the existing ``download`` command.
+
+
+def _compose_inspection_discovery() -> ModelDiscovery:
+    """Return the discovery collaborator the CLI already composes.
+
+    B9.92 introduces no new composition function and no second provider
+    construction path. The B9.86 composition root already builds exactly one
+    ``ModelDiscovery`` for the catalog/query use case, and the inspection
+    command reuses that same collaborator, so a single provider implementation
+    and a single injection mechanism remain in the CLI.
+    """
+    return compose_catalog_query_service().discovery_provider
+
+
+def _inspect_variants_payload(variants) -> list[dict]:
+    """Project discovered variants and artifacts for the JSON envelope.
+
+    Field-for-field pass-through of the declared remote metadata the B9.80
+    domain already carries. Variant grouping and artifact order are the
+    provider's, reproduced verbatim: nothing is regrouped, re-sorted,
+    normalized, promoted from DECLARED to verified, or invented. A ``None``
+    declared value becomes the shared UNKNOWN structure rather than a default.
+    """
+    return [
+        {
+            "declared_quantization": variant.declared_quantization,
+            "artifacts": [
+                {
+                    "filename": artifact.filename,
+                    "format": artifact.format,
+                    "declared_quantization": artifact.declared_quantization,
+                    "declared_size": _json_observed(artifact.declared_size),
+                    "declared_sha256": _json_observed(artifact.declared_sha256),
+                    "revision": _json_observed(artifact.revision),
+                }
+                for artifact in variant.artifacts
+            ],
+        }
+        for variant in variants
+    ]
+
+
+def inspect_command(
+    repository: str | None,
+    *,
+    as_json: bool = False,
+    out=None,
+    err=None,
+    discovery=None,
+) -> int:
+    """Inspect one remote repository through the existing discovery port.
+
+    B9.92. Read-only: it performs one ``ModelDiscovery.inspect(repository)``
+    round-trip and prints what the provider declared. It downloads nothing and
+    changes no state.
+
+    Exit codes follow the established CLI convention:
+
+    * ``0`` -- the inspection completed, **including** a completed inspection
+      that found no variants/artifacts (a repository with no GGUF artifacts is
+      an empty result, not a failure);
+    * ``1`` -- the discovery boundary reported an operational failure;
+    * ``2`` -- usage error (no repository was supplied).
+    """
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    if not repository:
+        usage = "Usage: castlearq inspect <repository>"
+        if as_json:
+            return _emit_json_envelope(
+                "inspect", 2, {}, error=json_output.error("usage_error", usage)
+            )
+        print(usage, file=err)
+        return 2
+
+    provider = (
+        discovery if discovery is not None else _compose_inspection_discovery()
+    )
+    try:
+        variants = tuple(provider.inspect(repository))
+    except DiscoveryError as error:
+        if as_json:
+            return _emit_json_envelope(
+                "inspect",
+                1,
+                {"repository": repository},
+                error=json_output.error("inspect_discovery_failed", str(error)),
+            )
+        print(f"Inspect error: {error}", file=err)
+        return 1
+
+    if as_json:
+        return _emit_json_envelope(
+            "inspect",
+            0,
+            {
+                "repository": repository,
+                "variants": _inspect_variants_payload(variants),
+            },
+        )
+
+    print(f"CastleArq - Model inspection: {repository}", file=out)
+    print("=" * 43, file=out)
+    if not variants:
+        print("No GGUF artifacts found.", file=out)
+        return 0
+    for variant in variants:
+        print(
+            f"\n  Variant: {variant.declared_quantization}",
+            file=out,
+        )
+        for artifact in variant.artifacts:
+            print(f"\n    {artifact.filename}", file=out)
+            print(f"      Format: {artifact.format}", file=out)
+            print(
+                "      Quantization: "
+                f"{artifact.declared_quantization}",
+                file=out,
+            )
+            size = (
+                artifact.declared_size
+                if artifact.declared_size is not None
+                else "Unknown"
+            )
+            print(f"      Declared size: {size}", file=out)
+            print(
+                f"      Declared SHA-256: {artifact.declared_sha256 or 'Unknown'}",
+                file=out,
+            )
+            print(f"      Revision: {artifact.revision or 'Unknown'}", file=out)
+    print("", file=out)
     return 0
 
 
@@ -2447,6 +2598,17 @@ read-only inspection:
           provider, which owns the bound. When more results exist, the opaque
           `next_cursor` is printed and can be passed back with `--cursor`;
           CastleArq never interprets it.
+  inspect <repository>
+          inspect one remote repository through the existing model discovery
+          boundary and print the declared variants and artifacts: filename,
+          declared quantization, declared size, declared SHA-256 and declared
+          revision. Read-only: it downloads nothing and changes no state. All
+          metadata is reported as the provider DECLARED it, never as verified;
+          a value the provider did not declare is printed as Unknown. Missing
+          values are never defaulted and no model identity is created: the
+          repository is a discovery locator, not a logical model id. Use the
+          reported variants with the existing `--quantization` / `--filename`
+          inputs of `download` to acquire.
   models  scored model recommendations
   list    locally stored artifacts and their derived state
   validate <model-id>
@@ -2691,14 +2853,14 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
         help=(
             "command-specific value: model-id for download/run/chat/execute/"
             "compatibility/validate; source provider for source; "
-            "repository for plan"
+            "repository for plan/inspect"
         ),
     )
     parser.add_argument(
@@ -2780,6 +2942,7 @@ def main() -> int:
         "runtime": (),
         "source": (),
         "search": ("limit", "cursor"),
+        "inspect": (),
         "plan": (),
         "compatibility": ("quantization", "filename"),
         "validate": ("quantization", "filename"),
@@ -2879,6 +3042,13 @@ def main() -> int:
             args.provider,
             limit=args.limit,
             cursor=args.cursor,
+            **json_kwargs,
+        )
+    elif args.command == "inspect":
+        if args.repository is not None:
+            parser.error("inspect accepts exactly one repository")
+        return inspect_command(
+            args.provider,
             **json_kwargs,
         )
     elif args.command == "plan":

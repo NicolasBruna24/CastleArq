@@ -782,6 +782,7 @@ flags.
 | `verify` | Re-checks the **GPU diagnosis**, not artifact integrity |
 | `source huggingface REPO` | Inspects a remote source |
 | `search QUERY` | Queries the configured model discovery/catalog capability |
+| `inspect REPO` | Inspects one remote repository's declared variants and artifacts |
 | `plan REPO FILENAME` | Inspects one specific remote artifact |
 
 `import PATH` copies a local GGUF file into the model store. It reports the
@@ -794,7 +795,7 @@ presentation label; the store sanitizes it, and it is never used as a model id.
 Importing does not run anything: run the artifact later with `execute`.
 
 `detect`, `runtime`, `models`, `list`, `store`, `compatibility`, `source`,
-`search` and `plan` are read-only: they change nothing.
+`search`, `inspect` and `plan` are read-only: they change nothing.
 
 `search QUERY` queries the configured model discovery/catalog capability and
 prints the remote candidates it returned, together with the `next_cursor` the
