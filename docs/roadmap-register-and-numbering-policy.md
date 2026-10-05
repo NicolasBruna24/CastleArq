@@ -11382,9 +11382,168 @@ a separate main block, as section 37.6 anticipated.
 B9.92  CLOSED
 B9.93  CLOSED
 B9.94  OPEN — Increment 1 CLOSED; further increments remain possible
-B9.95  ALLOCATED — implementation, verification and closure NOT PERFORMED
+B9.95  CLOSED — see section 38.11; implementation at
+       7fe715bb6cb5541eb38d3c698ca38fcd944b219f
 B9.96+ NOT ALLOCATED
 ```
 
 B9.96+ remains NOT ALLOCATED. No new block, scope, decision or capability is
 introduced by this record beyond the B9.95 allocation stated above.
+---
+
+### 38.11 B9.95 Closure Record
+
+This record transitions B9.95 from ALLOCATED to CLOSED. It was preceded by the
+implementation commit
+7fe715bb6cb5541eb38d3c698ca38fcd944b219f
+("feat(identity): add persistent identity admission registry"), which was
+itself preceded by the ratification of the decision, the Human Decision
+Formalization Audit, the Formal Roadmap Allocation Audit, the Implementation
+Readiness Audit, and this block's Evidence Completion Audit. The Evidence
+Completion Audit returned B9.95 EVIDENCE COMPLETE — READY FOR CLOSURE.
+
+```text
+IMPLEMENTATION COMMIT:
+  7fe715bb6cb5541eb38d3c698ca38fcd944b219f
+  "feat(identity): add persistent identity admission registry"
+  Parent: 8cdd927ee2e82f2fbacac09330d3bcd7d9b43081
+
+Files changed by the implementation commit (exactly 2):
+  castlearq/identity_admission.py            (new, standalone registry)
+  tests/test_b995_identity_admission.py     (new, 72 tests / 11 classes)
+```
+
+**Scope evidence.** The implementation is exactly the scope allocated in 38.3:
+a standalone persistent Identity Admission Registry and its contract tests.
+No existing tracked file was modified by the implementation commit.
+
+```text
+castlearq/identity_admission.py
+  new module; stdlib plus one read-only import of castlearq.model_identity
+  public API: lookup(source, repository) -> str | None
+              register(source, repository, model_id) -> None
+              plus IdentityAdmissionError, registry_root, registry_path
+  no reverse lookup, no enumeration, no removal, no update, no rebinding
+  record: {source, repository, model_id} plus a required schema_version
+  locator key: json.dumps([source, repository]) — collision-free, deterministic
+  durability: temp sibling -> flush -> fsync(file) -> os.replace -> fsync(dir)
+  corruption: reported loudly; never treated as an empty registry
+  conflicts: same-locator/different-id, same-id/different-locator, and
+             curated collision all fail closed, leaving the file unchanged
+```
+
+**Verification evidence (AC1-AC12).**
+
+```text
+AC1  PASS  an admitted identity is persisted and survives process restart
+AC2  PASS  record is exactly the ratified fields; no artifact, revision,
+           quantization, filename, URL, provider, storage or execution field
+AC3  PASS  authority is curated -> persisted -> derived; curated identity is
+           never overwritten by registry state
+AC4  PASS  bindings are immutable; repeated identical registration is
+           idempotent; conflicting registration fails closed
+AC5  PASS  a derived identity colliding with a curated identity fails closed;
+           no identity is fabricated, guessed or defaulted
+AC6  PASS  the contract is forward-only; no reverse lookup is introduced and
+           no reverse index is persisted
+AC7  PASS  castlearq/model_identity.py is unchanged and remains free of
+           persistence and I/O; logical_model_id is still the curated-only
+           pure lookup
+AC8  PASS  no ModelStore, manifest or artifact-layout change: the registry is
+           a standalone file outside the artifact-addressed store
+AC9  PASS  persistence is atomic and durable; a corrupt registry is reported
+           loudly and never partially trusted
+AC10 PASS  the registry has NO production consumer in B9.95: no acquisition,
+           CLI, download, runtime, GUI, provider or model-library surface
+AC11 PASS  the section 37.12 invariants hold: a derived identity is still not
+           reverse-resolvable and not downloadable
+AC12 PASS  existing B9.80 - B9.94 contracts remain regression-safe
+
+Test evidence:
+  tests/test_b995_identity_admission.py        72 passed, 8 subtests
+  identity regression set (3 files)             63 passed, 84 subtests
+  full suite                                   2358 passed, 2799 subtests
+  failures: 0   errors: 0   skipped: 0   xfail: 0
+
+Baseline before B9.95: 2286 passed, 2791 subtests
+Current:               2358 passed, 2799 subtests
+Delta:                 +72 tests, +8 subtests — exactly the B9.95 module.
+```
+**Boundary and dependency evidence.**
+
+```text
+Protected architecture diff at 7fe715b: EMPTY
+  No pre-existing tracked file was created, modified or deleted. The commit
+  adds exactly the two files listed above.
+
+Module import boundary (AST-verified, not grep-verified):
+  imports: annotations, json, os, pathlib, typing, model_identity
+  forbidden imports absent: model_store, session, acquisition_service,
+    acquisition_mapping, application_wiring, main, api, urllib, requests,
+    socket, sqlite3
+  forbidden attribute references absent: ModelStore, downloadable_locator,
+    save_manifest, list_artifacts, _safe_model_id, resolve_admitted_model_id
+
+Dependency direction is one-way:
+  identity_admission  ->  model_identity      (allowed)
+  model_identity      ->  identity_admission  (absent; verified unchanged)
+
+Zero production consumers:
+  a repository-wide search for identity_admission outside the two new files
+  returns no result. This is an explicit B9.95 acceptance condition (AC10),
+  not an incomplete implementation.
+
+No roadmap record above section 38 was modified by this closure.
+No ADR or preparation document was modified by this closure.
+No prior B9.80 - B9.94 decision was reopened or superseded.
+```
+
+**Preserved decisions.** The ratified B9.95 architecture is unchanged by this
+closure: a standalone forward-only registry independent of ModelStore and of
+model_identity persistence; the curated -> persisted -> derived authority
+order; immutable bindings; atomic and durable writes; fail-loud corruption;
+and fail-closed conflicts. Every non-goal in 38.4 remains in force: no
+acquisition integration, no reverse lookup, no downloading, no CLI or
+`--model-id`, no GUI, no Model Library UX, no runtime or llama.cpp
+integration, no new providers, no ModelStore or manifest redesign, no
+manifest migration, no artifact or revision persistence, no rename migration
+and no B8.1 identity convergence.
+
+B9.95 is a persistent identity capability only. It does NOT implement Hugging
+Face acquisition, Model Library UX, runtime or execution integration, CLI
+model installation, chat, or llama.cpp integration, and it must not be read as
+completion of any larger CastleArq model-consumption roadmap.
+
+**Accepted limitation.** ``read -> modify -> replace`` is not transactional:
+two processes registering DIFFERENT repositories concurrently can lose one
+update, because each rewrites the whole file. Atomic replacement protects
+readers from torn files but provides no isolation. No locking and no database
+were introduced; concurrent writes to the SAME locator are benign because
+identical registrations are idempotent. This limitation is documented in the
+module and asserted by the test suite, and is an accepted architectural
+boundary rather than an accidental omission.
+
+**Allocation evidence.** 38.1 records `Allocation Commit:
+a53e05bff92d02b1a9d1c5f8fec7a7801a0f9b80`, fixed by
+8cdd927ee2e82f2fbacac09330d3bcd7d9b43081
+("docs: fix B9.95 allocation commit anchor"). Those anchors are unchanged by
+this closure and must not be confused with the implementation commit above.
+
+**Publication state.** NOT PERFORMED. This closure exists locally only; at the
+time of this record `main` is ahead of `origin/main` and nothing has been
+pushed.
+
+**Closure statement.**
+
+```text
+IMPLEMENTATION:   PERFORMED — 7fe715bb6cb5541eb38d3c698ca38fcd944b219f
+VERIFICATION:     PASS
+PUBLICATION:      NOT PERFORMED
+CLOSURE:          PERFORMED — by this record
+
+B9.95 = CLOSED
+B9.96+ NOT ALLOCATED
+```
+
+B9.94 remains OPEN as recorded in 38.10; this closure does not alter it. No new
+block, scope, decision or capability is introduced by this record.
