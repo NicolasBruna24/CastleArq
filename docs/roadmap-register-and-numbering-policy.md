@@ -11016,3 +11016,375 @@ B9.95+           = NOT ALLOCATED
 ```
 
 No new block, scope, decision or capability is introduced by this record.
+---
+
+## 38. B9.95 — Number Allocation Record
+
+### 38.1 Allocation evidence block (§11 mandatory fields)
+
+```text
+Assigned Number:
+  B9.95
+
+Title:
+  Identity Admission Registry
+
+Allocation Date:
+  2026-10-04
+
+Allocation Commit:
+  PENDING
+```
+
+`Allocation Commit` is recorded as `PENDING` under the two-step mechanism
+stated in section 11 and used identically by sections 14, 16, 19, 21, 23, 25,
+27, 29, 31, 33, 34, 35, 36 and 37: at authoring time the hash does not exist
+and a commit hash cannot be known before the commit exists, so writing a
+guessed value would be a fabricated identifier. The field is fixed to the real
+hash by the next controlled commit ("docs: fix B9.95 allocation commit
+anchor"), which changes no other content of this record.
+
+```text
+Corpus/HEAD Anchor:
+  8275030bd702c7c933728bf926ca67164b5d8c07
+
+Corpus File Count:
+  232  (git ls-files at the anchor)
+
+Corpus Integrity Evidence:
+  Read-only corpus inspection at the anchor commit above. Method: an
+  exhaustive regular-expression scan for B9.x and B9.x.y identifiers over the
+  versioned corpus, performed SEPARATELY over castlearq/ (source), tests/
+  (test), and every file reported by `git ls-files docs/`. This is the
+  mechanism section 6 requires: consulting docs/ alone is explicitly
+  insufficient, because block identifiers are minted in source and tests.
+
+Identifier Set:
+  Highest identifier in castlearq/ (source): B9.94
+  Highest identifier in tests/          : B9.94
+  Highest identifier in docs/           : B9.94
+    (B9.95 appears in docs/ only as an explicit NOT ALLOCATED
+     non-allocation reference; it is absent from source and tests)
+  B9.95 in castlearq/ : NONE
+  B9.95 in tests/     : NONE
+  Sub-blocks B9.95.x  : NONE anywhere in the corpus
+
+Highest Verified Main Block:
+  B9.94
+  Allocated at section 37, anchored by commit 2b47efc59fc48e08938fb9e8929b89421e0a9d4b,
+  minted in source (castlearq/model_identity.py) and in tests
+  (tests/test_b994_identity_derivation.py), and with Increment 1 CLOSED at
+  section 37.12 by commit 8275030bd702c7c933728bf926ca67164b5d8c07.
+
+Rule in Force:
+  Section 6 — next_main_block = highest_verified_main_block + 1
+
+Rule Activation Anchor:
+  The activation commit of this document, under which sections 6, 7, 8, 9,
+  10, 11 and 12 are prospective policies (see sections 6 through 12).
+
+Actor/Process:
+  Project owner (human architectural decision authority), recorded by the
+  controlled allocation step. The decision itself was ratified by the human
+  project owner before this allocation was authored.
+
+Candidate Numbers Considered:
+  B9.95    — SELECTED. It is highest_verified_main_block + 1 = B9.94 + 1, the
+             only value section 6 permits, and it is unallocated, unreserved
+             and unclaimed in the whole corpus.
+  B9.96+   — NOT SELECTED. Section 6 requires the IMMEDIATE successor of the
+             highest verified main block. Selecting B9.96 or later would skip
+             B9.95 and violate the rule, exactly as the historical decline
+             recorded at line 10511 reasoned when B9.93 had not yet been
+             allocated.
+  B9.94.x  — NOT SELECTED. Section 8 provides that a sub-block B9.X.Y only
+             subdivides main block B9.X. Identity Admission Registry
+             persistence is a SEPARATE MAIN ARCHITECTURAL SURFACE, not a phase
+             of B9.94: section 37.12 lists registry persistence as deferred,
+             and section 37.5 forbids a persistent catalog or a database
+             INSIDE B9.94. A sub-block would therefore both misclassify the
+             work and contradict section 37.
+  Historical B9.95 "CONSIDERED AND DECLINED" (recorded at line 10511 inside
+  the section 36 candidate analysis) — MOOT. That decline reasoned that
+  B9.95 would SKIP B9.93 and was therefore invalid. B9.93 was subsequently
+  allocated at section 36, so the objection no longer applies and the current
+  numbering floor is B9.94, not B9.92. This record does not rewrite that
+  historical text; it records only that the objection is no longer operative.
+
+Selected Number:
+  B9.95
+
+Validity Reason:
+  B9.95 = highest_verified_main_block + 1 under the section 6 rule, where the
+  highest verified main block is B9.94 as established by the corpus inspection
+  recorded above. The corpus inspection required by section 6 and section 7 was
+  performed and is recorded in this section: B9.95 appears in no source file,
+  in no test file, as no sub-block, and as no allocation, reservation or
+  claim by any artifact. The assignment is therefore valid under the active
+  rule in the form used by docs/B9.59 section 7 and section 37.
+```
+
+### 38.2 Register entry for B9.95
+
+```text
+B9.95
+Title:
+  Identity Admission Registry
+STATUS:          ALLOCATED
+IMPLEMENTATION:  NOT PERFORMED
+VERIFICATION:    NOT PERFORMED
+CLOSURE:         NOT PERFORMED
+```
+### 38.3 Scope attached to this allocation
+
+```text
+DOCUMENTATION / GOVERNANCE ALLOCATION ONLY.
+No source, test, configuration, packaging or CLI-surface change is performed
+or authorized by this section.
+```
+
+B9.95 is allocated as ONE architectural surface: a persistent Identity
+Admission Registry, transcribing the ratified human architectural decision.
+
+```text
+ARCHITECTURAL SURFACE
+  A new module, castlearq/identity_admission.py. It is NOT an extension of
+  castlearq/model_identity.py, NOT an extension of castlearq/model_store.py,
+  and NOT an extension of castlearq/session.py. Only the session persistence
+  PATTERN may be reused; no session code, payload or error type is adopted.
+
+STORAGE
+  A standalone persistent JSON registry file.
+  Persistence pattern follows castlearq/session.py: environment-overridable
+  root, temporary file, atomic os.replace, fail-loud corruption.
+  Unlike session.py, file and parent-directory fsync are REQUIRED, because a
+  registry holds authoritative identity and silent loss is more consequential
+  than loss of a diagnosis cache.
+  No database. No locking unless later concrete evidence makes it unavoidable;
+  the repository uses no locking primitive today, and idempotent same-key
+  writes make locking unnecessary for the initial scope.
+
+RECORD
+  Minimum record is exactly: {source, repository, model_id}
+  schema_version is REQUIRED for persistent-format compatibility; an unknown
+  schema version is rejected, never guessed, following the session.py precedent.
+
+CONTRACT (forward-only)
+  lookup(source, repository) -> model_id | None
+  register(source, repository, model_id) -> None
+
+AUTHORITY
+  curated -> persisted -> derived
+  curated identity remains authoritative; persisted admission is authoritative
+  for previously admitted repositories; deterministic derivation is fallback
+  only and must never silently override a curated identity.
+
+IMMUTABILITY
+  Once (source, repository) -> model_id is registered the binding is immutable.
+  Repeated identical registration is idempotent; registering the same
+  repository with a different model_id is rejected; repository or source rename
+  creates a NEW admission; migration requires a separate future decision.
+
+CONFLICT POLICY
+  Fail closed for: the same repository mapped to different model ids; a derived
+  identity colliding with a curated identity; malformed or corrupt registry
+  state.
+```
+
+The allocation authorizes the registry surface ONLY. It does not authorize any
+consumer of it: the registry has NO production caller in B9.95.
+
+### 38.4 Non-goals
+
+B9.95 MUST NOT include, and this allocation does not authorize:
+
+```text
+acquisition integration
+reverse lookup (lookup_repository / model_id -> repository)
+downloading of any model
+CLI commands or flags, including --model-id
+GUI
+Model Library UX
+runtime / inference integration
+llama.cpp integration
+new providers or provider federation
+ModelStore redesign
+manifest redesign
+manifest migration
+artifact persistence / revision persistence
+rename migration
+B8.1 ModelIdentity convergence
+removal or update of persisted bindings
+enumeration of registry records
+B9.96 and any later identifier
+```
+
+Every area above remains deferred to a future, separately decided block.
+
+Two boundaries are load-bearing and stated explicitly:
+
+```text
+FORWARD-ONLY:  introducing reverse lookup would make derived identities
+               resolvable to a repository, which would let
+               downloadable_locator treat them as acquirable and would break
+               the section 37.12 invariant that a derived identity is not
+               reverse-resolvable and not downloadable.
+
+PURITY:        castlearq/model_identity.py must remain free of registry
+               persistence and of all I/O. logical_model_id stays a curated-only
+               pure lookup; the three-tier authority chain is composed OUTSIDE
+               that module.
+```
+
+No future work is added to B9.95 by this record.
+### 38.5 Dependencies
+
+```text
+HELPFUL (the registry consumes it; B9.95 is still implementable without):
+  B9.94 Increment 1  deterministic identity derivation
+      castlearq.model_identity.resolve_admitted_model_id(source, repository)
+      and derive_model_id(source, repository) exist, are pure, and are proven
+      by tests/test_b994_identity_derivation.py. B9.95 REUSES them unchanged;
+      it does not modify them and does not make them persistent.
+
+  B9.93  explicit multi-layer identity model
+      the layer-separation rule this registry must not violate.
+
+  castlearq/session.py  persistence PATTERN only (root override, temporary
+      file, os.replace, fail-loud corruption). No code or payload is adopted.
+
+SEPARATE FUTURE DECISION SURFACES (must NOT become B9.95 dependencies):
+  acquisition integration
+  reverse lookup / widening downloadable_locator
+  CLI and user-facing admission surfaces
+  Model Library UX
+  ModelStore / manifest / migration redesign
+  runtime autonomy / llama.cpp provisioning
+  multi-provider / federation
+  rename / migration policy
+  B8.1 ModelIdentity convergence
+
+PARALLEL (explicitly not converged):
+  B8.1 model_domain.ModelIdentity / ModelArtifact
+
+PREREQUISITE BLOCKS: NONE. Every dependency of B9.95 is either already CLOSED
+or is a pattern to be reused, not a blocking capability.
+```
+
+### 38.6 Acceptance criteria basis
+
+Stated here as the architectural basis a later implementation would be drafted
+and verified against. This section neither satisfies nor verifies any of them,
+and it does not convert them into implementation steps.
+
+```text
+AC1  A logical identity admitted for (source, repository) survives process
+     restart and is returned unchanged by lookup.
+
+AC2  The registry record is exactly {source, repository, model_id} plus a
+     required schema_version; no artifact, revision, quantization, filename,
+     URL, provider, storage or execution field is persisted.
+
+AC3  Authority is curated -> persisted -> derived. A curated identity is never
+     overridden by a persisted or derived identity.
+
+AC4  A registered binding is immutable: repeated identical registration is
+     idempotent, and conflicting registration fails closed.
+
+AC5  A derived identity colliding with a curated identity fails closed; no
+     identity is fabricated, guessed or defaulted.
+
+AC6  The registry exposes a FORWARD-ONLY contract: lookup and register.
+     No reverse lookup is introduced.
+
+AC7  castlearq/model_identity.py is unchanged and remains free of persistence
+     and I/O; logical_model_id remains the curated-only pure lookup.
+
+AC8  No ModelStore, manifest or artifact-layout change: the registry is a
+     standalone file outside the artifact-addressed store.
+
+AC9  Persistence is atomic (temporary file, os.replace) and durable (file and
+     parent-directory fsync); a corrupt registry is reported loudly and never
+     partially trusted.
+
+AC10 The registry has no production consumer in B9.95: no acquisition, CLI,
+     download, runtime, GUI, provider or model-library surface is introduced.
+
+AC11 The section 37.12 invariants hold: a derived identity is not
+     reverse-resolvable and not downloadable after this block closes.
+
+AC12 Existing B9.80 - B9.94 contracts remain regression-safe.
+```
+
+### 38.7 Allocation versus implementation state (as asserted by this NAR)
+
+```text
+AT ALLOCATION TIME:
+
+B9.95 IS:     an allocated identifier carrying a ratified scope
+B9.95 IS NOT: implemented
+B9.95 IS NOT: verified
+B9.95 IS NOT: closed
+
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+PUBLICATION:    NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+
+Protected architecture diff at this anchor: EMPTY
+  the only file mutated by this allocation is
+  docs/roadmap-register-and-numbering-policy.md itself.
+  castlearq/identity_admission.py is NOT created by this allocation.
+```
+
+Lifecycle separation asserted by this section:
+
+```text
+allocation    !=  implementation
+implementation !=  verification
+verification  !=  closure
+```
+
+### 38.8 Human approval reference
+
+```text
+Decision authority:  PROJECT OWNER (human architectural decision)
+Decision status:     RATIFIED
+Decision subject:    Introduce a persistent Identity Admission Registry as a
+                     separate architectural surface, independent from
+                     model_identity.py and ModelStore.
+Preceded by:         READ-ONLY Human Architectural Decision Analysis
+                     READ-ONLY Human Decision Formalization Audit
+                       -> READY FOR FORMAL ALLOCATION AUDIT
+                     READ-ONLY Formal Roadmap Allocation Audit
+                       -> READY FOR FORMAL B9.95 ROADMAP ALLOCATION
+```
+
+The human decision is not reopened, reinterpreted or re-scored by this record.
+This allocation transcribes it and fixes its identifier and scope under the
+section 6 rule.
+
+### 38.9 B9.94 preservation
+
+This allocation does NOT modify B9.94. Verified:
+
+```text
+Section 37 is byte-identical to its pre-allocation state.
+B9.94 Increment 1 remains CLOSED (section 37.12).
+B9.94 remains OPEN for future increments.
+Registry persistence remains DEFERRED from B9.94 and is satisfied here only by
+a separate main block, as section 37.6 anticipated.
+```
+
+### 38.10 Register entry state summary
+
+```text
+B9.92  CLOSED
+B9.93  CLOSED
+B9.94  OPEN — Increment 1 CLOSED; further increments remain possible
+B9.95  ALLOCATED — implementation, verification and closure NOT PERFORMED
+B9.96+ NOT ALLOCATED
+```
+
+B9.96+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record beyond the B9.95 allocation stated above.
