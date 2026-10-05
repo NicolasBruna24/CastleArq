@@ -11952,3 +11952,175 @@ B9.97+ NOT ALLOCATED
 B9.97+ remains NOT ALLOCATED. No new block, scope, decision or capability is
 introduced by this record beyond the B9.96 allocation stated above, and no
 implementation is authorized by it.
+
+### 39.7 Human architectural decision (D1–D7 RATIFIED)
+
+```text
+DECISION STATUS:   RATIFIED WITH DEFERRED SURFACES
+DECISION AUTHORITY: PROJECT OWNER (human architectural decision)
+Preceded by:        READ-ONLY B9.96 Implementation Readiness Audit
+                      -> NOT READY (boundary fixed, semantics open)
+                    READ-ONLY B9.96 Decision Validation Audit
+                      -> READY TO RATIFY WITH CHANGES (changes incorporated)
+Decision artifact:  docs/acquisition-resolution-human-architectural-decision-record.md
+                    (HADR amended with section 22 and preserved in version
+                     history by this record's documentation-only commit)
+```
+
+The human decision is transcribed here; it is not reinterpreted. The HADR's
+section 15 questions are answered only where stated below.
+
+```text
+D1 — CARDINALITY (answers HADR Q4/Q5 FOR B9.96)
+  At most one active acquisition binding exists for a given model_id.
+  No multi-locator selection mechanism exists in B9.96. This is a
+  B9.96-SCOPED decision, not a permanent prohibition: future multi-locator
+  acquisition remains a possible future architectural surface.
+
+D2 — BINDING CREATION (answers Q1/Q2)
+  Acquisition Resolution owns explicit binding creation:
+      bind(model_id, source, repository)
+  Identity Admission does NOT create acquisition bindings automatically.
+  Acquisition never infers a binding by reversing (source, repository) ->
+  model_id. Admission stays forward-only; B9.95's zero-consumer invariant
+  (AC10) is unchanged.
+
+D3 — PRECEDENCE: OPTION A RATIFIED (answers Q3/Q16)
+  curated downloadable locator > persistent acquisition binding.
+  Fall-through condition: the persistent binding is consulted ONLY when the
+  curated acquisition path yields no downloadable locator:
+      downloadable_locator(model_id)  or  binding_lookup(model_id)
+  A binding disagreeing with an existing curated locator for the same
+  model_id is rejected at registration time (D4), so a disagreeing binding
+  cannot exist and no silent-ignore is reachable. Options B and C are
+  REJECTED: B would let persisted state silently override curated authority
+  (contrary to the ratified curated -> persisted ordering); C's
+  resolution-time refusal is unnecessary once registration is guarded.
+
+D4 — CONFLICT AND IDEMPOTENCY (answers Q10)
+  1 duplicate model_id registration with a different locator: FAIL CLOSED
+  2 conflicting binding: FAIL CLOSED, store byte-unchanged, never
+    overwritten, guessed or defaulted
+  3 binding disagreeing with a curated locator: REJECTED at registration
+  4 identical re-registration: IDEMPOTENT SUCCESS, state unchanged
+  5 overwrite: NOT ALLOWED through bind(); only explicit update()/delete()
+  6 acquire() NEVER mutates binding state
+  Every failure leaves the store unchanged (fail-closed, B9.95 philosophy).
+
+D5 — LIFECYCLE (answers Q8/Q9)
+  bind / update / delete — explicit and owner-invoked; no other mutation
+  exists. acquire() does not create, update or delete bindings.
+      changing an acquisition locator  !=  changing model_id
+  Identity is immutable; only acquisition location changes. No historical
+  or versioned binding state exists in B9.96 (provenance, Q14, deferred).
+
+D6 — PERSISTENCE (answers Q11/Q12/Q13)
+  An INDEPENDENT persistent store is required. Bindings MUST NOT live in
+  identity-admission.json, ModelStore, artifact manifests, or session state.
+  Store path:   ~/.castlearq/acquisition-bindings.json (sibling of
+                identity-admission.json under the ~/.castlearq convention)
+  Environment:  CASTLEARQ_ACQUISITION_BINDINGS_ROOT (a DIRECTORY; tests
+                only; non-empty override wins — mirrors CASTLEARQ_SESSION_ROOT
+                and CASTLEARQ_IDENTITY_REGISTRY_ROOT)
+  Record schema (minimum):
+      {"schema_version": 1,
+       "bindings": {model_id: {"source": ..., "repository": ...}}}
+  schema_version REQUIRED; any other value rejected, never guessed. Strict
+  record validation; deterministic serialization; atomic durable writes
+  (temp sibling -> flush -> fsync(file) -> os.replace -> fsync(dir)). No
+  provider metadata, aliases, provenance, revision, artifact identity or
+  runtime state is stored. The locator remains the existing
+  (source, repository) tuple consumed by LocatorResolver (Q19 for B9.96).
+
+D7 — AUTHORIZED DOWNLOADABILITY BRIDGE
+  Identity Admission:      (source, repository) -> model_id   (forward-only)
+  Acquisition Resolution:  model_id -> acquisition locator
+  Acquisition:             acquisition locator -> artifact acquisition
+  The composed resolver lives OUTSIDE identity_admission.py and
+  model_identity.py; it does not modify model_id, is not a second identity
+  registry, performs no reverse identity lookup, and does not touch
+  ModelStore, artifact identity or revision semantics. It is injected ONLY
+  through the existing locator_resolver seam at
+  castlearq/application_wiring.py; ModelAcquisitionService is unchanged.
+  downloadable_locator() remains byte-unchanged and remains the curated
+  download gate on every other presentation surface (download status, model
+  DTOs). Bridge rationale: an admitted model_id reaches acquisition because
+  an explicitly created ACQUISITION fact states where to acquire it — never
+  because Identity Admission answered the inverse question; admission alone
+  still makes nothing downloadable.
+
+SUPPORTED-SOURCE POLICY — OPTION C RATIFIED
+  Registration (bind/update) rejects unsupported sources — early, fail-closed
+  failure at write time. Resolution re-validates defensively against stored
+  state before returning a locator. Both consult the single existing
+  authority SUPPORTED_DOWNLOAD_SOURCES in castlearq/model_identity.py; no
+  authority is duplicated and no provider-specific behaviour is introduced.
+
+BINDING PRECONDITION — OPTION 2 RATIFIED
+  bind(model_id, source, repository) requires the FORWARD consistency check:
+      resolve_admitted_model_id(source, repository) == model_id
+  A mismatch FAILS CLOSED and no state is written. This is a pure forward
+  derivation/admission resolution over the SUPPLIED locator — NOT a reverse
+  lookup, no identity-side code added, no new identity authority created.
+  Rationale: a binding must be self-consistent with the identity CastleArq
+  would admit for that locator, preventing bindings for arbitrary foreign
+  model_ids while reusing the ratified derivation mechanism unchanged.
+
+IMPLEMENTATION BOUNDARY
+  Governance/architecture only. No source, test, configuration or wiring
+  change is performed or authorized by this record. B9.96 state remains:
+      ALLOCATED — NOT IMPLEMENTED — NOT VERIFIED — NOT CLOSED
+  Implementation is the next controlled step behind its own readiness gate
+  (B9.95 precedent). Allocation != implementation != verification != closure.
+
+NOT AUTHORIZED BY THIS DECISION (remains outside B9.96 unless separately
+and explicitly ratified):
+  Identity Admission reverse lookup; model_id mutation; ModelStore changes;
+  ArtifactSpec changes; artifact_id changes; revision changes; Discovery
+  changes; provider-specific acquisition behaviour; CLI implementation; GUI;
+  Model Library UX; runtime derived-identity resolution; automatic migration
+  of curated mappings; automatic aliases; historical acquisition-binding
+  versioning; multi-locator acquisition (future surface).
+
+DEFERRED SURFACES (HADR §15 questions NOT answered here):
+  Q6 automatic rename handling (explicit update() exists as mechanism);
+  Q7 unavailable-source policy; Q14 provenance/audit info; Q15 offline
+  policy beyond the inherent fail-closed no-binding path; Q17 curated ->
+  binding migration; Q18 aliases; Q20 provider acquisition metadata;
+  runtime derived-identity resolution (separate future decision surface).
+```
+
+### 39.8 Acceptance criteria basis
+
+```text
+AC1  Independent persistence — bindings persist in the D6 store, separate
+     from identity-admission.json, ModelStore, manifests and sessions.
+AC2  Explicit binding — bindings exist only through explicit bind();
+     Identity Admission never creates one automatically.
+AC3  Cardinality — at most one active binding per model_id (D1).
+AC4  Conflict safety — conflicting registrations fail closed; no silent
+     overwrite; store unchanged on every failure (D4).
+AC5  Idempotency — identical re-registration succeeds deterministically and
+     leaves state unchanged (D4).
+AC6  Curated precedence — curated downloadable mappings retain precedence;
+     the binding is consulted only when the curated path yields no
+     downloadable locator (D3 Option A).
+AC7  Derived identity acquisition — an explicitly bound admitted/derived
+     model_id reaches acquisition through the locator_resolver seam with
+     identity_admission.py unchanged.
+AC8  Identity immutability — changing or deleting a binding never changes
+     model_id.
+AC9  Persistence durability — schema_version + strict validation + atomic
+     durable writes per the established CastleArq pattern (D6).
+AC10 Resolver composition — the composed resolver is injected only through
+     the existing locator_resolver seam; ModelAcquisitionService unchanged.
+AC11 Unsupported source safety — Option C: registration rejects unsupported
+     sources, resolution re-validates, single SUPPORTED_DOWNLOAD_SOURCES
+     authority.
+AC12 No protected-boundary regression — Identity Admission, model_identity,
+     ModelStore, artifact identity and revision semantics remain
+     behaviorally unchanged.
+AC13 Lifecycle — bind/update/delete are explicit and deterministic;
+     acquire() mutates no binding state.
+AC14 Full regression — the complete existing test suite remains green.
+```
