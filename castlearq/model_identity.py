@@ -122,6 +122,9 @@ altering them:
 
 from __future__ import annotations
 
+import hashlib
+import re
+
 # (source, repository) -> logical model ID (ModelSpec.model_id)
 SOURCE_REPOSITORY_TO_MODEL_ID: dict[tuple[str, str], str] = {
     ("huggingface", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"): (
@@ -175,3 +178,124 @@ def downloadable_locator(model_id: str) -> tuple[str, str] | None:
     if source not in SUPPORTED_DOWNLOAD_SOURCES:
         return None
     return locators[0]
+
+
+# --------------------------------------------------------------------------
+# B9.94 Increment 1: CastleArq-owned identity derivation + admission resolver
+# --------------------------------------------------------------------------
+
+#: Number of hex characters of the SHA-256 suffix carried by a derived
+#: identity. 12 hex characters is 48 bits: ample for CastleArq's supported
+#: identity scale while keeping the readable base dominant. The base already
+#: separates same-named repositories by owner, so the digest is a defensive
+#: backstop against normalization collapse, not the primary discriminator.
+DERIVED_IDENTITY_DIGEST_LENGTH = 12
+
+#: Characters kept verbatim in the readable base; every other run collapses
+#: into a single ``-``. This is the CastleArq-owned alphabet, deliberately
+#: independent of ``ModelStore._safe_model_id`` (a storage sanitizer), which
+#: this module must neither call nor import.
+_DERIVED_ALLOWED = re.compile(r"[^a-z0-9]+")
+
+#: The owner/repository boundary. A single ``-`` preserves the boundary
+#: without ever emitting a character outside the derived alphabet.
+_DERIVED_SEPARATOR = "-"
+
+
+class DerivedIdentityError(ValueError):
+    """Raised when no valid derived identity can be produced.
+
+    A boundary data condition, independent from ``DiscoveryError`` and
+    ``SourceError``. Derivation fails closed: it never emits an empty
+    identity, a bare ``-``, a ``.`` or a ``..`` value, and never falls back
+    to a placeholder.
+    """
+
+
+def _normalize_identity_component(value: str, label: str) -> str:
+    """Return one normalized, non-empty lowercase ``[a-z0-9-]`` component."""
+    if not isinstance(value, str) or not value.strip():
+        raise DerivedIdentityError(f"{label} must be a non-empty string")
+    normalized = _DERIVED_ALLOWED.sub(_DERIVED_SEPARATOR, value.lower())
+    normalized = normalized.strip(_DERIVED_SEPARATOR)
+    if not normalized:
+        raise DerivedIdentityError(
+            f"{label} has no representable characters: {value!r}"
+        )
+    return normalized
+
+
+def derive_model_id(source: str, repository: str) -> str:
+    """Derive a CastleArq-owned logical ``model_id`` from a source locator.
+
+    B9.94 Increment 1. This is the *derivation* half of Identity Admission and
+    is a pure function of exactly two inputs, ``(source, repository)``. It
+    performs no I/O, no network access, no randomness, reads no timestamps and
+    consults no registry, so the same locator always yields the same identity.
+
+    The result is a normalized human-readable base plus a SHA-256 suffix::
+
+        qwen-qwen3-8b-gguf-<12 hex characters>
+
+    The base carries BOTH repository components (owner and name) because two
+    owners may publish repositories with identical names. The suffix is
+    computed over the RAW inputs, ``f"{source}:{repository}"``, never over the
+    normalized base: normalization collapses distinct textual forms, and the
+    digest must not inherit that loss. Including ``source`` keeps two
+    providers serving the same repository string distinct.
+
+    Nothing else participates. Filename, quantization, revision, download URL,
+    artifact identity, download state, discovery results and storage paths are
+    all different identity layers and are structurally excluded by the
+    two-argument signature.
+
+    The output alphabet is ``[a-z0-9-]`` only, which makes every generated
+    identity a fixed point of ``ModelStore._safe_model_id`` without that
+    sanitizer being consulted, imported or modified. Two distinct generated
+    identities therefore cannot be folded onto one filesystem key.
+    """
+    if not isinstance(source, str) or not source.strip():
+        raise DerivedIdentityError("source must be a non-empty string")
+    if not isinstance(repository, str) or not repository.strip():
+        raise DerivedIdentityError("repository must be a non-empty string")
+
+    owner, separator, name = repository.partition("/")
+    if not separator:
+        raise DerivedIdentityError(
+            f"repository must name both an owner and a name: {repository!r}"
+        )
+
+    base = _DERIVED_SEPARATOR.join(
+        (
+            _normalize_identity_component(owner, "repository owner"),
+            _normalize_identity_component(name, "repository name"),
+        )
+    )
+    digest = hashlib.sha256(f"{source}:{repository}".encode("utf-8")).hexdigest()
+    return f"{base}{_DERIVED_SEPARATOR}{digest[:DERIVED_IDENTITY_DIGEST_LENGTH]}"
+
+
+def resolve_admitted_model_id(source: str, repository: str) -> str:
+    """Return the logical ``model_id`` for Identity Admission.
+
+    B9.94 Increment 1. This is the *admission* resolution: a curated identity
+    is authoritative and returned unchanged; only on a curated miss is a
+    deterministic identity derived (see :func:`derive_model_id`). It never
+    returns ``None`` and it never mutates
+    ``SOURCE_REPOSITORY_TO_MODEL_ID``.
+
+    It is deliberately NOT :func:`logical_model_id`. That function remains the
+    curated-only lookup, so an unknown repository still yields ``None`` there
+    and every legacy gate built on it -- manifest migration, the legacy
+    ``ModelSource``, ``plan`` -- keeps its current behaviour.
+
+    Deliberately not wired into any caller in Increment 1: a derived identity
+    is forward-resolvable only. It is absent from
+    ``SOURCE_REPOSITORY_TO_MODEL_ID``, so ``downloadable_locator`` returns
+    ``None`` for it and acquisition stays closed until a later increment
+    admits it deliberately.
+    """
+    curated = logical_model_id(source, repository)
+    if curated is not None:
+        return curated
+    return derive_model_id(source, repository)
