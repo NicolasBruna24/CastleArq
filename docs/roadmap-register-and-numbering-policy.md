@@ -11726,7 +11726,7 @@ Allocation Date:
   2026-10-05
 
 Allocation Commit:
-  PENDING
+  4d7582b5e4aa2da589d81894745f39643d6944fd
 ```
 
 `Allocation Commit` is recorded as `PENDING` under the two-step mechanism
