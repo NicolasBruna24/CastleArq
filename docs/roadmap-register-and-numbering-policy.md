@@ -11016,6 +11016,68 @@ B9.95+           = NOT ALLOCATED
 ```
 
 No new block, scope, decision or capability is introduced by this record.
+
+---
+
+### 37.13 B9.94 Architectural Closure Record
+
+This record closes the remaining ARCHITECTURAL question of B9.94 as a
+documentation decision. B9.94 Increment 1 (deterministic identity derivation,
+18db070) was already closed by 37.12, and B9.95 (persistent forward-only
+identity admission, 7fe715b) was closed by section 38.11. This record closes
+the boundary between them and between Identity Admission and acquisition.
+
+It is preceded by the human-ratified decision recorded in the dedicated B9.94
+Human Architectural Decision Record
+`docs/b994-identity-admission-boundary-and-acquisition-separation-human-architectural-decision-record.md`,
+by two READ-ONLY analyses (Admission Architecture Decision Analysis, then
+Human Architectural Decision Formalization Audit), and by the B9.94
+Documentation Audit, which returned B9.94 DOCUMENTATION AUDIT — PASS.
+
+**This record is DOCUMENTATION ONLY.** It introduces no architectural decision,
+implements no code, and resolves none of the future acquisition questions.
+
+**Decision being closed.**
+
+```text
+Identity Admission is a complete, closed model-identity concern. It maps
+(source, repository) -> model_id under curated -> persisted -> derived
+authority, with deterministic pure derivation, immutable forward-only
+persistence, and no reverse lookup, revision, artifact identity, provider
+semantics, ModelStore dependency or acquisition authority.
+
+The mapping from an admitted model_id to an acquisition locator is a separate
+architectural concern, owned downstream and NOT implemented by extending the
+Identity Admission Registry.
+
+Revision selection and artifact resolution remain acquisition
+responsibilities.
+
+No identity layer may be substituted for or promoted into another to satisfy
+this boundary.
+```
+
+**Resulting architecture.**
+
+```text
+(source, repository)
+        |
+        v
+    model_id
+        |
+        |   FUTURE SEPARATE ACQUISITION-RESOLUTION CONCERN — NOT DECIDED
+        v
+acquisition locator
+        |
+        v
+revision / variant / artifact
+        |
+        v
+    ModelStore
+```
+
+The middle edge is deliberately left open by this record. Closing the
+architectural question does not fill it in.
 ---
 
 ## 38. B9.95 — Number Allocation Record
@@ -11381,7 +11443,9 @@ a separate main block, as section 37.6 anticipated.
 ```text
 B9.92  CLOSED
 B9.93  CLOSED
-B9.94  OPEN — Increment 1 CLOSED; further increments remain possible
+B9.94  CLOSED — Increment 1 closed at 37.12; architectural question
+       closed at 37.13; implementation at
+       18db070326fa90d7b0a3719af553e243998d217f
 B9.95  CLOSED — see section 38.11; implementation at
        7fe715bb6cb5541eb38d3c698ca38fcd944b219f
 B9.96+ NOT ALLOCATED
@@ -11547,3 +11611,100 @@ B9.96+ NOT ALLOCATED
 
 B9.94 remains OPEN as recorded in 38.10; this closure does not alter it. No new
 block, scope, decision or capability is introduced by this record.
+**Verification evidence (Documentation Audit).**
+
+```text
+ADR:  docs/b994-identity-admission-boundary-and-acquisition-separation-
+      human-architectural-decision-record.md
+Status claimed:      ACCEPTED — HUMAN ARCHITECTURAL DECISION
+Decision fidelity:   parts A (independent), B (separate concern),
+                     C (revision/artifact downstream) all preserved
+B9.93 compatibility: PASS — governing rule restated; no layer collapsed
+B9.94 compatibility: PASS — curated authoritative, derivation pure and
+                     deterministic, depends only on (source, repository),
+                     no revision in identity
+B9.95 compatibility: PASS — registry forward-only, immutable bindings,
+                     provider-agnostic, no ModelStore coupling, no
+                     acquisition authority
+Layer separation:    PASS — five layers kept distinct
+Revision semantics:  PASS — revision excluded from artifact_id (OD-1)
+Prescription scan:   PASS — no "must use / shall store / will implement"
+Future surface:      PASS — 11 future questions listed UNDECIDED,
+                     none resolved
+B9.96 implication:   NONE — both mentions are explicit non-authorizations
+
+Documentation Audit verdict: B9.94 DOCUMENTATION AUDIT — PASS
+```
+
+**Boundary and scope evidence.**
+
+```text
+Protected architecture diff at this closure: EMPTY
+  No source file, test file, manifest or configuration was modified. The only
+  file changed is docs/roadmap-register-and-numbering-policy.md.
+
+castlearq/model_identity.py      UNCHANGED
+castlearq/identity_admission.py  UNCHANGED
+castlearq/acquisition_service.py UNCHANGED
+castlearq/models.py              UNCHANGED
+castlearq/model_store.py         UNCHANGED
+castlearq/main.py                UNCHANGED
+
+No reverse registry lookup exists or is authorized.
+No provider-specific identity logic exists or is authorized.
+The B9.94 Human ADR is UNCHANGED by this closure.
+```
+
+**What this closure does NOT do.** It does not implement acquisition
+resolution, does not add any consumer of `resolve_admitted_model_id`, does not
+integrate the identity admission registry into acquisition, and does not
+change runtime behaviour. It decides none of the following, each of which
+remains a future decision surface:
+
+```text
+static vs persisted vs derived acquisition resolution
+acquisition resolution authority
+one-to-one vs one-to-many reverse cardinality
+repository rename behaviour
+provider / source namespace semantics
+online vs offline resolution requirements
+resolution reproducibility guarantees
+manifest integration
+revision selection contract
+variant / revision interaction
+Model Library behaviour
+Hugging Face-specific resolution
+CLI behaviour
+```
+
+**Allocation evidence.** 37.1 records `Allocation Commit:
+f5c94aa2b088b59de706d25d8b95a76d3e655b7b`, fixed by
+2b47efc59fc48e08938fb9e8929b89421e0a9d4b
+("docs: fix B9.94 allocation commit anchor"). Those anchors are unchanged by
+this closure and must not be confused with the implementation commit recorded
+in 37.12.
+
+**Publication state.** NOT PERFORMED. This closure exists locally only; at the
+time of this record `main` is ahead of `origin/main` and nothing has been
+pushed.
+
+**Closure statement.**
+
+```text
+IMPLEMENTATION:   NOT PERFORMED — documentation-only architectural closure
+IMPLEMENTATION EVIDENCE (Increment 1, already closed at 37.12):
+                  PERFORMED — 18db070326fa90d7b0a3719af553e243998d217f
+VERIFICATION:     PASS — B9.94 DOCUMENTATION AUDIT — PASS
+PUBLICATION:      NOT PERFORMED
+CLOSURE:          PERFORMED — by this record
+
+B9.94 Increment 1 = CLOSED   (37.12)
+B9.94            = CLOSED   — architectural question closed by this record
+B9.95            = CLOSED   — see section 38.11
+B9.96+           = NOT ALLOCATED
+```
+
+37.12's closure statement records `B9.94 = OPEN` as of that record; this
+record supersedes that lifecycle line only, for B9.94. It does not reopen or
+alter B9.94 Increment 1, and it introduces no new block, scope, decision or
+capability.
