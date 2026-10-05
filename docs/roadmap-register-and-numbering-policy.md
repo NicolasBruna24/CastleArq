@@ -11708,3 +11708,247 @@ B9.96+           = NOT ALLOCATED
 record supersedes that lifecycle line only, for B9.94. It does not reopen or
 alter B9.94 Increment 1, and it introduces no new block, scope, decision or
 capability.
+
+---
+
+## 39. B9.96 — Number Allocation Record
+
+### 39.1 Allocation evidence block (§11 mandatory fields)
+
+```text
+Assigned Number:
+  B9.96
+
+Title:
+  Acquisition Resolution Boundary
+
+Allocation Date:
+  2026-10-05
+
+Allocation Commit:
+  PENDING
+```
+
+`Allocation Commit` is recorded as `PENDING` under the two-step mechanism
+stated in section 11 and used identically by sections 14, 16, 19, 21, 23, 25,
+27, 29, 31, 33, 34, 35, 36, 37 and 38: at authoring time the hash does not
+exist and a commit hash cannot be known before the commit exists, so writing a
+guessed value would be a fabricated identifier. The field is fixed to the real
+hash by the next controlled commit ("docs: fix B9.96 allocation commit
+anchor"), which changes no other content of this record.
+
+```text
+Corpus/HEAD Anchor:
+  f51a05eeb881518b5d210fc35b0417e62abe760d
+
+Corpus File Count:
+  234  (git ls-files at the anchor)
+
+Corpus Integrity Evidence:
+  Read-only corpus inspection at the anchor commit above. Method: an
+  exhaustive regular-expression scan for B9.x and B9.x.y identifiers over the
+  versioned corpus, performed SEPARATELY over castlearq/ (source), tests/
+  (test), and every file reported by `git ls-files docs/`. This is the
+  mechanism section 6 requires: consulting docs/ alone is explicitly
+  insufficient, because block identifiers are minted in source and tests.
+  The corpus is fixed by tree hash
+  8e5b081bab1c70b4f568230073b9a5c91e88164c and by the SHA-256 of the full
+  `git ls-tree -r HEAD` blob list:
+  b067c1a467b908f616b4aea87163af7a00cae26181b7378a7ee7b9eda974cad9
+
+Identifier Set:
+  Highest identifier in castlearq/ (source): B9.95
+  Highest identifier in tests/          : B9.95
+  Highest identifier in docs/           : B9.95 as an allocated main block
+    (B9.96 appears in docs/ only as explicit NOT ALLOCATED / non-allocation
+     statements — sections 37.13, 38.1, 38.4, 38.10 and 38.11 — and in the
+     untracked Acquisition Resolution Human Architectural Decision Record,
+     which itself states it allocates NO block including B9.96; it is absent
+     from source and tests)
+  B9.96 in castlearq/ : NONE
+  B9.96 in tests/     : NONE
+  Sub-blocks B9.95.x  : NONE anywhere in the corpus
+  B9.97 or higher     : NONE anywhere in the corpus
+
+Highest Verified Main Block:
+  B9.95
+  Allocated at section 38, anchored by commit
+  a53e05bff92d02b1a9d1c5f8fec7a7801a0f9b80 and fixed by commit
+  8cdd927ee2e82f2fbacac09330d3bcd7d9b43081, minted in source and tests, and
+  CLOSED at section 38.11 by commit 81c7beb ("docs: close roadmap block
+  B9.95"). Closed blocks retain the floor: section 6 raises it at assignment.
+
+Rule in Force:
+  Section 6 — next_main_block = highest_verified_main_block + 1
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3 — the activation commit of this
+  document, under which sections 6, 7, 8, 9, 10 and 11 are in force. Verified
+  at execution time: the commit exists and is an ancestor of the corpus
+  anchor above, so section 11 permits a number to be assigned.
+
+Actor/Process:
+  Project owner (human architectural decision authority), recorded by the
+  controlled allocation step. The decision itself — Acquisition Resolution,
+  Option D (independent responsibility boundary) combined with Option B
+  (independent persistent acquisition binding) — was ACCEPTED by the human
+  project owner in the Acquisition Resolution Human Architectural Decision
+  Record before this allocation was authored, and was preceded by a
+  READ-ONLY Formal Roadmap Allocation Audit that returned
+  "B9.96 ROADMAP ALLOCATION AUDIT — READY".
+
+Candidate Numbers Considered:
+  B9.96    — SELECTED. It is highest_verified_main_block + 1 = B9.95 + 1, the
+              only value section 6 permits, and it is unallocated, unreserved
+              and unclaimed by any artifact in the whole corpus.
+  B9.97+   — NOT SELECTED. Section 6 requires the IMMEDIATE successor of the
+              highest verified main block. Selecting B9.97 or later would skip
+              B9.96 and violate the rule, exactly as the decline recorded in
+              the section 38.1 candidate analysis reasoned when B9.96 was
+              declined in favour of B9.95.
+  B9.95.x  — NOT SELECTED. Section 8 provides that a sub-block B9.X.Y only
+              subdivides main block B9.X. Acquisition Resolution is a
+              SEPARATE MAIN ARCHITECTURAL SURFACE, not a phase of B9.95:
+              section 38.4 lists acquisition integration among B9.95's
+              explicit non-goals, and section 38.11 records that B9.95 has no
+              acquisition consumer (AC10). A sub-block would therefore both
+              misclassify the work and contradict section 38.
+  Historical gap identifiers below B9.95 — NOT SELECTED. Section 9 forbids
+              reuse of historical gaps for main assignments, and none is
+              needed: the immediate successor is free.
+
+Selected Number:
+  B9.96
+
+Validity Reason:
+  B9.96 = highest_verified_main_block + 1 under the section 6 rule, where the
+  highest verified main block is B9.95 as established by the corpus
+  inspection recorded above. The corpus inspection required by section 6 and
+  section 7 was performed and is recorded in this section: B9.96 appears in
+  no source file, in no test file, as no sub-block, and as no allocation,
+  reservation or claim by any artifact; every occurrence of B9.96 in docs/ is
+  an explicit non-allocation statement. The assignment is therefore valid
+  under the active rule in the form used by docs/B9.59 section 7 and sections
+  37 and 38.
+```
+
+### 39.2 Register entry for B9.96
+
+```text
+B9.96
+Title:
+  Acquisition Resolution Boundary
+STATUS:          ALLOCATED
+IMPLEMENTATION:  NOT PERFORMED
+VERIFICATION:    NOT PERFORMED
+CLOSURE:         NOT PERFORMED
+```
+
+### 39.3 Scope attached to this allocation
+
+```text
+DOCUMENTATION / GOVERNANCE ALLOCATION ONLY.
+No source, test, configuration, packaging or CLI-surface change is performed
+or authorized by this section.
+```
+
+B9.96 is allocated as ONE architectural surface: an independent Acquisition
+Resolution concern, transcribing the accepted Acquisition Resolution Human
+Architectural Decision Record (Options D + B).
+
+```text
+ARCHITECTURAL SURFACE
+  Introduce an independent Acquisition Resolution concern that maps admitted
+  model_id values to acquisition locators through independent persistent
+  acquisition bindings, integrating at the existing injectable acquisition
+  resolver seam (locator_resolver, castlearq/acquisition_service.py, wired at
+  castlearq/application_wiring.py) while preserving Identity Admission,
+  discovery, revision, artifact identity, ModelStore and runtime boundaries.
+
+DECISION PRESERVED (D + B)
+  D — Acquisition Resolution is an independent responsibility, separate from
+      Identity Admission: model_id -> acquisition locator, never
+      (source, repository) -> model_id.
+  B — independent persistent acquisition bindings are the state mechanism;
+      bindings are not identity records, are not a reverse index of Identity
+      Admission, are not owned by ModelStore, and do not modify model_id.
+
+BOUNDARY
+  The seam terminates BEFORE ArtifactSpec and ModelStore. No reverse lookup
+  in Identity Admission; no model identity derivation change; no ModelStore,
+  ArtifactSpec, artifact_id or revision change; no discovery, runtime, CLI,
+  Model Library, provider or Hugging Face identity authority change.
+
+NOT DECIDED BY THIS ALLOCATION
+  Binding creation, lifecycle, schema, conflict policy, rename behaviour,
+  authority between curated mapping and bindings, aliasing, provenance,
+  offline semantics, store location, migration of curated mappings, CLI/UX
+  and runtime resolution — each remains a future decision surface,
+  deliberately left undecided by the accepted HADR.
+```
+
+### 39.4 Allocation versus implementation state (as asserted by this NAR)
+
+```text
+AT ALLOCATION TIME:
+
+B9.96 IS:     an allocated identifier carrying a ratified scope
+B9.96 IS NOT: implemented
+B9.96 IS NOT: verified
+B9.96 IS NOT: closed
+
+IMPLEMENTATION: NOT PERFORMED
+VERIFICATION:   NOT PERFORMED
+PUBLICATION:    NOT PERFORMED
+CLOSURE:        NOT PERFORMED
+
+Protected architecture diff at this anchor: EMPTY
+  the only file mutated by this allocation is
+  docs/roadmap-register-and-numbering-policy.md itself.
+  No acquisition, identity admission or ModelStore source file is created or
+  modified by this allocation, and no existing allocation or closure record
+  in this document is changed by it.
+```
+
+Lifecycle separation asserted by this section:
+
+```text
+allocation    !=  implementation
+implementation !=  verification
+verification  !=  closure
+```
+
+### 39.5 Human approval reference
+
+```text
+Decision authority:  PROJECT OWNER (human architectural decision)
+Decision status:     ACCEPTED — HUMAN ARCHITECTURAL DECISION
+Decision subject:    Acquisition Resolution as an independent responsibility
+                     (Option D) using independent persistent acquisition
+                     bindings (Option B)
+Decision artifact:   docs/acquisition-resolution-human-architectural-decision-record.md
+                     (PRE-ALLOCATION HADR — allocates NO block, authorizes NO
+                     implementation; left untracked and unchanged by this
+                     allocation)
+Preceded by:         READ-ONLY Formal Roadmap Allocation Audit
+                       -> B9.96 ROADMAP ALLOCATION AUDIT — READY
+```
+
+The human decision is not reopened, reinterpreted or re-scored by this record.
+This allocation transcribes it and fixes its identifier and scope under the
+section 6 rule. The HADR's undecided future questions are not resolved here.
+
+### 39.6 Register entry state summary
+
+```text
+B9.92  CLOSED
+B9.93  CLOSED
+B9.94  CLOSED — Increment 1 at 37.12; architectural question at 37.13
+B9.95  CLOSED — section 38.11
+B9.96  ALLOCATED — this section; IMPLEMENTATION NOT PERFORMED
+B9.97+ NOT ALLOCATED
+```
+
+B9.97+ remains NOT ALLOCATED. No new block, scope, decision or capability is
+introduced by this record beyond the B9.96 allocation stated above, and no
+implementation is authorized by it.
