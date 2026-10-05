@@ -10856,3 +10856,163 @@ B9.95+ NOT ALLOCATED
 
 B9.95+ remains NOT ALLOCATED. No new block, scope, decision or capability is
 introduced by this record beyond the B9.94 allocation stated above.
+---
+
+### 37.12 B9.94 Increment 1 Closure Record
+
+This record transitions B9.94 Increment 1 from ALLOCATED to CLOSED for that
+increment only. It was preceded by the implementation commit
+18db070326fa90d7b0a3719af553e243998d217f
+("feat(identity): add deterministic admission identity derivation"), which was
+itself preceded by the human-ratified derivation-policy decision and the
+Option A clarification, and by three READ-ONLY audits: Implementation
+Readiness, Verification / Evidence, and this Closure Audit. The Verification /
+Evidence audit returned VERIFIED — READY FOR COMMIT REVIEW.
+
+**IMPLEMENTATION COMMIT:**
+
+```text
+18db070326fa90d7b0a3719af553e243998d217f
+"feat(identity): add deterministic admission identity derivation"
+Parent: 2b47efc59fc48e08938fb9e8929b89421e0a9d4b
+```
+
+Files changed by the implementation commit (exactly 2):
+
+```text
+castlearq/model_identity.py
+tests/test_b994_identity_derivation.py
+```
+
+**Scope evidence.** The implementation is exactly the Increment-1 scope:
+PURE DERIVATION + SEPARATE ADMISSION RESOLVER ONLY (Option A).
+
+```text
+castlearq/model_identity.py
+  124 insertions, 0 deletions; every pre-existing symbol byte-identical
+  added stdlib imports only: hashlib, re — ZERO project-internal imports
+  new public surface:
+    DERIVED_IDENTITY_DIGEST_LENGTH = 12
+    DerivedIdentityError(ValueError)
+    derive_model_id(source, repository) -> str
+    resolve_admitted_model_id(source, repository) -> str
+  new private surface:
+    _normalize_identity_component(value, label)
+    _DERIVED_ALLOWED, _DERIVED_SEPARATOR
+  unchanged: SOURCE_REPOSITORY_TO_MODEL_ID, logical_model_id,
+    source_repositories_for_logical_model, SUPPORTED_DOWNLOAD_SOURCES,
+    downloadable_locator
+```
+
+**Option A preserved.** The curated-only lookup and the admission resolution
+are separate symbols; the derivation branch was NOT added to the legacy path.
+
+```text
+logical_model_id(source, repository)
+  -> SOURCE_REPOSITORY_TO_MODEL_ID.get((source, repository)) only
+  -> curated ID when mapped; None for an unknown repository
+  -> NEVER derives
+
+resolve_admitted_model_id(source, repository)
+  -> curated first; derive_model_id only on curated miss
+  -> returns str, never None; never mutates the curated registry
+  -> wired to NO production caller in this increment
+```
+
+**AC1-AC10 evaluation (Increment-1 scope).**
+
+```text
+AC1  PARTIAL BY DESIGN  derivation exists and does not collapse repository into logical identity; user-selected ACQUISITION is
+                          NOT yet reachable and is NOT claimed here
+AC2  PASS  logical model, repository, variant, artifact, revision, locator and storage identity remain distinct; derivation accepts exactly
+           (source, repository)
+AC3  PASS  revision-aware semantics unchanged (OD-1 untouched)
+AC4  PASS  discovery identity-free; discovery modules unchanged
+AC5  PASS  explicit fail-closed admission; no fabrication, guessing,
+           defaulting, fuzzy, basename or inference heuristic
+AC6  PASS  1 repository -> 1 logical model preserved; no 1 -> N introduced
+AC7  PASS  curated registry, curated functions and
+           qwen2.5-coder-7b-instruct preserved byte-for-byte
+AC8  PASS  no GUI, database, persistent catalog, multi-provider,
+           hardware-planning or runtime-provisioning behaviour introduced
+AC9  PASS  B9.80 - B9.93 contracts regression-safe
+AC10 PASS  no later decision pre-empted
+```
+**Verification evidence.**
+
+```text
+Protected architecture diff at 18db070: EMPTY
+
+No roadmap record above section 37 was modified by the implementation.
+No ADR or preparation document was modified by the implementation.
+No prior B9.80 - B9.93 decision was reopened or superseded.
+
+Test evidence:
+  tests/test_b994_identity_derivation.py     40 passed, 73 subtests
+  8 mandated regression suites               204 passed, 35 subtests
+  full suite                                 2286 passed, 2791 subtests
+  failures: 0   errors: 0   skipped: 0   xfail: 0
+
+Observed architectural behaviour:
+  logical_model_id(unknown)                      -> None
+  resolve_admitted_model_id(unknown)             -> derived, deterministic
+  resolve_admitted_model_id(curated)             -> qwen2.5-coder-7b-instruct
+  downloadable_locator(derived)                  -> None
+  source_repositories_for_logical_model(derived) -> ()
+  run_download(derived)                          -> exit 1, store unchanged
+  migrate_model_store (unknown)                  -> UNMAPPED
+  legacy HuggingFaceSource (unknown)             -> SourceError
+  print_plan (unknown)                           -> exit 1, "not mapped"
+  SOURCE_REPOSITORY_TO_MODEL_ID                  -> unchanged, size 1
+  _safe_model_id(derived)                        == derived
+```
+
+**Deferred — NOT performed by Increment 1.**
+
+```text
+registry persistence
+collision registry / fail-closed conflict detection
+CLI surface and any user-facing admission command
+user-supplied --model-id override
+application wiring of the admission resolver
+acquisition integration of arbitrary repositories
+reverse-lookup widening (derived IDs stay non-downloadable)
+concurrency handling
+repository rename / move migration policy
+new provider integration
+```
+
+**Preserved decisions.** The ratified B9.94 Option A architecture is unchanged
+by this closure: curated-only `logical_model_id`; a separate admission
+resolver; CastleArq-owned deterministic derivation from exactly
+(source, repository); the B9.93 layer separation and its governing rule that no
+layer may substitute for or be silently promoted to another; 1 -> 1
+cardinality; discovery identity-free; provider-declared identity
+non-authoritative; B8.1 parallel and unconverged. Every non-goal in 37.5
+remains in force. No acceptance criterion, dependency, non-goal or scope item
+was added, removed or weakened by this closure.
+
+**Allocation evidence.** 37.1 records `Allocation Commit:
+f5c94aa2b088b59de706d25d8b95a76d3e655b7b`, fixed by
+2b47efc59fc48e08938fb9e8929b89421e0a9d4b
+("docs: fix B9.94 allocation commit anchor"). That anchor is unchanged by this
+closure and must not be confused with the implementation commit above.
+
+**Publication state.** PERFORMED. The implementation commit is published:
+at the time of this record `main` and `origin/main` are both
+18db070326fa90d7b0a3719af553e243998d217f, 0 ahead / 0 behind.
+
+**Closure statement.**
+
+```text
+IMPLEMENTATION:   PERFORMED — 18db070326fa90d7b0a3719af553e243998d217f
+VERIFICATION:     PASS
+PUBLICATION:      PERFORMED
+CLOSURE:          PERFORMED — by this record
+
+B9.94 Increment 1 = CLOSED
+B9.94            = OPEN — further increments remain possible
+B9.95+           = NOT ALLOCATED
+```
+
+No new block, scope, decision or capability is introduced by this record.
