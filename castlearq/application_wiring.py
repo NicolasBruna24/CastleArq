@@ -82,6 +82,7 @@ import shutil
 import subprocess
 from typing import Callable, Sequence
 
+from .acquisition_resolution import resolve_acquisition_locator
 from .acquisition_service import ModelAcquisitionService
 from .catalog_query_service import ModelCatalogQueryService
 from .discovery import ModelDiscovery
@@ -93,7 +94,6 @@ from .execution import ArtifactExecutionPreflight
 from .initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
 from .model_catalog import get_catalog
 from .model_identity import (
-    downloadable_locator,
     logical_model_id,
     source_repositories_for_logical_model,
 )
@@ -349,7 +349,7 @@ def compose_acquisition_service(
             else HuggingFaceDiscoveryProvider()
         ),
         identity_resolver=identity_resolver,
-        locator_resolver=downloadable_locator,
+        locator_resolver=resolve_acquisition_locator,
         planner=planner,
         downloader=downloader,
         store=store,

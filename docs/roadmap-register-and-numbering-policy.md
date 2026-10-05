@@ -12124,3 +12124,83 @@ AC13 Lifecycle — bind/update/delete are explicit and deterministic;
      acquire() mutates no binding state.
 AC14 Full regression — the complete existing test suite remains green.
 ```
+
+### 39.9 B9.96 Closure Record
+
+This record transitions B9.96 from ALLOCATED to CLOSED. It was preceded by the
+allocation (section 39.1, `4d7582b5e4aa2da589d81894745f39643d6944fd`,
+anchor-fixed by `f07b56c19cc58e3548ddbb58bca5aba704e878bf`), the ratification
+of the human architectural decision (section 39.7, D1–D7 RATIFIED WITH
+DEFERRED SURFACES, `9baae6fc48a57ad70551c6b59452ffe1c635fb33`), the completed
+implementation phase, and the independent Implementation Verification Audit,
+which returned VERIFIED — READY FOR CLOSURE with no material findings. The
+implementation and this closure record are published together in this commit;
+no separate implementation commit exists, and the ratification and allocation
+anchors above are unchanged by this closure.
+
+```text
+Files published by this closure commit (exactly 4):
+
+  castlearq/acquisition_resolution.py       (new, standalone binding store
+                                             + composed resolver)
+  castlearq/application_wiring.py           (modified: inject the composed
+                                             resolver at the locator_resolver
+                                             seam; 2 lines changed)
+  tests/test_b996_acquisition_resolution.py (new, 44 tests / 6 classes)
+  docs/roadmap-register-and-numbering-policy.md (this record only)
+```
+
+```text
+Implementation outcome:
+
+  - D1 Cardinality — model_id-keyed store, at most one active binding.
+  - D2 Creation — explicit bind(model_id, source, repository) with the
+    ratified forward consistency check; no reverse inference exists.
+  - D3 Authority — composed resolver consults the persistent binding only
+    when downloadable_locator(model_id) yields no downloadable locator;
+    curated authority is never silently overridden.
+  - D4 Conflict/idempotency — conflicting registrations fail closed with
+    the persisted file byte-unchanged; identical re-registration succeeds
+    idempotently; bind() never overwrites.
+  - D5 Lifecycle — explicit bind/update/delete; acquire() performs no
+    lifecycle mutation; locator changes never change model_id.
+  - D6 Persistence — independent ~/.castlearq/acquisition-bindings.json
+    store with CASTLEARQ_ACQUISITION_BINDINGS_ROOT directory override;
+    exact ratified schema; strict validation; deterministic serialization;
+    atomic durable writes.
+  - D7 Bridge — composed acquisition resolver outside
+    identity_admission.py and model_identity.py, injected only through
+    the locator_resolver seam; ModelAcquisitionService unchanged;
+    supported-source Option C with the forward-registration precondition.
+```
+
+```text
+Verification outcome (Implementation Verification Audit, read-only):
+
+  - Focused B9.96 suite: 44 passed.
+  - Boundary regression: 207 passed, 98 subtests passed.
+  - Full suite: 2402 passed, 2799 subtests passed, 0 failures.
+  - Verdict: VERIFIED — READY FOR CLOSURE. No material findings.
+  - Protected boundaries verified diff-clean at closure time:
+    acquisition_service, model_identity, identity_admission, model_store,
+    main, api, session, all pre-existing tests.
+  - Acceptance criteria verified: AC1 independent persistence, AC2 explicit
+    binding, AC3 cardinality, AC4 conflict safety, AC5 idempotency,
+    AC6 curated precedence, AC7 derived-identity acquisition,
+    AC8 identity immutability, AC9 durability, AC10 resolver composition,
+    AC11 unsupported-source safety, AC12 protected-boundary preservation,
+    AC13 lifecycle and acquire() non-mutation, AC14 full regression.
+```
+
+```text
+Register entry state summary:
+
+  B9.96  IMPLEMENTED — this closure commit
+  B9.96  VERIFIED — independent Implementation Verification Audit
+  B9.96  CLOSED — this closure record
+  Previous states (sections 39.1-39.8) stand unchanged as history.
+  Deferred surfaces in section 39.7 remain deferred; none is implemented
+  by this closure. B9.94 remains CLOSED. B9.95 remains CLOSED.
+```
+
+
