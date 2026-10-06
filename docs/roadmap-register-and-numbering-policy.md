@@ -12272,7 +12272,7 @@ Allocation Date:
   2026-10-06
 
 Allocation Commit:
-  PENDING — to be fixed by the next controlled commit under section 11.
+  4f780ea2f61f255c93af174de8616af1839080f9
 
 Corpus/HEAD Anchor:
   3268f8336ed4f979fa0be88a0dd747ef99e8b458
