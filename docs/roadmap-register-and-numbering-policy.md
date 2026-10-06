@@ -12361,17 +12361,21 @@ Validity Reason:
 Block ID:                 B9.98
 Name:                     Revision-Aware Artifact Lifecycle / Explicit
                           Replacement Boundary
-Status:                   ALLOCATED
+Status:                   CLOSED
 Origin:                   this document, section 41
 Scope:                    see 41.3
 Non-goals:                see 41.6
 Dependencies:             see 41.8
-Current State:            ALLOCATED — implementation not yet executed
+Current State:            IMPLEMENTED, VERIFIED, CLOSED — see section 41.12
 Acceptance Criteria:      AC1-AC10 — see 41.5
 Evidence:                 B9.98 HADR and READ-ONLY Decision Consistency Audit
-Human decisions pending:  implementation questions Q1-Q6 — see 41.7
+Implementation questions: Q1-Q6 addressed for the explicit non-replacement
+                          outcome recorded in section 41.12
 Evidence Type:            DOC
-Implementation Commit:    NOT PERFORMED
+Implementation Commit:    60d7f6f9d5a94af7333bd0482c1b5224c7e898d6
+Verification Result:      COMPLETE — see section 41.12
+Closure Commit:           this B9.98 closure record; hash is the commit that
+                          contains section 41.12
 Release Association:      NOT YET DEFINED
 Supersession:             none
 Documented?:              YES — this document; decision record is local-only
@@ -12419,10 +12423,10 @@ that any unresolved mechanism has been selected.
 
 ```text
 Allocation:           AUTHORIZED
-Implementation:       NOT YET EXECUTED
+Implementation:       IMPLEMENTED — see section 41.12
 Implementation scope: AUTHORIZED ONLY WITHIN THIS ALLOCATION
-Verification:         PENDING
-Closure:              NOT CLOSED
+Verification:         VERIFIED — see section 41.12
+Closure:              CLOSED — by section 41.12
 ```
 
 The allocation authorizes only the revision-mismatch lifecycle behavior in
@@ -12582,7 +12586,9 @@ Before closure, verification must include:
 - confirmation that no excluded capability or unrelated source, test, or
   roadmap change was introduced.
 
-No implementation or verification is claimed by this allocation.
+At allocation time, no implementation or verification was claimed. The later
+implementation and verification evidence, and the formal closure transition,
+are recorded in section 41.12.
 
 ### 41.10 Governance relationship to B9.97
 
@@ -12600,7 +12606,83 @@ Architectural Analysis: COMPLETE
 Human Decision: SELECTED — OPTION A
 Decision Audit: CONSISTENT
 Allocation: COMPLETE
-Implementation: NOT EXECUTED
-Verification: PENDING
-Closure: NOT CLOSED
+Implementation: IMPLEMENTED — 60d7f6f9d5a94af7333bd0482c1b5224c7e898d6
+Verification: VERIFIED — see section 41.12
+Closure: CLOSED — this record
 ```
+
+### 41.12 B9.98 implementation verification and closure record
+
+This record transitions B9.98 from ALLOCATED to CLOSED. The allocation and
+allocation-anchor correction remain distinct governance commits:
+
+```text
+Allocation commit:
+  4f780ea2f61f255c93af174de8616af1839080f9
+
+Allocation anchor correction:
+  ba7be76c3660b2403e5afe2ce4b76d738ec077c0
+
+Implementation commit:
+  60d7f6f9d5a94af7333bd0482c1b5224c7e898d6
+```
+
+The implementation commit contains exactly:
+
+```text
+castlearq/downloads/planner.py
+tests/test_b998_revision_aware_lifecycle.py
+```
+
+It changes planning so a healthy existing artifact satisfies a request only
+when its stored revision matches the known requested revision. A known
+mismatch, or an unknown stored revision for a known request, is explicitly
+blocked without downloading or replacing the artifact. An unknown requested
+revision preserves the established behavior. The selected architecture remains
+Option A: one current artifact state at the established address; revision is
+metadata/state, not identity. No revision-keyed coexistence, overwrite,
+deletion, replacement protocol, or second lifecycle authority is introduced.
+
+Implementation-question disposition:
+
+```text
+Q1 — same, different, and unknown stored revisions are distinguished.
+Q2 — mismatch does not authorize replacement; the result is explicit refusal.
+Q3 — non-replacement preserves the artifact for any active consumer.
+Q4-Q5 — replacement publication and recovery are not applicable to the
+         selected non-replacement path; no replacement protocol is introduced.
+Q6 — missing and null legacy revisions normalize to None and do not match a
+      known requested revision.
+```
+
+Verification evidence (read-only post-implementation audit):
+
+```text
+Focused B9.98 tests:                5 passed, 2 subtests passed
+Planner / ModelStore / downloader:  86 passed, 37 subtests passed
+Acquisition / locator:              99 passed, 4 subtests passed
+Resolver / execution:               47 passed
+Full suite:                         2413 passed, 2801 subtests passed
+git diff-tree --check:              PASS
+```
+
+The committed implementation tree was inspected. The implementation commit
+contains only the two files listed above; no uncommitted implementation drift
+remained. The planner-to-acquisition control flow was verified to return a
+non-success `BLOCKED` outcome before downloader invocation. Mismatch and legacy
+tests preserve artifact bytes and manifest bytes and create no partial or
+revision-specific artifact. Identity and locator boundaries remain unchanged.
+AC1-AC10 are verified PASS; no second lifecycle authority or excluded
+capability was introduced.
+
+```text
+B9.98 STATUS:        CLOSED
+B9.98 IMPLEMENTATION: IMPLEMENTED — 60d7f6f9d5a94af7333bd0482c1b5224c7e898d6
+B9.98 VERIFICATION:  VERIFIED — AC1-AC10 PASS; full suite PASS
+B9.98 CLOSURE:       CLOSED — by this record
+```
+
+The historical allocation, implementation, and verification states above
+remain attributable to their respective stages. No production or test changes
+are made by this governance closure record. Publication is NOT PERFORMED; no
+push occurs in this closure operation.
