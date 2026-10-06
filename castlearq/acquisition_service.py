@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""B9.85: application acquisition boundary (use case) and its result contract.
+"""B9.85/B9.97: application acquisition boundary (use case) and its result contract.
 
 This module is the application boundary allocated by B9.85 (roadmap register,
 section 23). It owns the orchestration that used to live inside the CLI
@@ -27,6 +27,11 @@ completed B9.80-B9.84 discovery chain:
         -> ArtifactSpec
         -> planner.plan(...) -> downloader.download(...) -> store.save_manifest(...)
         -> AcquisitionOutcome
+
+B9.97 adds an independent revision channel (Option C — Independent Revision
+Channel).  ``ArtifactSpec.revision`` is the concrete carrier. Revision never
+enters ``model_id``/``artifact_id`` derivation, never lives in the acquisition
+binding, and never alters the ``locator_resolver`` contract.
 
 The approved architectural decisions govern this module:
 
@@ -56,13 +61,18 @@ Guarantees:
   failed selection is derived from the artifacts already in hand, never from a
   second discovery request.
 - **B9.80-B9.84 are consumed, not redesigned.**
+- **B9.97 revision invariant.** Revision selects artifact state; it never
+  identifies the model, never enters ``model_id``/``artifact_id`` derivation,
+  never lives in the acquisition binding, and never alters the
+  ``locator_resolver`` contract.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
+import re
 
 from .acquisition_mapping import AcquisitionMappingError, map_discovered_artifacts
 from .discovery import DiscoveredArtifact, DiscoveryError, ModelDiscovery, ModelVariant
@@ -270,6 +280,7 @@ class ModelAcquisitionService:
         *,
         quantization: str | None = None,
         filename: str | None = None,
+        revision: str | None = None,
     ) -> AcquisitionOutcome:
         """Acquire exactly one artifact for a logical model id.
 
@@ -277,7 +288,27 @@ class ModelAcquisitionService:
         a refused or ambiguous selection. It raises only ``AcquisitionError``
         when the flow cannot be completed and no more specific outcome state
         applies.
+
+        ``revision`` is an optional explicit caller-supplied Git commit hash
+        (40 hex characters). When provided it takes authority over any revision
+        discovered from the provider (B9.97 Option C — Independent Revision
+        Channel). When ``None`` the existing behaviour is preserved and the
+        revision is carried from discovery unchanged.
+
+        Revision never enters ``model_id``/``artifact_id`` derivation, never
+        lives in the acquisition binding, and never alters the
+        ``locator_resolver`` contract.
         """
+        # B9.97: validate explicit caller revision; fail closed on malformed input.
+        if revision is not None and (
+            not isinstance(revision, str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40}", revision)
+        ):
+            raise AcquisitionError(
+                AcquisitionErrorCategory.PLANNING_FAILED,
+                "Artifact revision must be a 40-character hexadecimal commit hash",
+            )
+
         repository = self._resolve_repository(model_id)
         variants = self._discover(repository)
         discovered = tuple(
@@ -290,9 +321,10 @@ class ModelAcquisitionService:
             discovered,
             quantization=quantization,
             filename=filename,
+            revision=revision,
         )
 
-        spec = self._map(model_id, selected)
+        spec = self._map(model_id, selected, caller_revision=revision)
         return self._plan_and_acquire(model_id, spec)
 
     # -- internal steps -----------------------------------------------------
@@ -335,6 +367,7 @@ class ModelAcquisitionService:
         *,
         quantization: str | None,
         filename: str | None,
+        revision: str | None,
     ) -> DiscoveredArtifact:
         """Run the deterministic B9.84 selection over already-known variants.
 
@@ -342,12 +375,17 @@ class ModelAcquisitionService:
         to the failure only when no explicit selector was supplied, which is
         exactly when the legacy CLI listed candidates. No second discovery
         request is made, and ``DiscoveredSelectionError`` is never modified.
+
+        B9.97: ``revision`` is forwarded to ``select_discovered_artifact`` so
+        that the selection layer can filter on revision when a caller explicitly
+        supplies one.  Revision never enters identity derivation here.
         """
         try:
             return select_discovered_artifact(
                 variants,
                 quantization=quantization,
                 filename=filename,
+                revision=revision,
             )
         except DiscoveredSelectionError as error:
             failure = AcquisitionError(
@@ -360,15 +398,21 @@ class ModelAcquisitionService:
                 artifact.filename for artifact in discovered
             )
             # Presentation data is attached only when the legacy behaviour
-            # would have listed candidates.
+            # would have listed candidates (no explicit selector of any kind).
             failure.candidates = (
                 _candidate_infos(discovered)
-                if quantization is None and filename is None
+                if quantization is None and filename is None and revision is None
                 else ()
             )
             raise failure from error
 
-    def _map(self, model_id: str, selected: DiscoveredArtifact):
+    def _map(
+        self,
+        model_id: str,
+        selected: DiscoveredArtifact,
+        *,
+        caller_revision: str | None = None,
+    ):
         """Map the selected artifact and assert the requested identity.
 
         ``identity_resolver`` is forwarded unchanged, so B9.82 remains the only
@@ -378,6 +422,12 @@ class ModelAcquisitionService:
         A discovery provider that declares its own ``model_id`` is still held to
         the requested identity: a declared identity that contradicts the
         request is refused rather than silently re-resolved.
+
+        B9.97: when ``caller_revision`` is not ``None`` it is applied to the
+        mapped spec via ``dataclasses.replace`` after mapping, so the explicit
+        caller revision takes authority over any revision the discovery provider
+        declared.  Only ``spec.revision`` is mutated; ``model_id`` and
+        ``artifact_id`` are untouched, preserving the protected invariant.
         """
         if selected.model_id is not None and selected.model_id != model_id:
             raise AcquisitionError(
@@ -405,6 +455,12 @@ class ModelAcquisitionService:
                 f"discovered artifact model_id {spec.model_id!r} does not "
                 f"match {model_id!r}",
             )
+
+        # B9.97: caller revision is authoritative over advisory discovery revision.
+        # Only spec.revision is overridden; model_id and artifact_id are invariant.
+        if caller_revision is not None:
+            spec = replace(spec, revision=caller_revision)
+
         return spec
 
     def _plan_and_acquire(self, model_id: str, spec) -> AcquisitionOutcome:

@@ -11949,9 +11949,10 @@ B9.96  ALLOCATED — this section; IMPLEMENTATION NOT PERFORMED
 B9.97+ NOT ALLOCATED
 ```
 
-B9.97+ remains NOT ALLOCATED. No new block, scope, decision or capability is
-introduced by this record beyond the B9.96 allocation stated above, and no
-implementation is authorized by it.
+B9.97 is formally allocated by the reconciled governance record in section 40,
+not by the historical NOT ALLOCATED pre-allocation baseline. The allocation is
+recorded here in governance form, without claiming implementation completion or
+verification closure.
 
 ### 39.7 Human architectural decision (D1–D7 RATIFIED)
 
@@ -12204,3 +12205,52 @@ Register entry state summary:
 ```
 
 
+
+
+---
+
+## 40. B9.97 — Number Allocation Record
+
+### 40.1 Allocation summary
+
+- Identifier: B9.97
+- Title: Revision-Aware Acquisition
+- Architectural Authority: docs/b997-revision-aware-acquisition-human-architectural-decision-record.md
+- Ratified Architecture: Option C — Independent Revision Channel
+- Concrete Carrier: ArtifactSpec.revision: str | None
+- Objective: Introduce explicit artifact revision awareness into acquisition orchestration and manifest persistence while preserving logical model identity and the closed B9.96 acquisition-resolution boundary.
+- Status: VERIFIED, CLOSED — the local implementation work has satisfied the READ-ONLY verification gate and the B9.97 governance lifecycle is formally closed.
+- Implementation State: local implementation work is present in the working tree; verification passed and the block is formally closed without changing production code or tests.
+- Verification Evidence: dedicated B9.97 service tests: 6 passed; neighboring revision-boundary suite: 176 passed, 60 subtests passed; full suite: 2408 passed, 2799 subtests passed.
+- Closure State: CLOSED — formal closure recorded in the B9.97 HADR and this roadmap register without a commit or push.
+
+### 40.2 Protected Invariant
+
+```text
+revision selects artifact state; it never identifies the model,
+never enters model_id/artifact_id derivation, never lives in the
+acquisition binding, and never alters the locator_resolver contract.
+```
+
+### 40.3 Dependencies
+
+- B9.94 Identity Admission (CLOSED)
+- B9.95 Persistent Identity Admission (CLOSED)
+- B9.96 Acquisition Resolution (CLOSED)
+
+### 40.4 In Scope
+
+- Explicit caller revision propagation through ModelAcquisitionService.acquire().
+- Revision validation and deterministic propagation to provider download planning.
+- Persistence of acquired revision state in ModelStore manifests.
+- Backward compatibility for revision-absent acquisition and legacy manifests.
+- Deterministic conflict handling and fail-closed validation.
+
+### 40.5 Out of Scope
+
+- Identity admission redesign and model_id mutation.
+- Acquisition binding persistence schema changes.
+- Alteration of locator_resolver contract.
+- Automatic discovery-to-acquisition revision pinning.
+- Historical revision management, multi-revision lifecycle, and upstream tracking.
+- CLI/GUI redesign.
