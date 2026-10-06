@@ -1327,7 +1327,8 @@ class LifecycleHardeningTests(AdmissionDefault):
         registry = _ChatSessionRegistry(max_sessions=2)
         opened = [_opened("m") for _ in range(4)]
         with ServerHarness(chat_registry=registry) as h, mock.patch(
-                "castlearq.api.open_chat_session", side_effect=list(opened)):
+                "castlearq.api.open_chat_session",
+                side_effect=list(opened)) as open_chat_session:
             barrier = threading.Barrier(4)
             outcomes = {}
 
@@ -1342,14 +1343,27 @@ class LifecycleHardeningTests(AdmissionDefault):
             # server_close(), which drains the registry.
             self.assertEqual(codes, [201, 201, 409, 409])
             self.assertEqual(len(registry), 2)
-        # The two registered sessions are closed exactly once by the harness
-        # shutdown; the two limit-rejected ones were closed at rejection time
-        # (or never launched if is_full() answered first). Nothing is left
-        # open and nothing is closed twice.
+        # is_full() is advisory; register() is the authoritative capacity
+        # check, so a rejected create may either never launch (pre-check or
+        # an in-flight launch answered first) or launch and then close at
+        # rejection -- both legal and scheduler-dependent. Assert cleanup
+        # safety, not a scheduler-specific close total: every launched
+        # session closes exactly once (rejection close or harness shutdown)
+        # and a never-launched session never closes. Nothing is left open
+        # and nothing is closed twice.
         close_counts = sorted(
             s.close_count for s in (o.session for o in opened))
-        self.assertEqual(sum(close_counts), 2)
         self.assertTrue(all(count in (0, 1) for count in close_counts))
+        # side_effect hands out `opened` in order and launches are
+        # serialized by the handler's run lock, so the first `launched`
+        # prepared sessions are exactly the ones the handler received.
+        launched = open_chat_session.call_count
+        self.assertEqual(
+            [o.session.close_count for o in opened[:launched]],
+            [1] * launched)
+        self.assertEqual(
+            [o.session.close_count for o in opened[launched:]],
+            [0] * (len(opened) - launched))
 
     def test_fifth_session_concurrent_is_409(self):
         with ServerHarness() as h, mock.patch(
