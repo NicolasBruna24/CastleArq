@@ -12254,3 +12254,353 @@ acquisition binding, and never alters the locator_resolver contract.
 - Automatic discovery-to-acquisition revision pinning.
 - Historical revision management, multi-revision lifecycle, and upstream tracking.
 - CLI/GUI redesign.
+
+---
+
+## 41. B9.98 — Number Allocation Record
+
+### 41.1 Allocation evidence block (§11 mandatory fields)
+
+```text
+Assigned Number:
+  B9.98
+
+Title:
+  Revision-Aware Artifact Lifecycle / Explicit Replacement Boundary
+
+Allocation Date:
+  2026-10-06
+
+Allocation Commit:
+  PENDING — to be fixed by the next controlled commit under section 11.
+
+Corpus/HEAD Anchor:
+  3268f8336ed4f979fa0be88a0dd747ef99e8b458
+  git tree object 5cad2bdf2476dca56d01bd89b9334ec4918a01e7
+
+Corpus File Count:
+  239 versioned files reported by `git ls-files` at the anchor.
+
+Corpus Integrity Evidence:
+  paths SHA-256 (SHA-256 of raw `git ls-files -z` output):
+    26c0254a3ee064cf94c371be7747a168b04b89922c87d384891fdc48ac91c3c9
+  tree object:
+    5cad2bdf2476dca56d01bd89b9334ec4918a01e7
+  occurrence SHA-256 (ordered UTF-8 records `path NUL line NUL identifier LF`,
+  scanning tracked files with `\bB9\.\d+(?:\.\d+)?\b`):
+    94329593928169432f98a878a46c6ad66e163b047cb332ca423f704538795c86
+  identifier-set SHA-256 (distinct identifiers, numerically sorted, one per
+  UTF-8 line):
+    8fc771a7a208e9a96bc147fb741dd28aa9966f391f71c8825fbd1f3d41d39053
+
+Identifier Set:
+  146 distinct identifiers over 4,872 occurrences:
+    main identifiers observed: B9.0 through B9.97
+    sub-block identifiers observed:
+      B9.6.0-B9.6.1
+      B9.46.1-B9.46.29
+      B9.57.1-B9.57.8
+      B9.76.1-B9.76.5
+      B9.80.1-B9.80.3
+      B9.83.1
+  Corpus groups inspected separately:
+    castlearq/: 70 files; highest main identifier B9.97
+    tests/:     94 files; highest main identifier B9.97
+    docs/:      67 files; highest main identifier B9.97
+    other:       8 files
+  No B9.98 or higher main identifier was found in the tracked corpus.
+  The untracked B9.98 HADR is supporting decision evidence and explicitly
+  records its pre-allocation status; it is not a versioned implementation
+  claim or an earlier roadmap allocation.
+
+Highest Verified Main Block:
+  B9.97 — allocated at section 40; current allocation is verified in source,
+  tests and the roadmap register.
+
+Rule in Force:
+  Section 6 — next_main_block = highest_verified_main_block + 1;
+  section 7 corpus inspection precondition; section 9 historical gaps are not
+  reused.
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+  Verified as an ancestor of the corpus anchor.
+
+Actor/Process:
+  Project owner (human architectural decision authority), following the
+  B9.98 Human Architectural Decision Record
+  (docs/b998-revision-coexistence-and-artifact-lifecycle-human-architectural-decision-record.md)
+  and the READ-ONLY B9.98 Decision Consistency Audit, which returned
+  CONSISTENT.
+
+Candidate Numbers Considered:
+  B9.98    — SELECTED. It is the immediate successor of the highest verified
+             main block, B9.97, and is absent from the tracked corpus.
+  B9.99+   — NOT SELECTED. Any later main number would skip B9.98 and violate
+             section 6.
+  Historical gaps below B9.97 — NOT REUSED. They are not candidates under
+             the immediate-successor rule and are not reusable under section 9.
+  Sub-block assignment — NOT SELECTED. This is a separate main architectural
+             surface following closed B9.97, not a subdivision of an earlier
+             block under section 8.
+
+Selected Number:
+  B9.98
+
+Validity Reason:
+  B9.97 is the highest verified allocated main block at the anchored corpus.
+  Section 6 therefore permits B9.98 as the next main block. The reproducible
+  corpus inspection under section 7 found no B9.98 or higher main identifier
+  in tracked source, tests or docs. The assignment is valid under the active
+  policy and the procedure established by docs/B9.59 section 7.
+```
+
+### 41.2 Register entry for B9.98
+
+```text
+Block ID:                 B9.98
+Name:                     Revision-Aware Artifact Lifecycle / Explicit
+                          Replacement Boundary
+Status:                   ALLOCATED
+Origin:                   this document, section 41
+Scope:                    see 41.3
+Non-goals:                see 41.6
+Dependencies:             see 41.8
+Current State:            ALLOCATED — implementation not yet executed
+Acceptance Criteria:      AC1-AC10 — see 41.5
+Evidence:                 B9.98 HADR and READ-ONLY Decision Consistency Audit
+Human decisions pending:  implementation questions Q1-Q6 — see 41.7
+Evidence Type:            DOC
+Implementation Commit:    NOT PERFORMED
+Release Association:      NOT YET DEFINED
+Supersession:             none
+Documented?:              YES — this document; decision record is local-only
+Number Allocation Record: PRESENT — section 41
+Retrospective Record:     NO — this is a prospective allocation
+```
+
+### 41.3 Scope
+
+```text
+ARCHITECTURAL DECISION:
+  Option A — Single Current Artifact State + Explicit Revision-Aware
+  Replacement Policy.
+
+ALLOCATED SURFACE:
+  Establish single-current-artifact lifecycle behavior when a requested
+  revision differs from the revision represented by a healthy artifact at
+  the established artifact address.
+
+REQUIRED BEHAVIORAL BOUNDARY:
+  requested revision
+      -> stored artifact state
+      -> same / different / legacy-unknown revision distinction
+      -> explicit lifecycle decision
+      -> safe replacement path OR explicit non-replacement outcome
+
+  A healthy artifact MUST NOT be reported as satisfying a request merely
+  because it occupies the expected artifact address when a known stored
+  revision differs from the requested revision.
+
+  A mismatch is a lifecycle decision point. It does NOT by itself authorize
+  automatic or unconditional overwrite. The exact authorization and safe
+  transition mechanism remain implementation questions.
+
+ARCHITECTURAL CONSTRAINT:
+  Maintain one current physical artifact state at the established artifact
+  address. Revision remains independent metadata/state and does not enter
+  model_id, artifact_id, acquisition binding identity, or locator resolution.
+```
+
+This is an allocation of scope, not a claim that implementation has begun or
+that any unresolved mechanism has been selected.
+
+### 41.4 Allocation versus implementation state
+
+```text
+Allocation:           AUTHORIZED
+Implementation:       NOT YET EXECUTED
+Implementation scope: AUTHORIZED ONLY WITHIN THIS ALLOCATION
+Verification:         PENDING
+Closure:              NOT CLOSED
+```
+
+The allocation authorizes only the revision-mismatch lifecycle behavior in
+41.3 and its acceptance criteria. It authorizes no unrelated refactoring.
+Implementation must not broaden the allocation to any exclusion in 41.6. If an
+excluded capability appears necessary, stop and obtain a new architectural
+decision rather than silently expanding scope.
+
+### 41.5 Acceptance criteria basis
+
+```text
+AC1 — Revision mismatch is observable.
+  A healthy artifact at the expected artifact address does not automatically
+  satisfy a request when its stored revision is known to differ from the
+  requested revision.
+
+AC2 — No silent overwrite.
+  A revision mismatch never causes unconditional or silent destructive
+  replacement. The mismatch follows an explicit lifecycle decision.
+
+AC3 — Single current state.
+  The selected single-current-artifact-state architecture is preserved; no
+  revision-keyed parallel artifact tree is introduced.
+
+AC4 — Identity preservation.
+  model_id, artifact_id and acquisition binding identity are not modified to
+  encode revision.
+
+AC5 — Boundary preservation.
+  Discovery, Identity Admission, Acquisition Resolution and artifact lifecycle
+  management remain separate responsibilities.
+
+AC6 — Legacy compatibility.
+  Legacy manifests without a recorded revision are handled according to an
+  explicit compatibility rule established during implementation; historical
+  artifacts are not silently reinterpreted.
+
+AC7 — Artifact integrity.
+  A failed replacement cannot leave the artifact state invalid or partially
+  published.
+
+AC8 — Active-use safety.
+  Replacement behavior does not silently invalidate an artifact actively
+  being consumed.
+
+AC9 — Existing acquisition contracts remain valid.
+  Locator resolution is not redefined to solve artifact lifecycle management.
+
+AC10 — No new artifact authority.
+  No second artifact registry or competing lifecycle authority is introduced.
+```
+
+### 41.6 Explicit exclusions
+
+```text
+revision-keyed physical coexistence or multiple local revisions
+revision history or historical version management
+rollback infrastructure
+content-addressed storage, content deduplication, or new content identity
+a lifecycle registry separate from ModelStore
+generic artifact garbage-collection redesign
+provider federation
+discovery automation
+automatic Identity Admission
+automatic Acquisition Resolution or automatic acquisition binding
+GUI or Model Library work
+changes to locator resolution semantics
+changes to model_id, artifact_id or acquisition binding identity
+automatic or unconditional overwrite
+```
+
+Any excluded capability that appears necessary during implementation requires
+a new human architectural decision; it is not authorized by this allocation.
+
+### 41.7 Implementation questions
+
+The implementation increment must explicitly resolve these questions without
+assuming answers from this allocation:
+
+```text
+Q1 — Revision comparison
+  How is requested revision compared with stored revision, distinguishing
+  same revision, different known revision, and legacy/unknown stored revision
+  where applicable?
+
+Q2 — Replacement authorization
+  What exact condition permits replacing the current artifact state? A
+  requested_revision != stored_revision condition alone MUST NOT be treated
+  as authorization to overwrite.
+
+Q3 — Active-use safety
+  How is replacement prevented from corrupting or invalidating an artifact
+  currently being consumed?
+
+Q4 — Publication integrity
+  How is replacement published so consumers never observe a partially written
+  artifact?
+
+Q5 — Failure recovery
+  What happens if replacement fails after acquisition begins but before the
+  new artifact state is fully published? Artifact integrity must be preserved.
+
+Q6 — Legacy manifests
+  What compatibility semantics apply when a manifest has revision=None or
+  lacks a revision field? Historical artifacts must not be silently
+  reinterpreted.
+```
+
+These questions do not authorize a new identity, locator, or lifecycle
+registry.
+
+### 41.8 Dependencies
+
+```text
+B9.93 — Explicit Multi-Layer Identity Model (CLOSED)
+  Preserves distinction among model, artifact, revision and storage identity.
+
+B9.94 — Identity Admission / Acquisition Separation (CLOSED)
+  Identity Admission remains separate; ModelStore is not identity authority.
+
+B9.95 — Identity Admission Registry (CLOSED)
+  Admission remains persistent, explicit and forward-only.
+
+B9.96 — Acquisition Resolution Boundary (CLOSED)
+  Acquisition bindings remain independent from identity and artifact lifecycle.
+
+B9.97 — Revision-Aware Acquisition (CLOSED; immediate predecessor)
+  Supplies the independent revision channel and manifest metadata; it did not
+  authorize the lifecycle transition allocated here.
+```
+
+Dependency chain:
+
+```text
+B9.93 → B9.94 → B9.95 → B9.96 → B9.97 → B9.98
+```
+
+No dependency on future GUI or Model Library work is introduced.
+
+### 41.9 Verification requirements
+
+Before closure, verification must include:
+
+- dedicated B9.98 tests for revision comparison, mismatch outcomes, and
+  replacement authorization;
+- neighboring acquisition, planner, downloader, ModelStore, resolver, and
+  execution regressions;
+- full test suite when appropriate under the verification audit;
+- identity-boundary preservation for `model_id`, `artifact_id`, and acquisition
+  binding identity;
+- legacy-manifest behavior;
+- replacement failure behavior and artifact-integrity preservation;
+- active-use safety;
+- absence of partial publication;
+- confirmation that locator resolution and the B9.93-B9.97 contracts remain
+  unchanged;
+- confirmation that no excluded capability or unrelated source, test, or
+  roadmap change was introduced.
+
+No implementation or verification is claimed by this allocation.
+
+### 41.10 Governance relationship to B9.97
+
+B9.98 is a prospective follow-up to a lifecycle question intentionally
+excluded from B9.97. B9.97 remains valid and closed; it did not authorize
+replacement. This allocation does not rewrite or reopen B9.97. If
+implementation evidence demonstrates a direct conflict with a closed B9.97
+contract, implementation must stop for a new human architectural decision.
+
+### 41.11 B9.98 allocation state
+
+```text
+Candidate Discovery: COMPLETE
+Architectural Analysis: COMPLETE
+Human Decision: SELECTED — OPTION A
+Decision Audit: CONSISTENT
+Allocation: COMPLETE
+Implementation: NOT EXECUTED
+Verification: PENDING
+Closure: NOT CLOSED
+```
