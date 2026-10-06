@@ -104,6 +104,33 @@ class DownloadPlanner:
         if manifest_path.exists():
             stored = self.model_store.inspect_manifest(manifest_path)
             if stored.state in {ArtifactState.DOWNLOADED, ArtifactState.VERIFIED}:
+                stored_revision = (
+                    stored.artifact.revision if stored.artifact is not None else None
+                )
+                if (
+                    artifact.revision is not None
+                    and stored_revision != artifact.revision
+                ):
+                    if stored_revision is None:
+                        reason = (
+                            "Existing artifact revision is unknown; requested "
+                            f"revision {artifact.revision!r} was not acquired or replaced"
+                        )
+                    else:
+                        reason = (
+                            f"Existing artifact revision {stored_revision!r} does "
+                            f"not match requested revision {artifact.revision!r}; "
+                            "request was not acquired or replaced"
+                        )
+                    return DownloadPlan(
+                        artifact=artifact,
+                        destination=destination,
+                        status=DownloadPlanStatus.BLOCKED,
+                        reasons=(reason,),
+                        available_bytes=None,
+                        required_bytes=artifact.size_bytes,
+                        existing=True,
+                    )
                 return DownloadPlan(
                     artifact=artifact,
                     destination=destination,
