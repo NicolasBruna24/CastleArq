@@ -247,6 +247,10 @@ def evaluate_model_compatibility(
         architecture_evidence = GGUFArchitectureEvidence(architecture_raw=None)
     except GGUFReadError:
         raise
+    # B9.99 findings resolution (B1): ordinary evaluation is read-only
+    # w.r.t. the admitted-model store. GGUF architecture evidence is
+    # consumed ephemerally by the strict chain below; durable observation
+    # capture is an explicit operation (see admitted_commands.observe_command).
     # B9.79: produce ephemeral pre-admission runtime/artifact evidence at the
     # physical observation boundary, next to the GGUF architecture reader. The
     # observer is a separate read-only producer -- never the post-admission

@@ -464,12 +464,14 @@ may be assigned only after this field names a real commit.
 
 ---
 
-## 12. Current allocation state
+## 12. Selected allocation-state milestones
 
 ```text
 B9.78 = IMPLEMENTED — see section 14 (14.1, 14.5, 14.7.2)
 B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
 B9.80 = VERIFIED AND CLOSED — see section 16 (16.6, 16.7)
+B9.98 = CLOSED — see section 41.12
+B9.99 = IMPLEMENTED, B1/B2/B3 VERIFIED, GOVERNANCE RECONCILED — ACCEPTANCE PENDING — see section 42
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -485,15 +487,19 @@ Two figures remain distinct from any allocation:
 
 Neither is an allocation of `B9.78`; they are the floor from which §14 computes.
 
-Any number after `B9.78` is computed by the procedure in §6 and §7 — through a
-corpus inspection recorded under §11 — and never by this document.
+At the time this policy was first recorded, any number after `B9.78` had to be
+computed by the procedure in §6 and §7 through a corpus inspection recorded
+under §11. That historical statement is now supplemented by the B9.98 record
+in §41 and the B9.99 allocation in §42; each successor has its own allocation
+evidence.
 
 ---
 
 ## 13. What this document does not do
 
 ```text
-It does not assign any B9 identifier by itself.
+It assigns B9 identifiers only through explicit allocation records that follow
+the active numbering policy.
 It does not modify docs/B9.57-*, docs/B9.58-*, docs/B9.59-*, docs/B9.29-*.
 It does not modify docs/release/*, any manifest, README, tag or release.
 It does not move, re-create or re-point the v0.4.0 tag.
@@ -501,10 +507,11 @@ It does not claim that any gap was abandoned, reserved, freed or erroneous.
 It does not claim that any sub-block rule was the historical rule.
 It does not attribute a scope to B9.77.
 It does not retroactively reinterpret the allocation of B9.59.
-It does not define what B9.78 will contain.
+It does not retroactively alter the original B9.78 allocation evidence.
 ```
 
-The allocations this document performs are `B9.78` (§14), `B9.79` (§15), and `B9.80` (§16).
+The original allocations recorded here are `B9.78` (§14), `B9.79` (§15), and
+`B9.80` (§16). Later allocation records are recorded in their own sections.
 
 ---
 
@@ -12686,3 +12693,419 @@ The historical allocation, implementation, and verification states above
 remain attributable to their respective stages. No production or test changes
 are made by this governance closure record. Publication is NOT PERFORMED; no
 push occurs in this closure operation.
+
+---
+
+## 42. B9.99 — Number Allocation Record
+
+### 42.1 Human roadmap allocation decision
+
+```text
+Decision date:             2026-10-07
+Decision authority:        Project owner / human roadmap allocation decision
+Selected option:           Option B — Full Explicit Arbitrary-HF-GGUF Vertical Slice
+Allocation:                ALLOCATED
+Implementation:            NOT AUTHORIZED
+Implementation readiness:  REQUIRED AS A SEPARATE NEXT STAGE
+Commit:                    NOT CREATED — explicitly prohibited by this decision request
+```
+
+Historical allocation-time state, preserved as recorded on the decision
+date. The separate human implementation authorization required by §42.10
+has since been granted and the authorized implementation has been
+performed; the superseding current state is recorded in §42.13 and in
+`docs/b999-implementation-authorization-human-architectural-decision-record.md`.
+The allocation decision itself (Option B) is unchanged.
+
+The post-B9.98 Option D decision to defer a successor is consumed by this
+formal allocation. Its historical rationale is preserved; this allocation
+does not rewrite that earlier decision. The Option C Executable Model
+Description, Evidence Provenance, and Remote Declaration Freshness & Evidence
+Reconciliation decisions remain the architectural basis for this block.
+
+### 42.1.1 Candidate options and comparison
+
+```text
+OPTION A — MINIMAL ADMISSION INTEGRATION
+Connect identity admission and an executable description to existing
+resolution/execution. Smallest change, but leaves parts of the explicit
+arbitrary-HF acquisition journey disconnected and invites immediate
+successor integration work.
+
+OPTION B — FULL EXPLICIT ARBITRARY-HF-GGUF VERTICAL SLICE (SELECTED)
+Deliver one bounded, explicit, single-GGUF path through admission, durable
+description/provenance, existing binding/acquisition, verification,
+evaluation, mandatory execution admission, execute and chat.
+
+OPTION C — EXECUTABLE DESCRIPTION FOUNDATION ONLY
+Create durable description and provenance authority without full admitted-HF
+acquisition/execution integration. Narrow foundation, but does not deliver
+the evidenced user capability and risks fragmenting the successor sequence.
+
+OPTION D — ALTERNATIVE EVIDENCE-BASED SCOPE
+Not proposed: the readiness audit found the architecture sufficiently
+clarified, and A/B/C already cover the evidenced scope choices.
+```
+
+| Criterion | A | B | C | D |
+|---|---|---|---|---|
+| Scope size | Small | Bounded, largest of the three | Small | Not proposed |
+| Architectural coherence | Partial path | Complete existing-authority path | Foundation only | N/A |
+| Product value | Partial | Complete explicit user capability | Foundation, not user journey | N/A |
+| Risk | Low local risk; integration deferred | Moderate cross-boundary risk, bounded by gates | Low initial risk; follow-on fragmentation | N/A |
+| Reuses existing mechanisms | High | High | High | N/A |
+| Cross-boundary complexity | Low | Highest; necessary for the selected journey | Low | N/A |
+| Testability | Unit and limited integration | End-to-end and objective acceptance | Persistence/provenance only | N/A |
+| Closure potential | Weak; leaves journey open | Strong; closes one coherent journey | Weak; requires successor integration | N/A |
+| Risk of future fragmentation | High | Low | High | N/A |
+| Alignment with prior HADR | Partial | Directly implements the bounded decisions | Partial | No delivery |
+| Risk of hidden scope expansion | Low | Moderate but controlled by explicit exclusions | Low | N/A |
+
+Option B is selected because the readiness audit resolved the material
+architectural questions and found an independently testable end-to-end
+boundary. Option A is rejected because it stops before the acquisition and
+execution path is real. Option C is rejected because it delivers a foundation
+without the user capability and would likely require a near-immediate
+successor. No Option D alternative is justified by repository evidence.
+
+### 42.2 Allocation evidence block
+
+```text
+Assigned Number:
+  B9.99
+
+Formal Name:
+  Explicit Admitted Hugging Face GGUF Execution Path
+
+Allocation Date:
+  2026-10-07
+
+Allocation Commit:
+  NOT CREATED — commit is expressly prohibited for this decision.
+  This allocation is recorded in the current roadmap working tree.
+
+Corpus/HEAD Anchor:
+  0247a830a106b52b03e0066da5cbaaed8523396f
+  tree object f59f68f2b0e359adfd167d262ac095303924d7ad
+
+Corpus File Count:
+  241 tracked files (`git ls-files` at the anchor).
+
+Corpus Integrity Evidence:
+  SHA-256 of raw `git ls-files -z` output:
+    b05a25e8b4459d177bfaa2ffa6bb8739d8c982bb0024ff206834769ab3f2ddea
+  Tree object:
+    f59f68f2b0e359adfd167d262ac095303924d7ad
+  Occurrence SHA-256 (ordered UTF-8 records `path NUL line NUL identifier LF`,
+  scanning tracked files with `\bB9\.\d+(?:\.\d+)?\b`):
+    ce821f7604b39d8a2ad08b98d353ffe903437bc42cf01446fdc7dd6fce7a2154
+  Identifier-set SHA-256 (distinct identifiers, numerically sorted, one per
+  UTF-8 line):
+    1396c1af135ed80f0b83157f266fecc3d6198242737e20cd8dc2a00e2f87c125
+  148 distinct identifiers over 4,937 tracked occurrences.
+  Tracked groups: castlearq/ 70; tests/ 95; docs/ 68; .github/ 2;
+  config/ 1; other 5.
+
+Identifier Set:
+  Main identifiers: B9.0 through B9.99.
+  Sub-block identifiers:
+    B9.6.0-B9.6.1
+    B9.46.1-B9.46.29
+    B9.57.1-B9.57.8
+    B9.76.1-B9.76.5
+    B9.80.1-B9.80.3
+    B9.83.1
+  The B9.99 occurrence at the pre-allocation anchor is the negative
+  “B9.99+ — NOT SELECTED” statement in §41.1, not an allocation record.
+  The untracked governance HADR documents also describe B9.99 as not
+  allocated; they are supporting local-only governance evidence, not
+  allocation records.
+
+Highest Verified Main Block:
+  B9.98 — allocated and closed in section 41.
+
+Rule in Force:
+  Sections 6 and 7 — the next main number is the highest verified allocated
+  main block plus one, and a reproducible corpus inspection is a precondition.
+  Section 9 prospective non-reuse policy remains in force.
+
+Rule Activation Anchor:
+  f77f00d6c0eee177a7b53c87584f391e460f11e3
+  Verified as an ancestor of the corpus anchor.
+
+Actor/Process:
+  Project owner, following the B9.99 Allocation Readiness Audit result
+  “A — READY FOR ROADMAP ALLOCATION” and the human decision recorded here.
+  The freshness/reconciliation HADR was issued in the immediately preceding
+  governance decision and was intentionally response-only; its complete
+  decision text is the authoritative evidence. No implementation readiness
+  or implementation authorization is inferred.
+
+Candidate Numbers Considered:
+  B9.99 — SELECTED. It is the immediate successor of the highest verified
+  allocated main block, B9.98.
+  B9.100 and later — NOT SELECTED. They would skip the immediate successor
+  required by section 6.
+  Historical gaps below B9.98 — NOT REUSED under section 9.
+  Sub-block assignment — NOT SELECTED; this is a successor capability, not a
+  subdivision of B9.98.
+
+Selected Number:
+  B9.99
+
+Validity Reason:
+  The verified allocated main-block floor at the corpus anchor is B9.98.
+  The only tracked B9.99 occurrence at that anchor is an explicit
+  non-selection statement, not an allocation. Sections 6 and 7 therefore
+  permit B9.99 as the immediate next main block, and the reproducible corpus
+  evidence above records the complete assignment basis.
+```
+
+### 42.3 Register entry
+
+```text
+Block ID:                 B9.99
+Name:                     Explicit Admitted Hugging Face GGUF Execution Path
+Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, B1/B2/B3
+                          VERIFIED — GOVERNANCE RECONCILED — ACCEPTANCE
+                          PENDING (42.9/42.12), NOT CLOSED
+Origin:                   this document, section 42
+Scope:                    see 42.4
+Non-goals:                see 42.6
+Dependencies:             see 42.10
+Evidence:                 B9.99 Allocation Readiness Audit = A; prior Option C
+                          Executable Model Description and Evidence Provenance
+                          HADR decisions; response-only Freshness & Evidence
+                          Reconciliation HADR decision; B9.99 implementation
+                          authorization, findings-resolution and B5 governance
+                          reconciliation HADR records (docs/b999-*)
+Evidence Type:            DOC / HUMAN ROADMAP ALLOCATION / HUMAN IMPLEMENTATION
+                          AUTHORIZATION / HUMAN FINDINGS RESOLUTION
+Implementation Commit:    the B9.99 governance/implementation commit that
+                          introduces this status update — see git log -1
+                          (a commit cannot contain its own hash; §11 policy)
+Verification Result:      B1/B2/B3 VERIFIED — read-only verification audit;
+                          full test suite 2421 passed / 2801 subtests,
+                          0 failures; real-world drill NOT PERFORMED (42.9);
+                          closure audit NOT PERFORMED (42.12)
+Release Association:      NOT YET DEFINED
+Supersession:             Consumes B9.98+ Option D deferral; does not supersede
+                          B9.97 or B9.98 technical decisions
+Documented?:              YES — this document, section 42
+Number Allocation Record: PRESENT — section 42.2
+Retrospective Record:     NO
+```
+
+### 42.4 Objective and product capability
+
+Establish a bounded production path that lets a user explicitly select one
+concrete, public Hugging Face GGUF, explicitly admit its logical identity and
+executable description, explicitly bind acquisition, and carry that admitted
+model through existing acquisition, ModelStore, evidence, compatibility, and
+execution authorities. Remote declarations and local/runtime evidence must
+retain their distinct provenance; execution remains conditional on the
+existing strict evaluator and mandatory execution-admission gate.
+
+After B9.99, a user will be able to use the existing CLI/application surfaces
+to perform the explicit journey:
+
+```text
+Discover → Select one GGUF → Admit → Describe → Bind → Acquire
+→ Verify → Evaluate → Execute → Chat
+```
+
+The flow targets one explicitly selected public Hugging Face GGUF and the
+existing external `llama` runtime. No GUI is required.
+
+### 42.5 In-scope
+
+1. Durable authority for an Executable Model Description, distinct from
+   `ModelSpec`, `ArtifactSpec`, logical identity, acquisition binding,
+   ModelStore, and execution permission.
+2. Explicit admitted-model resolution and application composition using the
+   existing identity-admission and acquisition-binding authorities.
+3. Claim-scoped declaration and evidence provenance, including durable
+   capture/observation context, unknown semantics, matching, and material
+   conflict representation.
+4. Explicit on-demand remote refresh and claim-scoped reconciliation.
+   Accepted snapshots remain stable by default; ordinary resolution does not
+   refresh; age alone does not block; reconciliation preserves prior claims.
+5. Orchestration of admitted-model acquisition through the existing binding,
+   discovery, acquisition service, `ArtifactSpec`, and ModelStore mechanisms.
+6. Projection of evidence-qualified executable descriptions and artifact/
+   runtime evidence into the existing compatibility evaluator.
+7. Integration into existing `execute` and `chat` paths, with the existing
+   execution-admission gate remaining mandatory.
+8. Focused and cross-boundary tests, including preservation of the curated
+   Qwen behavior.
+9. A real, public, non-curated Hugging Face GGUF acceptance drill as a closure
+   criterion, subject to availability of the external runtime and a suitable
+   model.
+
+These are bounded integration responsibilities, not a mandate to create a
+separate subsystem for every numbered item.
+
+### 42.6 Out-of-scope and non-goals
+
+```text
+revision coexistence; revision history; rollback; CAS; automatic replacement;
+automatic artifact selection; automatic identity admission; automatic
+acquisition binding; a second artifact registry; ModelStore redesign;
+garbage-collection redesign; federation; distributed model lifecycle;
+non-GGUF formats; multi-file or sharded model assembly; automatic remote
+refresh; automatic reconciliation; automatic trust escalation; GUI; Model
+Library UX; HTTP discovery or download; new inference backends; llama runtime
+redesign; Ollama; Transformers; vLLM; PyTorch; B9.100 allocation or creation;
+automatic successor creation.
+```
+
+This allocation does not broaden curated Qwen behavior or establish a
+general-purpose model platform.
+
+### 42.7 Architectural invariants
+
+- Logical identity remains separate from repository, filename, revision,
+  checksum, artifact ID, and storage path.
+- Identity admission remains explicit and forward-only. Acquisition binding
+  remains an independent explicit authority; resolution is read-only.
+- `ArtifactSpec` semantics and artifact identity remain unchanged.
+- ModelStore remains the artifact-state authority.
+- Revision remains provenance. B9.97 and B9.98 remain intact: one current
+  artifact address; mismatched known revisions block without replacement.
+- Remote declarations remain declarations; observations and cryptographic
+  verification remain independently scoped evidence. Provenance is never
+  silently flattened. A material unresolved conflict blocks.
+- Accepted remote snapshots remain stable by default. Refresh and
+  reconciliation are explicit; neither silently escalates trust.
+- Compatibility evaluation remains authoritative. Reconciliation does not
+  authorize execution; strict execution admission remains mandatory.
+- The external `llama` runtime remains unchanged.
+
+### 42.8 Acceptance criteria
+
+B9.99 may close only when all applicable criteria pass:
+
+1. A user can explicitly select a concrete public HF GGUF and explicitly admit
+   its deterministic logical identity; admission remains forward-only.
+2. The admitted model has a durable Executable Model Description distinct
+   from `ModelSpec`, `ArtifactSpec`, acquisition binding, and permission.
+3. Declaration provenance records source/location and capture context;
+   independent local observations and cryptographic verification retain
+   their own provenance and scope. Unknown evidence remains unknown.
+4. Ordinary resolution causes no remote refresh. Explicit refresh handles
+   unchanged and changed claims; age alone does not block.
+5. Matching claims, non-material discrepancies, unknowns, material
+   same-scope conflicts, and explicit reconciliation have objectively
+   distinguishable outcomes. Material unresolved conflict blocks. Explicit
+   reconciliation preserves prior claims and its evidence basis and does not
+   authorize execution.
+6. Acquisition uses an explicitly established binding and the existing
+   acquisition service. No automatic binding or identity mutation occurs;
+   B9.97/B9.98 revision behavior remains intact.
+7. The selected GGUF is managed and verified through the existing ModelStore
+   and artifact verification mechanisms, with no second artifact registry.
+8. The executable description, artifact evidence, and runtime evidence reach
+   the existing compatibility evaluator. Required unknowns and unresolved
+   material conflicts fail closed.
+9. A compatible admitted model passes the existing mandatory execution
+   admission; `execute` succeeds through the existing runner. `chat` launches
+   and supports multi-turn interaction through the existing runtime session.
+10. No automatic refresh, reconciliation, replacement, identity/binding
+    mutation, or trust escalation occurs.
+11. Existing curated Qwen discovery/acquisition/evaluation/execute/chat
+    behavior remains green under focused regressions and the applicable
+    repository suite.
+12. No excluded scope, duplicate authority, or hidden registry is introduced.
+
+### 42.9 Real-world product acceptance and curated regression
+
+Closure requires one end-to-end drill using a real public Hugging Face GGUF
+that does not depend on curated identity admission. It must exercise explicit
+selection and admission, the intended binding/acquisition path (or correct
+recognition of an already acquired artifact), local verification, compatibility
+evaluation, execution admission, and real inference. The model and exact
+quantization are selected during implementation readiness based on public
+availability and safe resource requirements; no particular model is
+pre-authorized here. Exercise multi-turn chat in the drill where the selected
+model/runtime supports the existing chat contract.
+
+The previous real curated Qwen drill is the regression anchor. It is not a
+substitute for the arbitrary-model drill, and B9.99 must not alter its
+identity, binding, artifact, revision, ModelStore, or runtime semantics.
+
+### 42.10 Dependencies and implementation boundary
+
+```text
+B9.94-B9.96 — identity admission, registry, and acquisition-resolution
+              authorities remain separate and explicit.
+B9.97       — revision remains an independent provenance channel.
+B9.98       — single-current-artifact mismatch behavior remains authoritative.
+Option C Executable Model Description HADR.
+Evidence Provenance HADR.
+Remote Declaration Freshness & Evidence Reconciliation HADR.
+B9.99 Allocation Readiness Audit — result A.
+```
+
+Allocation authorizes only the roadmap scope in sections 42.4-42.9. It does
+not authorize implementation. Before implementation, a separate B9.99
+Implementation Readiness Audit must confirm the baseline, dependencies,
+acceptance environment, and scope. A separate human implementation
+authorization is then required.
+
+The required human implementation authorization has since been granted and
+is recorded in
+`docs/b999-implementation-authorization-human-architectural-decision-record.md`;
+the subsequent implementation and verification state is recorded in §42.13.
+
+### 42.11 Version and release impact
+
+No release association or version increment is selected by this allocation.
+Version impact is deferred until implementation and product evidence exist.
+
+### 42.12 Closure definition
+
+B9.99 is closed only after:
+
+- all applicable criteria in 42.8 pass;
+- the real-world non-curated GGUF drill in 42.9 passes;
+- curated Qwen regressions pass;
+- focused and required broader verification pass;
+- a read-only closure audit confirms every invariant and exclusion in this
+  record;
+- implementation evidence and closure status are recorded in the roadmap
+  under a separately authorized governance update.
+
+Closure does not authorize B9.100 or any successor.
+
+### 42.13 Allocation and reconciliation state
+
+```text
+HUMAN ROADMAP DECISION:       SELECTED — OPTION B
+B9.99:                        ALLOCATED
+ALLOCATION:                   COMPLETE — section 42
+IMPLEMENTATION AUTHORIZATION: COMPLETE — docs/b999-implementation-
+                              authorization-human-architectural-decision-
+                              record.md
+IMPLEMENTATION:               COMPLETE — B9.99 governance/implementation
+                              commit (see 42.3)
+FINDINGS RESOLUTION:          COMPLETE — docs/b999-human-findings-resolution-
+                              human-architectural-decision-record.md
+                              (B1, B2, B3 corrected; B5 deferred to a
+                              separate authorization, since executed)
+B1/B2/B3 VERIFICATION:        COMPLETE — read-only verification audit; full
+                              test suite 2421 passed / 2801 subtests,
+                              0 failures
+GOVERNANCE RECONCILIATION:    COMPLETE (B5) — docs/b999-b5-governance-
+                              reconciliation-human-architectural-decision-
+                              record.md
+REAL-WORLD ACCEPTANCE:        PENDING — non-curated GGUF drill required by
+                              42.9 has not been performed
+FINAL B9.99 ACCEPTANCE:       PENDING — closure per 42.12 not yet performed
+B9.100:                       NOT CREATED / NOT AUTHORIZED
+```
+
+Historical state, preserved: at allocation this block read
+`IMPLEMENTATION: NOT YET AUTHORIZED` and
+`NEXT STEP: B9.99 IMPLEMENTATION READINESS AUDIT`. Those statements
+described the allocation-time state and are superseded by the block above;
+the allocation decision itself (Option B) is unchanged.

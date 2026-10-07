@@ -2640,6 +2640,24 @@ serving (EXECUTES MODELS - not a status-only surface):
           same strict evaluation admission as execute: a denied model answers
           403, and an evaluation that errors answers 500. See the README.
 
+admitted models (explicit B9.99 lifecycle):
+  admitted --op admit --source SRC --repo OWNER/NAME
+          explicitly admit one logical model identity (forward-only)
+  admitted --op describe --model-id ID --source SRC --repo OWNER/NAME [...]
+          create the durable Executable Model Description (forward-only)
+  admitted --op bind --model-id ID --source SRC --repo OWNER/NAME
+          create the explicit acquisition binding (never automatic)
+  admitted --op show --model-id ID
+          read-only: accepted claims, provenance, pending, counts
+  admitted --op observe --model-id ID --claim CLAIM --value VALUE --context-note NOTE
+          explicit durable local-observation capture (ordinary evaluation
+          never records observations implicitly)
+  admitted --op refresh --model-id ID [...]
+          explicit on-demand refresh: stages a pending declaration only
+  admitted --op reconcile --model-id ID --claim CLAIM --decision keep_accepted|accept_pending|mark_unknown --basis BASIS
+          explicit claim-scoped human-directed reconciliation (single-claim
+          CLI form; multi-claim via the Python boundary)
+
 model-id notes:
   models prints a friendly name (e.g. "Qwen2.5-Coder 7B Instruct") together
   with the canonical model id (e.g. "qwen2.5-coder-7b-instruct"). Always pass
@@ -2837,6 +2855,117 @@ class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
         return wrapper.wrap(text)
 
 
+def _admitted_command(
+    op,
+    *,
+    source=None,
+    repo=None,
+    model_id=None,
+    quantization=None,
+    filename=None,
+    arch=None,
+    params_b=None,
+    context=None,
+    model_format=None,
+    revision=None,
+    claim=None,
+    value=None,
+    decision=None,
+    basis=None,
+    context_note=None,
+    out=None,
+    err=None,
+) -> int:
+    """B9.99 findings resolution (B3): minimal user-reachable lifecycle.
+
+    One existing-CLI command group over the explicit Python boundaries in
+    ``castlearq.admitted_commands``. Single-claim CLI form for observe and
+    reconcile; multi-claim work stays on the Python boundary. No automation:
+    every mutation requires an explicit op with explicit arguments.
+    """
+    import sys
+
+    out = out if out is not None else sys.stdout
+    err = err if err is not None else sys.stderr
+    from . import admitted_commands as _ac
+
+    if op not in ("admit", "describe", "bind", "show", "observe", "refresh", "reconcile"):
+        print(
+            "Usage: castlearq admitted --op admit|describe|bind|show|observe|refresh|reconcile [...]",
+            file=err,
+        )
+        return 2
+    if op == "admit":
+        if not source or not repo:
+            print("Usage: castlearq admitted --op admit --source SRC --repo OWNER/NAME", file=err)
+            return 2
+        return _ac.admit_command(source, repo, out=out, err=err)
+    if op == "describe":
+        if not model_id or not source or not repo:
+            print(
+                "Usage: castlearq admitted --op describe --model-id ID --source SRC --repo OWNER/NAME [...]",
+                file=err,
+            )
+            return 2
+        return _ac.describe_command(
+            model_id,
+            source,
+            repo,
+            filename=filename,
+            quantization=quantization,
+            revision=revision,
+            architecture=arch,
+            parameter_count_b=params_b,
+            context_length=context,
+            fmt=model_format,
+            out=out,
+            err=err,
+        )
+    if op == "bind":
+        if not model_id or not source or not repo:
+            print(
+                "Usage: castlearq admitted --op bind --model-id ID --source SRC --repo OWNER/NAME",
+                file=err,
+            )
+            return 2
+        return _ac.bind_command(model_id, source, repo, out=out, err=err)
+    if op == "show":
+        if not model_id:
+            print("Usage: castlearq admitted --op show --model-id ID", file=err)
+            return 2
+        return _ac.show_command(model_id, out=out, err=err)
+    if op == "observe":
+        if not model_id or not claim or value is None or not context_note:
+            print(
+                "Usage: castlearq admitted --op observe --model-id ID --claim CLAIM --value VALUE --context-note NOTE",
+                file=err,
+            )
+            return 2
+        return _ac.observe_command(
+            model_id, claim, value, observation_context=context_note, out=out, err=err
+        )
+    if op == "refresh":
+        if not model_id:
+            print("Usage: castlearq admitted --op refresh --model-id ID [...] ", file=err)
+            return 2
+        return _ac.refresh_command(
+            model_id,
+            architecture=arch,
+            parameter_count_b=params_b,
+            context_length=context,
+            fmt=model_format,
+            out=out,
+            err=err,
+        )
+    if not model_id or not claim or not decision or not basis:
+        print(
+            "Usage: castlearq admitted --op reconcile --model-id ID --claim CLAIM --decision keep_accepted|accept_pending|mark_unknown --basis BASIS",
+            file=err,
+        )
+        return 2
+    return _ac.reconcile_command(model_id, {claim: decision}, basis=basis, out=out, err=err)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="castlearq",
@@ -2853,7 +2982,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store", "admitted"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -2920,6 +3049,74 @@ def main() -> int:
             "resolution alone"
         ),
     )
+    # B9.99 findings resolution (B3): minimal explicit admitted-model options.
+    # No new product surface: one existing-CLI command group carrying the
+    # explicit lifecycle operations.
+    parser.add_argument(
+        "--op",
+        help=(
+            "admitted-model operation for the 'admitted' command: admit, "
+            "describe, bind, show, observe, refresh or reconcile"
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        help="acquisition source for the 'admitted' command (e.g. huggingface)",
+    )
+    parser.add_argument(
+        "--repo",
+        help="repository locator for the 'admitted' command (owner/name)",
+    )
+    parser.add_argument(
+        "--model-id",
+        help="admitted logical model identity for the 'admitted' command",
+    )
+    parser.add_argument(
+        "--arch",
+        help="declared architecture for admitted describe/refresh",
+    )
+    parser.add_argument(
+        "--params-b",
+        type=float,
+        help="declared parameter count (billions) for admitted describe/refresh",
+    )
+    parser.add_argument(
+        "--context",
+        type=int,
+        help="declared context length for admitted describe/refresh",
+    )
+    parser.add_argument(
+        "--format",
+        dest="model_format",
+        help="declared artifact format for admitted describe/refresh",
+    )
+    parser.add_argument(
+        "--revision",
+        help="declared revision for admitted describe",
+    )
+    parser.add_argument(
+        "--claim",
+        help="claim name for admitted observe/reconcile (single-claim CLI form)",
+    )
+    parser.add_argument(
+        "--value",
+        help="observed value for admitted observe (single-claim CLI form)",
+    )
+    parser.add_argument(
+        "--decision",
+        help=(
+            "reconciliation decision for admitted reconcile (single-claim CLI "
+            "form): keep_accepted, accept_pending or mark_unknown"
+        ),
+    )
+    parser.add_argument(
+        "--basis",
+        help="human-directed basis recorded for admitted reconcile",
+    )
+    parser.add_argument(
+        "--context-note",
+        help="provenance note recorded for admitted observe",
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -2953,6 +3150,24 @@ def main() -> int:
         "chat": ("quantization", "filename"),
         "serve": (),
         "store": (),
+        "admitted": (
+            "op",
+            "source",
+            "repo",
+            "model_id",
+            "quantization",
+            "filename",
+            "arch",
+            "params_b",
+            "context",
+            "model_format",
+            "revision",
+            "claim",
+            "value",
+            "decision",
+            "basis",
+            "context_note",
+        ),
     }
     # B9.74: the commands that consume a model store. They are exactly the ones
     # that accept --model-store, and exactly the ones where the legacy
@@ -2976,6 +3191,26 @@ def main() -> int:
     for flag in ("host", "port"):
         if getattr(args, flag) is not None and args.command != "serve":
             parser.error(f"--{flag} is not valid for command '{args.command}'")
+    # B9.99 (B3): the admitted-model options belong to the admitted command
+    # only. Dashes in argparse map to underscores in `args`.
+    for flag in (
+        "op",
+        "source",
+        "repo",
+        "model_id",
+        "arch",
+        "params_b",
+        "context",
+        "model_format",
+        "revision",
+        "claim",
+        "value",
+        "decision",
+        "basis",
+        "context_note",
+    ):
+        if getattr(args, flag) is not None and args.command != "admitted":
+            parser.error(f"--{flag.replace('_', '-')} is not valid for command '{args.command}'")
     # B9.76.3: --json exists only for the four MUST commands of the first
     # JSON surface. Everything else keeps argparse's behaviour: stderr + exit
     # 2, never JSON.
@@ -3132,6 +3367,25 @@ def main() -> int:
     elif args.command == "serve":
         return serve_command(
             host=args.host, port=args.port, model_store=model_store
+        )
+    elif args.command == "admitted":
+        return _admitted_command(
+            args.op,
+            source=args.source,
+            repo=args.repo,
+            model_id=args.model_id,
+            quantization=args.quantization,
+            filename=args.filename,
+            arch=args.arch,
+            params_b=args.params_b,
+            context=args.context,
+            model_format=args.model_format,
+            revision=args.revision,
+            claim=args.claim,
+            value=args.value,
+            decision=args.decision,
+            basis=args.basis,
+            context_note=args.context_note,
         )
     return 0
 

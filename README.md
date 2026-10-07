@@ -791,6 +791,13 @@ flags.
 | `search QUERY` | Queries the configured model discovery/catalog capability |
 | `inspect REPO` | Inspects one remote repository's declared variants and artifacts |
 | `plan REPO FILENAME` | Inspects one specific remote artifact |
+| `admitted --op admit --source SRC --repo OWNER/NAME` | Explicitly admit one logical model identity (forward-only) |
+| `admitted --op describe --model-id ID --source SRC --repo OWNER/NAME` | Create the durable Executable Model Description (forward-only) |
+| `admitted --op bind --model-id ID --source SRC --repo OWNER/NAME` | Create the explicit acquisition binding (never automatic) |
+| `admitted --op show --model-id ID` | Read-only admitted-model description and provenance |
+| `admitted --op observe --model-id ID --claim CLAIM --value VALUE --context-note NOTE` | Explicitly record one durable local observation |
+| `admitted --op refresh --model-id ID` | Explicit on-demand refresh (stages pending only) |
+| `admitted --op reconcile --model-id ID --claim CLAIM --decision DECISION --basis BASIS` | Explicit claim-scoped reconciliation |
 
 `import PATH` copies a local GGUF file into the model store. It reports the
 artifact's **content ID** (the SHA-256 CastleArq computed, which is the file's

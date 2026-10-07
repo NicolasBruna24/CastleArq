@@ -88,11 +88,35 @@ class ModelArtifactResolver:
     ) -> ResolvedModelArtifact:
         model = next((item for item in self.models if item.model_id == model_id), None)
         if model is None:
-            # B9.67: not a catalog model. The caller may be naming a locally
-            # imported artifact by its sanitized label. This fallback only
-            # ever runs once the catalog lookup has already failed, so the
-            # catalog path above is untouched.
-            return self._resolve_imported(model_id, quantization, filename)
+            # B9.99: an explicitly admitted non-curated identity resolves to
+            # its durable Executable Model Description. Read-only: no
+            # refresh, no reconciliation, no mutation. Material conflicts
+            # fail closed here so both evaluation and execution deny.
+            try:
+                from .admitted_resolution import (
+                    AdmittedMaterialConflictError,
+                    AdmittedResolutionError,
+                    resolve_model_for_evaluation,
+                )
+            except Exception:
+                return self._resolve_imported(model_id, quantization, filename)
+            try:
+                admitted = resolve_model_for_evaluation(model_id)
+            except AdmittedMaterialConflictError as error:
+                # B9.99 findings resolution (B2): typed conflict signal fails
+                # closed. Unknown identities fall through to the B9.67
+                # imported-label fallback, preserving curated/imported paths.
+                raise ModelArtifactResolutionError(str(error)) from error
+            except AdmittedResolutionError:
+                return self._resolve_imported(model_id, quantization, filename)
+            if admitted.from_admitted:
+                model = admitted.model
+            else:
+                # B9.67: not a catalog model. The caller may be naming a locally
+                # imported artifact by its sanitized label. This fallback only
+                # ever runs once the catalog lookup has already failed, so the
+                # catalog path above is untouched.
+                return self._resolve_imported(model_id, quantization, filename)
 
         matching = [
             entry
