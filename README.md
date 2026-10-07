@@ -9,7 +9,7 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The current release candidate is `0.5.0`; it has not yet
+> **Version note.** The current release candidate is `0.5.1`; it has not yet
 > been tagged or published. This release adds read-only `search` and `inspect`
 > commands, uses acquisition resolution as the production acquisition path,
 > and blocks a requested revision that conflicts with the stored artifact
@@ -90,7 +90,7 @@ castlearq --version
 ```
 
 A previously built wheel or sdist can also be installed, for example
-`pip install dist/castlearq-0.5.0-py3-none-any.whl`. Installation needs neither
+`pip install dist/castlearq-0.5.1-py3-none-any.whl`. Installation needs neither
 `PYTHONPATH` nor the source tree afterwards, and the package contains no models.
 
 ## Requirements

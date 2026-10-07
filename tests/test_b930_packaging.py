@@ -29,7 +29,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_distribution_metadata(self):
         project = self.pyproject["project"]
         self.assertEqual(project["name"], "castlearq")
-        self.assertEqual(project["version"], "0.5.0")
+        self.assertEqual(project["version"], "0.5.1")
         self.assertEqual(project["requires-python"], ">=3.11")
         self.assertTrue(project["description"])
         self.assertEqual(project["license"], "Apache-2.0")
@@ -85,11 +85,11 @@ class ConsoleScriptTargetTests(unittest.TestCase):
 
 class VersionResolutionTests(unittest.TestCase):
     def test_declared_version_is_resolved(self):
-        self.assertEqual(get_version(), "0.5.0")
+        self.assertEqual(get_version(), "0.5.1")
 
     def test_metadata_unavailable_uses_source_fallback(self):
         with mock.patch("castlearq.version.importlib.metadata.version", side_effect=PackageNotFoundError):
-            self.assertEqual(get_version(), "0.5.0")
+            self.assertEqual(get_version(), "0.5.1")
 
 
 class UserPathResolutionTests(unittest.TestCase):
