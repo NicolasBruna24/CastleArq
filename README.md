@@ -9,11 +9,13 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The published release is `0.4.0` (`pip install castlearq`).
-> This README describes that release. It adds the `import` command for bringing
-> a local GGUF file you already have into the model store, so you can use
-> CastleArq without obtaining a model from the catalog, and it keeps the
-> `validate` command. It requires **Python 3.11 or newer**.
+> **Version note.** The current release candidate is `0.5.0`; it has not yet
+> been tagged or published. This release adds read-only `search` and `inspect`
+> commands, uses acquisition resolution as the production acquisition path,
+> and blocks a requested revision that conflicts with the stored artifact
+> without replacing the existing artifact. Local GGUF files can still be
+> brought into the model store with `import`, and the `validate` command remains
+> available. It requires **Python 3.11 or newer**.
 
 ## What problem does it solve?
 
@@ -88,7 +90,7 @@ castlearq --version
 ```
 
 A previously built wheel or sdist can also be installed, for example
-`pip install dist/castlearq-0.4.0-py3-none-any.whl`. Installation needs neither
+`pip install dist/castlearq-0.5.0-py3-none-any.whl`. Installation needs neither
 `PYTHONPATH` nor the source tree afterwards, and the package contains no models.
 
 ## Requirements
@@ -135,7 +137,7 @@ availability and detected capabilities.
 | `UNKNOWN` | not enough evidence | read `reason` and re-run the diagnostic |
 
 `llama` is the official launcher. `llama-cli`, `llama-server` and `llama.app` do
-not automatically stand in for `llama` in CastleArq 0.2.x.
+not automatically stand in for `llama` in CastleArq 0.5.x.
 
 ## Quick start
 
@@ -645,6 +647,10 @@ Current, factual limitations of this release:
   is selected for the detected hardware; there is no workload scheduler.
 - **One execution at a time.** The HTTP surface serialises execution behind a
   single lock and answers `409` rather than queueing.
+- **Blocked revision mismatch.** A requested model revision that does not match
+  the revision stored on disk is refused, and the already stored artifact is
+  preserved; the download fails with a clear blocked error rather than replacing
+  the existing file. Use another revision or another artifact instead.
 - **No auth, TLS or persistence.** `serve` is loopback-only by design; chat
   sessions live in memory only.
 
@@ -948,4 +954,3 @@ checkout is not required to use the installed package.
 
 Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for
 the full text.
-

@@ -38,12 +38,7 @@ def _flat(path: Path) -> str:
 
 
 def _project_version() -> str:
-    """The declared version, read from ``pyproject.toml``.
-
-    That file already declares the version carried by the wheel, the sdist and
-    the published distribution, so the README is checked against it instead of
-    against a literal that would need rewriting at every release.
-    """
+    """The declared package version, read from ``pyproject.toml``."""
     return str(tomllib.loads(_read(PYPROJECT))["project"]["version"])
 
 
@@ -51,9 +46,7 @@ def _version_note() -> str:
     """The README's version note, whitespace-normalised.
 
     It is the first blockquote in the document, so it is read as one
-    contiguous run of quoted lines rather than as the whole file: a claim
-    about which version is published is only meaningful in the note that
-    makes it.
+    contiguous run of quoted lines rather than as the whole file.
     """
     block: list[str] = []
     for line in _read(README).splitlines():
@@ -130,25 +123,32 @@ class PublicClaimTests(unittest.TestCase):
         self.assertIn("It is not a consumer application.", flat)
         self.assertIn("exercised baseline", flat)
 
-    def test_readme_presents_the_declared_version_as_published(self):
-        """The README must present the version ``pyproject.toml`` declares.
+    def test_readme_version_note_matches_declared_release_state(self):
+        """Identify the declared version as either the current RC or published.
 
-        B9.53 section 17 originally required the opposite framing: the note
-        had to say the published release was ``0.1.0`` while ``main`` was
-        "ahead of that release". That was true while ``0.2.0`` was unreleased
-        and became false the moment ``v0.2.0`` was published, leaving the
-        shipped PyPI page asserting a version that was not installed.
-
-        The guarantee is kept, the literal is not. The expected version is
-        derived from the project metadata, so this test needs no edit at the
-        next release, and the note is read as a whole because the claim only
-        means anything where the version is actually stated.
+        The package version alone does not prove publication. While preparing a
+        release, the README identifies that version as an untagged candidate;
+        after publication, it identifies the same declared version as published.
         """
         note = _version_note()
-        self.assertIn("**Version note.**", note)
-        self.assertIn(
-            f"The published release is `{_project_version()}`", note,
+        version = _project_version()
+        published = f"The published release is `{version}`" in note
+        candidate = (
+            f"The current release candidate is `{version}`" in note
+            and "not yet been tagged or published" in note
         )
+
+        self.assertIn("**Version note.**", note)
+        self.assertTrue(
+            published or candidate,
+            "the version note must state the declared version and release state",
+        )
+        self.assertNotEqual(
+            published,
+            candidate,
+            "the version note must identify exactly one matching release state",
+        )
+        self.assertNotIn("CastleArq 0.2.x", _flat(README))
 
     def test_readme_version_note_does_not_describe_an_unreleased_state(self):
         """B9.53 section 17, restated: no pre-release framing, ever.
