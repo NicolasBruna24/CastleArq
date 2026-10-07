@@ -9,10 +9,11 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The current release candidate is `0.5.1`; it has not yet
-> been tagged or published. This release adds read-only `search` and `inspect`
-> commands, uses acquisition resolution as the production acquisition path,
-> and blocks a requested revision that conflicts with the stored artifact
+> **Version note.** The published release is `0.5.1` (tag `v0.5.1`), available
+> on PyPI. It is the current published release. This release adds read-only
+> `search` and `inspect` commands, uses acquisition resolution as the
+> production acquisition path, and blocks a requested revision that conflicts
+> with the stored artifact
 > without replacing the existing artifact. Local GGUF files can still be
 > brought into the model store with `import`, and the `validate` command remains
 > available. It requires **Python 3.11 or newer**.
