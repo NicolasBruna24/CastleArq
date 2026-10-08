@@ -471,7 +471,7 @@ B9.78 = IMPLEMENTED — see section 14 (14.1, 14.5, 14.7.2)
 B9.79 = VERIFIED AND CLOSED — see section 15 (15.14, 15.16)
 B9.80 = VERIFIED AND CLOSED — see section 16 (16.6, 16.7)
 B9.98 = CLOSED — see section 41.12
-B9.99 = IMPLEMENTED, B1/B2/B3 VERIFIED, GOVERNANCE RECONCILED — ACCEPTANCE PENDING — see section 42
+B9.99 = CLOSED — see section 42 (42.13)
 ```
 
 `B9.78` was **not** a register entry when this document was written: at that
@@ -12867,8 +12867,8 @@ Validity Reason:
 Block ID:                 B9.99
 Name:                     Explicit Admitted Hugging Face GGUF Execution Path
 Status:                   DOCUMENTED, ALLOCATED, IMPLEMENTED, B1/B2/B3
-                          VERIFIED — GOVERNANCE RECONCILED — ACCEPTANCE
-                          PENDING (42.9/42.12), NOT CLOSED
+                          VERIFIED — GOVERNANCE RECONCILED — REAL-WORLD
+                          ACCEPTANCE PASSED (42.9) — CLOSED (42.13)
 Origin:                   this document, section 42
 Scope:                    see 42.4
 Non-goals:                see 42.6
@@ -12886,8 +12886,10 @@ Implementation Commit:    the B9.99 governance/implementation commit that
                           (a commit cannot contain its own hash; §11 policy)
 Verification Result:      B1/B2/B3 VERIFIED — read-only verification audit;
                           full test suite 2421 passed / 2801 subtests,
-                          0 failures; real-world drill NOT PERFORMED (42.9);
-                          closure audit NOT PERFORMED (42.12)
+                          0 failures; real-world drill PASSED after Option D
+                          correction (42.9); read-only closure audit PASSED
+                          (42.12); post-correction full suite 2424 passed /
+                          2801 subtests, 0 failures
 Release Association:      NOT YET DEFINED
 Supersession:             Consumes B9.98+ Option D deferral; does not supersede
                           B9.97 or B9.98 technical decisions
@@ -13098,9 +13100,13 @@ B1/B2/B3 VERIFICATION:        COMPLETE — read-only verification audit; full
 GOVERNANCE RECONCILIATION:    COMPLETE (B5) — docs/b999-b5-governance-
                               reconciliation-human-architectural-decision-
                               record.md
-REAL-WORLD ACCEPTANCE:        PENDING — non-curated GGUF drill required by
-                              42.9 has not been performed
-FINAL B9.99 ACCEPTANCE:       PENDING — closure per 42.12 not yet performed
+REAL-WORLD ACCEPTANCE:        PASSED — non-curated GGUF drill
+                              (Discover→Select→Admit→Describe→Bind→
+                              Acquire→Verify→Evaluate→Execute→Chat)
+                              passed after the Option D correction
+FINAL B9.99 ACCEPTANCE:       CLOSED — read-only closure audit passed;
+                              recorded by this separately authorized
+                              governance update
 B9.100:                       NOT CREATED / NOT AUTHORIZED
 ```
 

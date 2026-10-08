@@ -94,7 +94,7 @@ from .execution import ArtifactExecutionPreflight
 from .initial_knowledge import INITIAL_KNOWLEDGE_REGISTRY
 from .model_catalog import get_catalog
 from .model_identity import (
-    logical_model_id,
+    resolve_admitted_model_id,
     source_repositories_for_logical_model,
 )
 from .model_store import ModelStore
@@ -318,7 +318,10 @@ def compose_acquisition_service(
     instance it owns drives planning, transfer and registration so the planned
     destination always belongs to the store that persists the artifact.
 
-    Identity (D3): ``logical_model_id`` stays the single authority. It is bound
+    Identity (D3/B9.99): ``resolve_admitted_model_id`` is the single
+    admitted-aware authority for this seam: a curated repository keeps its
+    curated identity unchanged, and only a curated miss derives a
+    deterministic admitted identity. It is bound
     HERE, into a resolver of B9.82's exact contract —
     ``Callable[[str], str | None]`` — and the service receives only that bound
     callable. The service therefore has no ``source`` value, no identity table
@@ -331,7 +334,7 @@ def compose_acquisition_service(
 
     def identity_resolver(repository: str) -> str | None:
         """B9.82 IdentityResolver bound to this composition's source."""
-        return logical_model_id(source, repository)
+        return resolve_admitted_model_id(source, repository)
 
     planner = (
         planner_factory() if planner_factory is not None
