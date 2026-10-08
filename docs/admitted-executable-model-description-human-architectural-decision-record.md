@@ -230,6 +230,22 @@ between existing `ModelSpec` and any focused new type remain unresolved
 implementation-design questions. This HADR selects the responsibility and
 boundary, not the concrete schema.
 
+> **B9.99 resolution note (documentation-only; as-built).** These
+> implementation-design questions were resolved by the B9.99
+> implementation, without altering the responsibility or boundary selected
+> above. The concrete representation is a focused, evidence-bearing
+> `AdmittedModelRecord` — accepted model claims (`architecture`,
+> `parameter_count_b`, `context_length`, `format`) plus
+> `declaration_provenance`, `observations`, and `reconciliations` — which
+> is the durable authority (`castlearq/admitted_models.py`). Persistence
+> uses a versioned JSON registry (`admitted-models.json`, `_FORMAT_VERSION
+> = 1`) with atomic, fsynced writes. `ModelSpec` is a downstream projection,
+> not the authority: `project_to_model_spec_kwargs` maps accepted claims to
+> `ModelSpec` fields for the evaluation consumer, defaulting unknowns to
+> `None`/`"Unknown"`. Estimates and provider-declared metadata are never
+> promoted into verified facts. This note records as-built behavior; it does
+> not reopen the ratified decision or authorize further implementation.
+
 The executable description is not:
 
 - the logical identity itself;
@@ -356,6 +372,20 @@ locally imported artifacts retain their current behavior.
 The exact resolver representation and persistence lookup for an admitted
 executable description are not specified by this decision.
 
+> **B9.99 resolution note (documentation-only; as-built).** The resolver
+> representation and persistence lookup were implemented by B9.99.
+> `admitted_resolution.resolve_model_for_evaluation(model_id)` reads the
+> durable admitted registry and returns an `AdmittedResolution` carrying the
+> projected `ModelSpec`, the underlying record, and a `from_admitted` flag.
+> It is wired read-only into `castlearq/resolver.py` for non-curated admitted
+> identities. Unresolved material declared-vs-observed conflicts fail closed:
+> `AdmittedMaterialConflictError` (subclass of `AdmittedResolutionError`) is
+> raised by type and surfaced by the resolver as
+> `ModelArtifactResolutionError`, so both evaluation and execution deny rather
+> than proceed on unverified claims. Curated and imported-artifact paths are
+> unchanged. This note records as-built behavior; it does not reopen the
+> ratified decision or authorize further implementation.
+
 ---
 
 ## 12. Alternatives
@@ -415,6 +445,28 @@ they do not support a runtime rewrite or an artifact lifecycle redesign.
   insufficient.
 - The exact reuse boundary for `ModelSpec`, persistence representation, and
   evidence provenance on executable-description fields remain unresolved.
+
+> **B9.99 resolution note (documentation-only; as-built).** The above was
+> unresolved at ratification and was resolved by B9.99. The `ModelSpec`
+> reuse boundary is projection, not reuse: `AdmittedModelRecord` is the
+> durable authority and `ModelSpec` is produced for the evaluation consumer
+> via `project_to_model_spec_kwargs` (unknowns default to
+> `None`/`"Unknown"`; no estimate or provider-declared value is promoted
+> into a verified fact). Persistence is a versioned JSON registry with
+> atomic, fsynced writes. Declaration and observation provenance remain in
+> the durable EMD record (`declaration_provenance`, per-observation
+> `observation_provenance`, and auditable `reconciliations`). The one
+> remaining item is optional and unproven, not a demonstrated defect or
+> requirement: provenance is **not** propagated into the projected
+> evaluation `ModelSpec` (which carries no provenance field); no current
+> test or product evidence shows the evaluation/admission consumer must
+> distinguish declared-only from verified evidence beyond the existing
+> binary material-conflict gate.
+>
+> **EMD status: CLOSED-AS-BUILT** for the responsibility and boundary
+> selected by this decision. This note records as-built behavior and does
+> not reopen the ratified decision, authorize further implementation, or
+> allocate any roadmap block.
 - Unknown required compatibility evidence must continue to block; some
   non-curated models may therefore be admitted as identities but not admitted
   for execution.
