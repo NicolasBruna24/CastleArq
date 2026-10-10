@@ -2115,6 +2115,7 @@ def train_command(
     executable-artifact contracts.
     """
     from .training import (
+        TRAINING_METADATA_FILENAME,
         TrainingErrorCode,
         TrainingPreparationError,
         TrainingRequest,
@@ -2205,11 +2206,19 @@ def train_command(
             )
         print(message, file=sys.stderr)
         return 1
+    # Device evidence is never inferred: a missing field is reported as an
+    # explicit neutral value, matching the JSON ``null`` rule in metadata.
+    selected_device = result.selected_device or "unavailable"
+    effective_device = result.effective_device or "unavailable"
+    metadata_path = Path(result.output_dir) / TRAINING_METADATA_FILENAME
     summary = (
         f"Trained adapter in {result.output_dir} "
         f"(steps={result.steps_completed}"
         + (f", loss={result.final_loss:.4f}" if result.final_loss else "")
-        + ")"
+        + f", selected_device={selected_device}"
+        + f", effective_device={effective_device}"
+        + ")\n"
+        + f"Metadata: {metadata_path}"
     )
     if as_json:
         return _emit_json_envelope(

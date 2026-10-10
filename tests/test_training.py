@@ -115,10 +115,39 @@ class HappyPathTests(_Case):
         # An injected runner predating device evidence serializes as null.
         self.assertIsNone(metadata["selected_device"])
         self.assertIsNone(metadata["effective_device"])
+        # The result carries the same absence without inventing a device.
+        self.assertIsNone(result.selected_device)
+        self.assertIsNone(result.effective_device)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["max_steps"], 2)
         self.assertEqual(calls[0]["lora_rank"], 4)
         self.assertEqual(calls[0]["lora_alpha"], 8)
+
+    def test_runner_device_evidence_reaches_result(self):
+        calls: list = []
+
+        class _DeviceRunner(_FakeRunner):
+            def run(self, **kwargs):
+                outcome = super().run(**kwargs)
+                outcome.selected_device = "xpu"
+                outcome.effective_device = "xpu:0"
+                return outcome
+
+        result = train_adapter_model(
+            self._request(),
+            dependencies=TrainingDependencies(runner=_DeviceRunner(calls)),
+        )
+        self.assertTrue(result.success, msg=str(result.error))
+        # Propagated from the runner outcome, never inferred by the use case.
+        self.assertEqual(result.selected_device, "xpu")
+        self.assertEqual(result.effective_device, "xpu:0")
+        # The metadata format is unchanged and records the same evidence.
+        metadata = json.loads(
+            (Path(result.output_dir or "") / "training_metadata.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(metadata["selected_device"], "xpu")
+        self.assertEqual(metadata["effective_device"], "xpu:0")
 
 
 class OrderTests(_Case):

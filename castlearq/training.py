@@ -129,6 +129,11 @@ class TrainingResult:
     admission_path: str = "local_directory_validation"
     warnings: tuple[str, ...] = ()
     error: TrainingErrorInfo | None = None
+    # Device evidence copied from the runner outcome with the same
+    # defensive ``getattr`` convention as ``_write_run_metadata``: ``None``
+    # means the evidence was unavailable and is NEVER inferred.
+    selected_device: str | None = None
+    effective_device: str | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +204,11 @@ MAX_TRAINING_STEPS = 1000
 MIN_LORA_RANK = 1
 MAX_LORA_RANK = 64
 MAX_DATASET_ROWS = 10000
+
+#: Published run-metadata filename inside the adapter output directory.
+#: The CLI success summary uses this constant too, so the path it reports
+#: can never drift from the file the use case writes.
+TRAINING_METADATA_FILENAME = "training_metadata.json"
 
 #: Files that prove a directory is a Transformers-compatible checkpoint.
 _TRANSFORMERS_CONFIG = "config.json"
@@ -442,7 +452,7 @@ def _write_run_metadata(
             "future work."
         ),
     }
-    metadata_path = staging / "training_metadata.json"
+    metadata_path = staging / TRAINING_METADATA_FILENAME
     with metadata_path.open("w", encoding="utf-8") as stream:
         json.dump(payload, stream, indent=2)
         stream.write("\n")
@@ -535,6 +545,8 @@ def train_adapter_model(
             steps_completed=int(getattr(run, "steps_completed", 0)),
             final_loss=getattr(run, "final_loss", None),
             admission_path=admission_path,
+            selected_device=getattr(run, "selected_device", None),
+            effective_device=getattr(run, "effective_device", None),
         )
     except TrainingPreparationError as error:
         return TrainingResult(

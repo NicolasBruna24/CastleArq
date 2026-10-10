@@ -201,6 +201,9 @@ class DeviceEvidenceTests(unittest.TestCase):
             dependencies=TrainingDependencies(runner=runner),
         )
         self.assertTrue(result.success, msg=str(result.error))
+        # The result carries the same evidence the metadata persists.
+        self.assertEqual(result.selected_device, "xpu")
+        self.assertEqual(result.effective_device, "xpu:0")
         metadata = json.loads(
             (Path(str(result.output_dir)) / "training_metadata.json")
             .read_text(encoding="utf-8")
@@ -230,6 +233,10 @@ class DeviceEvidenceTests(unittest.TestCase):
             dependencies=TrainingDependencies(runner=_LegacyRunner()),
         )
         self.assertTrue(result.success, msg=str(result.error))
+        # A runner without the fields at all yields absent evidence, never
+        # an invented device, on the result as well as in metadata.
+        self.assertIsNone(result.selected_device)
+        self.assertIsNone(result.effective_device)
         metadata = json.loads(
             (Path(str(result.output_dir)) / "training_metadata.json")
             .read_text(encoding="utf-8")
