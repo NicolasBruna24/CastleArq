@@ -63,7 +63,7 @@ allows or refuses execution — refuses it, and the run does not happen. There i
 no flag to force execution past a refusal.
 
 The same admission policy applies to every surface that runs a model: the
-`execute` command, `POST /v1/run` over HTTP, and opening a chat session.
+`execute` and `run` commands, `POST /v1/run` over HTTP, and opening a chat session.
 
 Throughout this document:
 
@@ -289,19 +289,20 @@ The legacy `run` interface also exists and reaches the same llama.cpp runtime:
 castlearq run qwen2.5-coder-7b-instruct --prompt "Reply with exactly: OK"
 ```
 
-They are not equivalent in policy:
+They differ in interface and in how a refusal is reported:
 
 | | `execute` | `run` |
 |---|---|---|
 | Prompt | positional | `--prompt` |
-| Strict evaluation before running | yes | no |
-| Admission | yes | no |
+| Strict evaluation before running | yes | yes |
+| Admission | yes | yes |
 | Runtime | llama.cpp | llama.cpp |
 
 `execute` evaluates compatibility strictly and refuses to run when admission
 denies it, showing the conditions, reasons and evidence. `run` is the legacy
-interface: it reaches the same runtime through the legacy preparation path and
-does **not** apply strict evaluation admission.
+interface: it reaches the same runtime through the legacy preparation path,
+performs strict evaluation and applies the same admission policy, but reports
+a refusal as a plain run error instead of the full evaluation report.
 
 Use `execute`. `run` is kept for compatibility.
 
@@ -781,7 +782,7 @@ flags.
 | `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
 | `execute MODEL_ID "PROMPT"` | Run a prompt (recommended; strict evaluation applies) |
 | `train --base-model DIR --dataset DATA.jsonl --output-dir ADAPTER_DIR` | Train a bounded LoRA adapter from a local Transformers checkpoint (prototype; output is not an executable model artifact) |
-| `run MODEL_ID --prompt "T"` | Legacy interface; no strict evaluation |
+| `run MODEL_ID --prompt "T"` | Legacy interface; strict evaluation and admission apply, refusal shown as a run error |
 | `chat MODEL_ID` | Interactive chat session with the model |
 | `serve` | HTTP API on `127.0.0.1` that **executes models** (see above) |
 | `runtime` | Resolved llama.cpp runtime state |
@@ -837,17 +838,17 @@ artifact integrity check; for that, use `validate`, which reports what can be
 proven about one stored artifact and which evidence is missing. `list` shows
 the derived state of every stored artifact.
 
-Nine of these commands also accept `--json` for machine-readable output; see
+Eleven of these commands also accept `--json` for machine-readable output; see
 [Machine-readable CLI output](#machine-readable-cli-output).
 
 ## Machine-readable CLI output
 
-Nine commands also accept `--json`, which prints **exactly one JSON document on
+Eleven commands also accept `--json`, which prints **exactly one JSON document on
 stdout** instead of the human report:
 
 ```text
 compatibility   validate   list   store   import
-models          runtime    detect plan
+models          runtime    detect plan    search  inspect
 ```
 
 Everything else is unchanged: the **exit codes are the same** in both modes,
@@ -900,9 +901,9 @@ the historical, hardware-scored domain and not the strict evaluation domain.
 `already_downloaded`, `blocked`, `unknown`); an UNKNOWN plan is a plan status,
 not an error.
 
-The commands `diagnose`, `verify`, `execute`, `run`, `download` and `source`
-do **not** accept `--json` and reject it with exit `2`; `serve` and `chat` are
-outside this contract by nature.
+The commands `diagnose`, `verify`, `execute`, `run`, `download`, `source`,
+`train` and `admitted` do **not** accept `--json` and reject it with exit `2`;
+`serve` and `chat` are outside this contract by nature.
 
 ## Chat
 

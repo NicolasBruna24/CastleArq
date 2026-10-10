@@ -117,6 +117,24 @@ In particular, the audit identified evidence around:
 * an application boundary that exists in parts but is not yet fully stabilized as a coherent public-facing contract;
 * structured diagnostics and chat lifecycle abstractions that remain more internal than stable application contracts.
 
+> **Status reconciliation note (documentation-only; register-authoritative).**
+> The "specification-only" characterizations above for B9.12, B9.13 and B9.19
+> are historical characterizations of the original audit: they are retained
+> for historical traceability and are **not** current status. They are
+> superseded on that point only: the roadmap register records all three as
+> `IMPLEMENTED, DOCUMENTED` (`docs/roadmap-register-and-numbering-policy.md`,
+> register table rows B9.12/B9.13/B9.19), the implementations exist in the
+> repository (`castlearq/boundary_adapter.py`, `castlearq/observation_knowledge.py`,
+> `castlearq/execute_model.py`) with passing tests
+> (`tests/test_boundary_adapter.py`, `tests/test_observation_knowledge.py`,
+> `tests/test_execute_model.py`), and §1.1 of this record already states that
+> B9.12/B9.13/B9.19 are already implemented. The other findings in the list —
+> multiple execution roads, an application boundary not yet fully stabilized,
+> and diagnostics/chat abstractions that remain internal — are unaffected by
+> this correction. This note records verified status; it does not reopen the
+> post-B9.99 decision, authorize any implementation, or allocate any roadmap
+> identifier.
+
 These findings do **not** constitute implementation authorization.
 
 They constitute the architectural context for the human decision recorded here.
@@ -361,6 +379,19 @@ B9.12 — specification exists; implementation not present
 B9.13 — specification exists; implementation not present
 ```
 
+> **Status reconciliation note (documentation-only; register-authoritative).**
+> The "implementation not present" statements above record the status as
+> characterized by the original audit: they are retained for historical
+> traceability and are **not** current status. They are superseded on that
+> point: the roadmap register records B9.12 and
+> B9.13 as `IMPLEMENTED, DOCUMENTED` (implementation commits `7ccf0f2` and
+> `844788e`, register table rows B9.12/B9.13), the implementations exist in
+> `castlearq/boundary_adapter.py` and `castlearq/observation_knowledge.py`
+> with passing tests (`tests/test_boundary_adapter.py`,
+> `tests/test_observation_knowledge.py`), and §1.1 of this record already
+> states that both are implemented. The consideration below is preserved as
+> recorded; this note changes no decision, authorization or roadmap status.
+
 These specifications are therefore relevant evidence for Option B.
 
 However:
@@ -376,6 +407,18 @@ If implementation is later justified, it must receive explicit authorization.
 ## 11. B9.19 Consideration
 
 B9.19 represents an application-level execution use case that remains specification-only/not started according to the current audit.
+
+> **Status reconciliation note (documentation-only; register-authoritative).**
+> The "specification-only/not started" characterization above is a historical
+> characterization of the original audit: it is retained for historical
+> traceability and is **not** current status. It is superseded: the roadmap
+> register records
+> B9.19 as `IMPLEMENTED, DOCUMENTED` (implementation commit `374335c`, register
+> table row B9.19), the use case exists in `castlearq/execute_model.py` with
+> passing tests (`tests/test_execute_model.py`), and §1.1 of this record
+> already states that B9.19 is implemented. The consideration and
+> authorization boundaries below are preserved exactly as recorded; this note
+> changes no decision and authorizes nothing.
 
 It is therefore relevant to the execution-boundary stabilization question.
 

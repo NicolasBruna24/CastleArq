@@ -3270,7 +3270,8 @@ def main() -> int:
             "print exactly one castlearq.cli JSON document on stdout "
             "instead of human output (available for compatibility, "
             "validate, list and store, for import, and for the SHOULD "
-            "commands models, runtime, detect and plan)"
+            "commands models, runtime, detect and plan, and for search "
+            "and inspect)"
         ),
     )
     parser.add_argument(
