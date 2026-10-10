@@ -535,8 +535,10 @@ class AdmissionExplanationTests(unittest.TestCase):
 class ExecutionPolicyTests(unittest.TestCase):
     """P1-2: the run/execute difference is explicit and protected."""
 
-    def test_run_does_not_apply_strict_evaluation_admission(self):
-        """`run` stays the legacy path; this pins the documented difference."""
+    def test_run_delegates_evaluation_and_admission(self):
+        """`run_model` delegates evaluation and admission to the application
+        boundary: it never references the evaluator or admission conversion
+        directly. `execute_command` references both directly."""
         import ast
         from pathlib import Path
 
@@ -571,7 +573,8 @@ class ExecutionPolicyTests(unittest.TestCase):
     def test_help_documents_the_policy_difference(self):
         _, out, _ = _cli("--help")
         self.assertIn("execute is the recommended command", out)
-        self.assertIn("NOT apply the strict evaluation admission", out)
+        self.assertNotIn("NOT apply the strict evaluation admission", out)
+        self.assertIn("applies the same strict evaluation admission", out)
 
     def test_run_still_reaches_the_legacy_runtime_path(self):
         """`run` keeps working: it is not removed, only documented."""

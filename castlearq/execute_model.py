@@ -4,20 +4,26 @@
 """Application Use Case: Execute Model.
 
 Thin, stateless coordinator of real execution, implementing the contract
-ratified in ``docs/B9.19-execute-application-use-case-specification.md``:
+ratified in ``docs/B9.19-execute-application-use-case-specification.md``
+and finalized by the B9.78 legacy admission cutover ("
+docs/roadmap-register-and-numbering-policy.md", "refactor: complete B9.78
+legacy admission cutover"):
 
-    input -> resolve -> fresh capability -> admission (advisory)
-      -> legacy compatibility gate -> artifact preflight -> target selection
-      -> ExecutionRequest + validation -> ModelRunner -> ExecutionResult
+    input -> resolve -> fresh capability detection -> mandatory admission
+      -> compatibility (selection recommendation only) -> artifact preflight
+      -> target selection -> ExecutionRequest + validation -> ModelRunner
+      -> ExecutionResult
 
 The use case owns ordering and error mapping only: it implements no domain
-rule, runs no subprocess, imports no CLI/HTTP, touches no evaluation code and
+rule, runs no subprocess, imports no CLI/HTTP or evaluation machinery, and
 never builds an execution target itself (selection stays with
 ``RuntimeBackendSelector``). The runner is a ``ModelRunner`` abstraction
 injected at the composition root; the concrete implementation is never named
 here. Nothing is cached between invocations: every call re-resolves and
 re-validates, so an earlier evaluation is never trusted as an execution
-authority (B9.19 sections 7, 12 and 13).
+authority. Admission is mandatory and deny-only (B9.78); an absent or
+non-evaluated signal is a denial, never authorization (B9.19 section 7 was
+advisory only and is superseded).
 """
 
 from __future__ import annotations

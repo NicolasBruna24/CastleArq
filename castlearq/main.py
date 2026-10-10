@@ -2730,8 +2730,9 @@ execution:
   first and refuses to run when admission denies, printing the checks,
   reasons and evidence behind the refusal.
   run <model-id> --prompt "<text>" is the legacy interface. It reaches the
-  same llama.cpp runtime through the legacy preparation pipeline and does
-  NOT apply the strict evaluation admission. Prefer execute.
+  same llama.cpp runtime through the legacy preparation pipeline and
+  applies the same strict evaluation admission via that delegated
+  preparation path. Prefer execute for the strict-admission flow.
 
 read-only inspection:
   detect  system, CPU, memory and GPU
