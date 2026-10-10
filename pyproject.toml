@@ -55,6 +55,26 @@ dev = [
     "pytest==9.1.1",
 ]
 
+# Bounded SFT + LoRA prototype extra. The runtime stays standard library
+# only: these packages are imported lazily inside
+# ``castlearq.training_runner`` and never at CastleArq import time, so
+# ordinary commands work without them. Floor pins (not exact pins) are
+# deliberate: the validated experiment used torch 2.14.1+xpu /
+# transformers 5.19.0 / peft 0.21.2 / trl 1.15.0 / datasets 5.1.0 on
+# Python 3.14, but those exact builds are accelerator- and
+# platform-specific and must not be forced on every installer. The floors
+# below are the minimum APIs the runner relies on (SFTConfig,
+# processing_class, LoraConfig, HfDataset.from_dict); newer versions are
+# accepted but unverified. CPU-only installs work; CUDA/XPU wheels are a
+# caller-side choice, not something this extra selects.
+training = [
+    "torch>=2.5",
+    "transformers>=4.48",
+    "peft>=0.14",
+    "trl>=0.14",
+    "datasets>=3.0",
+]
+
 [project.urls]
 Homepage = "https://www.nicobrunaf.dev/projects/castlearq/"
 Repository = "https://github.com/NicolasBruna24/CastleArq"

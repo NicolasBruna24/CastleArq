@@ -107,6 +107,7 @@ from .runtimes import (
     resolve_llama_runtime,
 )
 from .selection import RuntimeBackendSelector, RuntimeSelection, RuntimeSelectionError
+from .application_wiring import compose_training_dependencies
 from .sources import HuggingFaceSource, SourceError
 from .sources.huggingface import _download_url, detect_quantization
 from .chat import ChatSessionError, start_chat_session
@@ -2090,6 +2091,142 @@ def chat_model(
     return 0
 
 
+def train_command(
+    base_model: str | None,
+    dataset: str | None,
+    output_dir: str | None,
+    *,
+    max_steps: int = 10,
+    lora_rank: int = 8,
+    lora_alpha: int = 16,
+    as_json: bool = False,
+) -> int:
+    """Train a LoRA adapter with bounded SFT (prototype).
+
+    This is a presentation layer only. Every decision -- request
+    validation, base-model validation, dataset validation, destination
+    validation, admission enforcement, runner execution and staged
+    publication -- belongs to ``train_adapter_model``. The CLI computes no
+    hash, trains no model and copies no file, so there is exactly one place
+    where training policy lives.
+
+    Nothing is registered in the managed model store: the adapter is
+    published to the caller-selected output directory, outside CastleArq's
+    executable-artifact contracts.
+    """
+    from .training import (
+        TrainingErrorCode,
+        TrainingPreparationError,
+        TrainingRequest,
+        train_adapter_model,
+    )
+
+    if not base_model or not dataset or not output_dir:
+        usage = (
+            "Usage: castlearq train --base-model <transformers-dir> "
+            "--dataset <data.jsonl> --output-dir <adapter-dir> "
+            "[--max-steps N] [--lora-rank R] [--lora-alpha A]"
+        )
+        if as_json:
+            print(usage, file=sys.stderr)
+            return _emit_json_envelope(
+                "train",
+                2,
+                {},
+                error=json_output.error("usage_error", usage),
+            )
+        print(usage)
+        return 2
+    try:
+        request = TrainingRequest(
+            base_model_dir=base_model,
+            dataset_path=dataset,
+            output_dir=output_dir,
+            max_steps=int(max_steps),
+            lora_rank=int(lora_rank),
+            lora_alpha=int(lora_alpha),
+        )
+    except (TypeError, ValueError):
+        message = "max-steps, lora-rank and lora-alpha must be integers"
+        if as_json:
+            print(message, file=sys.stderr)
+            return _emit_json_envelope(
+                "train",
+                2,
+                {},
+                error=json_output.error("usage_error", message),
+            )
+        print(message)
+        return 2
+    try:
+        dependencies = compose_training_dependencies()
+    except Exception as error:
+        message = f"Training preparation failed: {error}"
+        if as_json:
+            print(message, file=sys.stderr)
+            return _emit_json_envelope(
+                "train",
+                1,
+                {},
+                error=json_output.error("preparation_failed", message),
+            )
+        print(message, file=sys.stderr)
+        return 1
+    try:
+        result = train_adapter_model(request, dependencies=dependencies)
+    except TrainingPreparationError as error:
+        message = f"Training failed [{error.code.value}]: {error.message}"
+        if as_json:
+            print(message, file=sys.stderr)
+            return _emit_json_envelope(
+                "train",
+                1,
+                {},
+                error=json_output.error(error.code.value, error.message),
+            )
+        print(message, file=sys.stderr)
+        return 1
+    if not result.success:
+        code = (
+            result.error.code.value
+            if result.error is not None
+            else TrainingErrorCode.RUN_FAILED.value
+        )
+        detail = (
+            result.error.message
+            if result.error is not None
+            else "training failed"
+        )
+        message = f"Training failed [{code}]: {detail}"
+        if as_json:
+            print(message, file=sys.stderr)
+            return _emit_json_envelope(
+                "train", 1, {}, error=json_output.error(code, detail)
+            )
+        print(message, file=sys.stderr)
+        return 1
+    summary = (
+        f"Trained adapter in {result.output_dir} "
+        f"(steps={result.steps_completed}"
+        + (f", loss={result.final_loss:.4f}" if result.final_loss else "")
+        + ")"
+    )
+    if as_json:
+        return _emit_json_envelope(
+            "train",
+            0,
+            {
+                "output_dir": json_output.known(result.output_dir),
+                "base_model_dir": json_output.known(result.base_model_dir),
+                "steps_completed": json_output.known(result.steps_completed),
+                "files": json_output.known(list(result.files)),
+                "admission_path": json_output.known(result.admission_path),
+            },
+        )
+    print(summary)
+    return 0
+
+
 def execute_command(
     model_id: str | None,
     prompt: str | None,
@@ -2982,7 +3119,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "chat", "serve", "store", "admitted"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "train", "chat", "serve", "store", "admitted"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -3127,6 +3264,36 @@ def main() -> int:
             "commands models, runtime, detect and plan)"
         ),
     )
+    parser.add_argument(
+        "--base-model",
+        help="local Transformers checkpoint directory for 'train'",
+    )
+    parser.add_argument(
+        "--dataset",
+        help="local training dataset (.jsonl) for 'train'",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="caller-selected adapter output directory for 'train'",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=10,
+        help="bounded training steps for 'train' (default 10)",
+    )
+    parser.add_argument(
+        "--lora-rank",
+        type=int,
+        default=8,
+        help="LoRA rank for 'train' (default 8)",
+    )
+    parser.add_argument(
+        "--lora-alpha",
+        type=int,
+        default=16,
+        help="LoRA alpha for 'train' (default 16)",
+    )
     args = parser.parse_args()
     if args.command is None:
         parser.error("a command is required")
@@ -3147,6 +3314,14 @@ def main() -> int:
         "import": ("label",),
         "run": ("prompt", "quantization", "filename"),
         "execute": ("quantization", "filename"),
+        "train": (
+            "base_model",
+            "dataset",
+            "output_dir",
+            "max_steps",
+            "lora_rank",
+            "lora_alpha",
+        ),
         "chat": ("quantization", "filename"),
         "serve": (),
         "store": (),
@@ -3354,6 +3529,18 @@ def main() -> int:
             quantization=args.quantization,
             filename=args.filename,
             model_store=model_store,
+        )
+    elif args.command == "train":
+        if args.repository is not None:
+            parser.error("train takes no positional argument")
+        return train_command(
+            args.base_model,
+            args.dataset,
+            args.output_dir,
+            max_steps=args.max_steps,
+            lora_rank=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+            as_json=args.json,
         )
     elif args.command == "chat":
         if args.repository is not None:

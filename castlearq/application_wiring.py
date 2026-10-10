@@ -104,8 +104,13 @@ from .runner import LlamaCppRunner
 from .runtimes import RuntimeCapability, detect_llama_capability
 from .selection import RuntimeBackendSelector
 from .sources.huggingface_discovery import HuggingFaceDiscoveryProvider
+from .training import TrainingDependencies
 
-__all__ = ["compose_and_integrate", "compose_execute_model_dependencies"]
+__all__ = [
+    "compose_and_integrate",
+    "compose_execute_model_dependencies",
+    "compose_training_dependencies",
+]
 
 
 # ----------------------------------------------------------------------
@@ -293,6 +298,26 @@ def compose_execute_model_dependencies(
         selector=RuntimeBackendSelector(),
         runner=LlamaCppRunner(capability),
     )
+
+
+def compose_training_dependencies(
+    *,
+    runner: object | None = None,
+) -> TrainingDependencies:
+    """Compose ``TrainingDependencies`` for one training invocation.
+
+    One call is ONE use-case invocation: the returned value is handed to
+    ``train_adapter_model`` and then discarded, so no admission, model
+    state or runner is ever reused between invocations. When ``runner``
+    is omitted the default ``SftLoraRunner`` is constructed lazily by the
+    use case itself (its heavy imports stay lazy), so this factory never
+    imports torch/transformers/peft/trl.
+    """
+    if runner is not None:
+        return TrainingDependencies(runner=runner)
+    from .training_runner import SftLoraRunner
+
+    return TrainingDependencies(runner=SftLoraRunner())
 
 
 # ----------------------------------------------------------------------

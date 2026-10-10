@@ -780,6 +780,7 @@ flags.
 | `validate MODEL_ID` | Validates one stored artifact: filesystem, size, integrity |
 | `compatibility MODEL_ID` | Compatibility evaluation **without running anything** |
 | `execute MODEL_ID "PROMPT"` | Run a prompt (recommended; strict evaluation applies) |
+| `train --base-model DIR --dataset DATA.jsonl --output-dir ADAPTER_DIR` | Train a bounded LoRA adapter from a local Transformers checkpoint (prototype; output is not an executable model artifact) |
 | `run MODEL_ID --prompt "T"` | Legacy interface; no strict evaluation |
 | `chat MODEL_ID` | Interactive chat session with the model |
 | `serve` | HTTP API on `127.0.0.1` that **executes models** (see above) |

@@ -128,7 +128,7 @@ class RegistrationTests(unittest.TestCase):
     def test_execute_is_listed_in_help_choices(self):
         code, out, _ = _run_cli("--help")
         self.assertEqual(code, 0)
-        self.assertIn("run,execute,chat", out)
+        self.assertIn("run,execute,train,chat", out)
 
     def test_execute_dispatch_reaches_execute_command(self):
         with patch("castlearq.main.execute_command", return_value=0) as caller:
