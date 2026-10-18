@@ -3020,6 +3020,7 @@ def _admitted_command(
     decision=None,
     basis=None,
     context_note=None,
+    physical_gguf=False,
     out=None,
     err=None,
 ) -> int:
@@ -3082,6 +3083,20 @@ def _admitted_command(
             return 2
         return _ac.show_command(model_id, out=out, err=err)
     if op == "observe":
+        if physical_gguf:
+            if not model_id or claim is not None or value is not None:
+                print(
+                    "Usage: castlearq admitted --op observe --model-id ID --physical-gguf [--quantization Q] [--filename F]",
+                    file=err,
+                )
+                return 2
+            return _ac.observe_physical_command(
+                model_id,
+                quantization=quantization,
+                filename=filename,
+                out=out,
+                err=err,
+            )
         if not model_id or not claim or value is None or not context_note:
             print(
                 "Usage: castlearq admitted --op observe --model-id ID --claim CLAIM --value VALUE --context-note NOTE",
@@ -3264,6 +3279,14 @@ def main() -> int:
         "--context-note",
         help="provenance note recorded for admitted observe",
     )
+     parser.add_argument(
+         "--physical-gguf",
+         action="store_true",
+         help=(
+             "read general.architecture from the resolved local GGUF for "
+             "admitted observe instead of recording --value"
+         ),
+     )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -3584,6 +3607,7 @@ def main() -> int:
             decision=args.decision,
             basis=args.basis,
             context_note=args.context_note,
+            physical_gguf=args.physical_gguf,
         )
     return 0
 
