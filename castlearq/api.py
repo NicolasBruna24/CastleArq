@@ -136,7 +136,7 @@ from .execute_model import (
     _check_admission,
     execute_model,
 )
-from .execution import ExecutionResult
+from .execution import ExecutionDiagnostics, ExecutionResult, RuntimeMetrics
 from .model_catalog import get_catalog
 from .model_identity import downloadable_locator
 from .model_store import ModelStore, StoredArtifact
@@ -336,12 +336,20 @@ class RunRequestDTO:
 
 @dataclass(frozen=True)
 class RunResponseDTO:
-    """API-safe projection of a successful run (never argv/env/paths)."""
+    """API-safe projection of a successful run (never argv/env/paths).
+
+    Observability v1 (ratified): ``execution`` and ``runtime_metrics``
+    are allow-list projections of ``ExecutionDiagnostics`` and
+    ``RuntimeMetrics`` (object or ``None``); absent values stay ``None``
+    (JSON ``null``), never invented zeros.
+    """
 
     model_id: str
     output: str
     exit_code: int | None
     warnings: tuple[str, ...]
+    execution: dict[str, object] | None = None
+    runtime_metrics: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -349,6 +357,8 @@ class RunResponseDTO:
             "output": self.output,
             "exit_code": self.exit_code,
             "warnings": list(self.warnings),
+            "execution": self.execution,
+            "runtime_metrics": self.runtime_metrics,
         }
 
 
@@ -719,6 +729,49 @@ class _ChatSessionRegistry:
                     session_id, error)
 
 
+def _execution_projection(
+    diagnostics: ExecutionDiagnostics | None,
+) -> dict[str, object] | None:
+    """Allow-list projection of ``ExecutionDiagnostics`` (observability v1).
+
+    Exactly ``elapsed_seconds``, ``stdout_bytes``, ``stderr_bytes``,
+    ``timed_out`` and ``terminated_normally``. ``None`` stays ``None``;
+    ``started_at``/``finished_at`` and every other internal attribute are
+    never exposed.
+    """
+    if diagnostics is None:
+        return None
+    return {
+        "elapsed_seconds": diagnostics.elapsed_seconds,
+        "stdout_bytes": diagnostics.stdout_bytes,
+        "stderr_bytes": diagnostics.stderr_bytes,
+        "timed_out": diagnostics.timed_out,
+        "terminated_normally": diagnostics.terminated_normally,
+    }
+
+
+def _runtime_metrics_projection(
+    metrics: RuntimeMetrics | None,
+) -> dict[str, object] | None:
+    """Allow-list projection of ``RuntimeMetrics`` (observability v1).
+
+    Unreported fields stay ``None`` (JSON ``null``); ``source`` is the
+    enum's public string value. No zeros are invented and nothing is
+    inferred.
+    """
+    if metrics is None:
+        return None
+    return {
+        "prompt_tokens": metrics.prompt_tokens,
+        "generated_tokens": metrics.generated_tokens,
+        "prompt_tokens_per_second": metrics.prompt_tokens_per_second,
+        "generation_tokens_per_second": metrics.generation_tokens_per_second,
+        "load_time_seconds": metrics.load_time_seconds,
+        "total_time_seconds": metrics.total_time_seconds,
+        "source": metrics.source.value,
+    }
+
+
 def run_response_from_execution(
     model_id: str, result: ExecutionResult
 ) -> RunResponseDTO:
@@ -726,16 +779,20 @@ def run_response_from_execution(
 
     B9.52: ``/v1/run`` now executes through ``execute_model`` (the same use
     case as CLI ``execute``), so the DTO is built from an
-    :class:`ExecutionResult` instead of a legacy ``RunOutcome``. The wire shape
-    is unchanged (B9.51 section 6): ``model_id``, ``output``, ``exit_code``,
-    ``warnings``. Only the success path is projected; every failure has its
-    own status/body.
+    :class:`ExecutionResult` instead of a legacy ``RunOutcome``.
+    Observability v1 (ratified): the wire shape keeps ``model_id``,
+    ``output``, ``exit_code``, ``warnings`` unchanged and adds the
+    allow-list projections ``execution`` and ``runtime_metrics``
+    (object or ``None``). Only the success path is projected; every
+    failure has its own status/body.
     """
     return RunResponseDTO(
         model_id=model_id,
         output=result.stdout,
         exit_code=result.exit_code,
         warnings=tuple(result.warnings),
+        execution=_execution_projection(result.diagnostics),
+        runtime_metrics=_runtime_metrics_projection(result.runtime_metrics),
     )
 
 

@@ -996,7 +996,9 @@ class RunEndpointTests(unittest.TestCase):
         self.assertEqual(status, 200)
         payload = json.loads(raw.decode("utf-8"))
         self.assertEqual(
-            sorted(payload), ["exit_code", "model_id", "output", "warnings"]
+            sorted(payload),
+            ["execution", "exit_code", "model_id", "output",
+             "runtime_metrics", "warnings"],
         )
         self.assertEqual(payload["warnings"], ["slow"])
         for forbidden in ("argv", "env", "environment", "command", "local_path"):
