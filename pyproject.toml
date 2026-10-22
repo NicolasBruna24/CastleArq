@@ -53,6 +53,7 @@ classifiers = [
 [project.optional-dependencies]
 dev = [
     "pytest==9.1.1",
+    "PyYAML==6.0.3",
 ]
 
 # Bounded SFT + LoRA prototype extra. The runtime stays standard library
