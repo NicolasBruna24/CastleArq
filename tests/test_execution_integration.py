@@ -181,7 +181,15 @@ class ExecutionIntegrationTests(unittest.TestCase):
         self.assertEqual(executable.path, self.artifact_path)
         self.assertTrue(executable.size_verified)
         self.assertTrue(executable.checksum_verified)
-        self.assertEqual(target, ExecutionTarget("llama.cpp CLI", "Vulkan"))
+        self.assertEqual(
+            target,
+            ExecutionTarget(
+                runtime="llama.cpp CLI",
+                backend="Vulkan",
+                requested_backend="Vulkan",
+                requested_device_argument="Vulkan0",
+            ),
+        )
         self.assertEqual(request, self.request)
         self.assertEqual(
             self.preflight.inspector.inspect(self.artifact).state,

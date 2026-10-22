@@ -28,6 +28,7 @@ from pathlib import Path
 from .downloads.inspection import ArtifactFilesystemInspector, ArtifactFilesystemState
 from .model_store import ModelStore, UnsafePathError
 from .models import ArtifactSpec
+from .offload_evidence import GpuOffloadEvidence
 
 
 class ExecutionError(Exception):
@@ -72,10 +73,21 @@ class ExecutionErrorCode(str, Enum):
 
 @dataclass(frozen=True)
 class ExecutionTarget:
-    """A selected runtime and backend for an execution."""
+    """A selected runtime and backend for an execution.
+
+    ``runtime`` and ``backend`` name the target that the selector chose. The
+    optional ``requested_backend`` and ``requested_device_argument`` record
+    that choice as it was requested from the runtime, i.e. the backend
+    CastleArq selected and the device argument its capability maps that
+    backend to. These are requested-target provenance only; a missing value
+    is explicit ``None`` and never a fabricated default, and they are not a
+    claim about which device actually performed the work.
+    """
 
     runtime: str
     backend: str
+    requested_backend: str | None = None
+    requested_device_argument: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,7 +106,15 @@ class ExecutionRequest:
 
 @dataclass(frozen=True)
 class ExecutionDiagnostics:
-    """Measured facts from the controlled subprocess operation."""
+    """Measured facts from the controlled subprocess operation.
+
+    ``requested_backend`` and ``requested_device_argument`` are the
+    requested-target provenance for this run: the backend CastleArq selected
+    and the device argument its capability maps that backend to. They are
+    populated by ``LlamaCppRunner`` from the selected target; absent values
+    are explicit ``None`` (never a fabricated default). They describe the
+    requested target, not verified hardware utilization.
+    """
 
     started_at: datetime
     finished_at: datetime
@@ -104,6 +124,8 @@ class ExecutionDiagnostics:
     exit_code: int | None
     timed_out: bool
     terminated_normally: bool
+    requested_backend: str | None = None
+    requested_device_argument: str | None = None
 
 
 class RuntimeMetricSource(str, Enum):
@@ -201,6 +223,7 @@ class ExecutionResult:
     warnings: tuple[str, ...] = ()
     diagnostics: ExecutionDiagnostics | None = None
     runtime_metrics: RuntimeMetrics | None = None
+    offload_evidence: GpuOffloadEvidence | None = None
 
 
 @dataclass(frozen=True)

@@ -905,7 +905,7 @@ class PerCommandFlagValidationTests(unittest.TestCase):
     """H1: flags irrelevant for a command must be rejected by the parser."""
 
     COMMANDS_WITHOUT_FLAGS = ("detect", "models", "source", "plan", "list")
-    ALL_FLAGS = ("prompt", "quantization", "filename")
+    ALL_FLAGS = ("prompt", "quantization", "filename", "backend")
 
     def _run_cli(self, argv):
         from castlearq.main import main
@@ -939,6 +939,12 @@ class PerCommandFlagValidationTests(unittest.TestCase):
         exit_code, _, stderr = self._run_cli(["chat", "--prompt", "x"])
         self.assertEqual(exit_code, 2)
         self.assertIn("--prompt is not valid for command 'chat'", stderr)
+
+    def test_execute_rejects_backend(self):
+        """--backend belongs to compatibility alone; execute is unchanged."""
+        exit_code, _, stderr = self._run_cli(["execute", "--backend", "CPU"])
+        self.assertEqual(exit_code, 2)
+        self.assertIn("--backend is not valid for command 'execute'", stderr)
 
     def test_valid_flag_combinations_reach_command_functions(self):
         with patch("castlearq.main.run_download") as download_mock:

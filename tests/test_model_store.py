@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
+import castlearq.model_store
 from castlearq.model_store import ModelStore, UnsafePathError, default_models_directory
 from castlearq.models import ArtifactSpec, ArtifactState
 
@@ -341,6 +342,109 @@ class ModelStoreTests(unittest.TestCase):
             store = ModelStore(Path(directory))
             manifest = store.save_manifest(artifact())
             self.assertIsInstance(json.loads(manifest.read_text()), dict)
+
+
+class Sha256RecomputationTests(unittest.TestCase):
+    """The SHA-256 recomputation performed by ``ModelStore``.
+
+    B9.41 §6.1 ("Derived State Rules"), operative rule 1: the local artifact
+    state is recomputed on every inspection and nothing caches it between
+    invocations. The manifest supplies the *expectations* (size, sha256);
+    the filesystem supplies the *observation*; the comparison yields the
+    derived state. These tests therefore assert that the digest is
+    recomputed on each inspection, that a changed file is observed as
+    changed, and that a wrong checksum keeps failing. They deliberately
+    assert no reuse: there is no in-memory SHA-256 cache in ``ModelStore``.
+
+    This class replaces an uncommitted local ``Sha256CacheTests`` class
+    that expected the second inspection to reuse a cached digest. That
+    expectation contradicts B9.41 §6.1 rule 1 and the frozen pillar
+    ``test_manifest_state_is_recomputed_from_filesystem`` (T-2), which is
+    the normative guarantee that the derived state comes from the
+    filesystem. No caching behaviour was introduced.
+    """
+
+    def _store_with_artifact(self, directory, content, **kwargs):
+        store = ModelStore(Path(directory))
+        spec = artifact(size_bytes=len(content), sha256=hashlib.sha256(content).hexdigest(), **kwargs)
+        manifest = store.save_manifest(spec)
+        manifest.parent.joinpath(spec.filename).write_bytes(content)
+        return store, manifest, spec
+
+    def test_first_inspection_computes_sha256(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"model"
+            store, manifest, _ = self._store_with_artifact(directory, content)
+            with mock.patch(
+                "castlearq.model_store._sha256", wraps=castlearq.model_store._sha256
+            ) as hashed:
+                entry = store.inspect_manifest(manifest)
+            self.assertEqual(entry.state, ArtifactState.VERIFIED)
+            self.assertEqual(hashed.call_count, 1)
+
+    def test_second_inspection_recomputes_the_digest(self):
+        # B9.41 §6.1 rule 1: the state is derived on every inspection, so the
+        # digest is recomputed rather than reused.
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"model"
+            store, manifest, _ = self._store_with_artifact(directory, content)
+            with mock.patch(
+                "castlearq.model_store._sha256", wraps=castlearq.model_store._sha256
+            ) as hashed:
+                store.inspect_manifest(manifest)
+                store.inspect_manifest(manifest)
+            self.assertEqual(hashed.call_count, 2)
+
+    def test_changed_file_is_recomputed_and_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"model"
+            store, manifest, spec = self._store_with_artifact(directory, content)
+            with mock.patch(
+                "castlearq.model_store._sha256", wraps=castlearq.model_store._sha256
+            ) as hashed:
+                store.inspect_manifest(manifest)
+                # A detectable change: different bytes of the same length, so
+                # the size matches but the content (and its timestamps) does
+                # not.
+                manifest.parent.joinpath(spec.filename).write_bytes(b"MODEL")
+                entry = store.inspect_manifest(manifest)
+            self.assertEqual(hashed.call_count, 2)
+            self.assertEqual(entry.state, ArtifactState.FAILED)
+
+    def test_wrong_checksum_still_fails_on_every_inspection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"model"
+            store = ModelStore(Path(directory))
+            spec = artifact(size_bytes=len(content), sha256="0" * 64)
+            manifest = store.save_manifest(spec)
+            manifest.parent.joinpath(spec.filename).write_bytes(content)
+            first = store.inspect_manifest(manifest)
+            second = store.inspect_manifest(manifest)
+            self.assertEqual(first.state, ArtifactState.FAILED)
+            self.assertEqual(second.state, ArtifactState.FAILED)
+            self.assertEqual(first.message, "SHA-256 differs from manifest")
+            self.assertEqual(second.message, "SHA-256 differs from manifest")
+
+    def test_artifact_without_checksum_stays_downloaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            spec = artifact(size_bytes=len(b"model"))
+            manifest = store.save_manifest(spec)
+            manifest.parent.joinpath(spec.filename).write_bytes(b"model")
+            self.assertEqual(store.inspect_manifest(manifest).state, ArtifactState.DOWNLOADED)
+            self.assertEqual(store.inspect_manifest(manifest).state, ArtifactState.DOWNLOADED)
+
+    def test_each_store_instance_recomputes_independently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            content = b"model"
+            store, manifest, _ = self._store_with_artifact(directory, content)
+            other = ModelStore(store.root)
+            with mock.patch(
+                "castlearq.model_store._sha256", wraps=castlearq.model_store._sha256
+            ) as hashed:
+                store.inspect_manifest(manifest)
+                other.inspect_manifest(manifest)
+            self.assertEqual(hashed.call_count, 2)
 
 
 if __name__ == "__main__":

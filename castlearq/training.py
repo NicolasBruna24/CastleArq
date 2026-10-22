@@ -425,11 +425,29 @@ def _write_run_metadata(
     staging: Path,
     *,
     base_model_dir: Path,
+    output_dir: Path,
     request: TrainingRequest,
     outcome: Any,
     admission_path: str,
 ) -> str:
-    """Write the minimum metadata identifying base model, config, result.
+    """Write the minimum metadata identifying inputs, output, and result.
+
+    Additive input/output reference fields (``dataset_path``, ``output_dir``,
+    ``files``) are recorded alongside the existing base-model/config/result
+    fields; no existing field's meaning is changed.
+
+    * ``dataset_path`` is the expanded representation of the request path,
+      consistent with the expanded ``base_model_dir`` convention. It is a
+      location reference only: the dataset contents are never read into the
+      metadata and no dataset hash or identity is computed.
+    * ``output_dir`` is the validated final destination, never the temporary
+      staging directory. It is a local location reference, not a claim that
+      the destination is portable across machines.
+    * ``files`` is the sorted list of adapter files reported by the runner
+      outcome, with ``training_metadata.json`` excluded so the record is not
+      self-referential. It is the runner-reported set, kept distinct from the
+      broader ``TrainingResult.files`` (which additionally includes the
+      metadata file).
 
     Device evidence (``selected_device``/``effective_device``) is read with
     ``getattr`` defaults of ``None`` so injected/mock runners that predate
@@ -438,6 +456,7 @@ def _write_run_metadata(
     """
     payload = {
         "base_model_dir": str(base_model_dir),
+        "dataset_path": str(Path(request.dataset_path).expanduser()),
         "lora_rank": request.lora_rank,
         "lora_alpha": request.lora_alpha,
         "max_steps": request.max_steps,
@@ -446,6 +465,12 @@ def _write_run_metadata(
         "selected_device": getattr(outcome, "selected_device", None),
         "effective_device": getattr(outcome, "effective_device", None),
         "admission_path": admission_path,
+        "output_dir": str(output_dir),
+        "files": sorted(
+            name
+            for name in getattr(outcome, "files", ())
+            if name != TRAINING_METADATA_FILENAME
+        ),
         "note": (
             "LoRA adapter output. Not a generally executable CastleArq "
             "model artifact; base-to-adapter lifecycle integration is "
@@ -524,6 +549,7 @@ def train_adapter_model(
         metadata_name = _write_run_metadata(
             staging,
             base_model_dir=base_model_dir,
+            output_dir=output_dir,
             request=request,
             outcome=run,
             admission_path=admission_path,

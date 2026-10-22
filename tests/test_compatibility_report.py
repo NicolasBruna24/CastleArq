@@ -265,7 +265,17 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
             code, _, _ = _cli("compatibility", "m1")
         self.assertEqual(code, 0)
         caller.assert_called_once_with(
-            "m1", quantization=None, filename=None, model_store=None
+            "m1", quantization=None, filename=None, backend=None,
+            model_store=None,
+        )
+
+    def test_backend_option_reaches_the_command(self):
+        with patch("castlearq.main.compatibility_command", return_value=0) as caller:
+            code, _, _ = _cli("compatibility", "m1", "--backend", "CPU")
+        self.assertEqual(code, 0)
+        caller.assert_called_once_with(
+            "m1", quantization=None, filename=None, backend="CPU",
+            model_store=None,
         )
 
     def test_missing_model_id_is_usage_error_without_evaluation(self):
@@ -296,17 +306,43 @@ class ReadOnlyCompatibilityCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         # B9.74: the evaluation is handed the use case's dependency holder so
         # the store selected for this invocation reaches it. With no
-        # `--model-store` the holder is empty and the use case is unchanged.
+        # `--model-store` the holder carries no store; the read-only command
+        # additionally disables B9.79 runtime artifact observation outright.
         evaluate.assert_called_once_with(
             "m1",
             quantization=None,
             filename=None,
-            dependencies=EvaluateCompatibilityDependencies(model_store=None),
+            backend=None,
+            dependencies=EvaluateCompatibilityDependencies(
+                model_store=None, observe_runtime_artifact=False
+            ),
         )
         runner.assert_not_called()
         execute.assert_not_called()
         run.assert_not_called()
         self.assertIn("Verdict: COMPATIBLE", out.getvalue())
+
+    def test_explicit_backend_is_forwarded_to_the_use_case(self):
+        from castlearq.main import compatibility_command
+
+        result = _result(
+            CompatibilityStatus.COMPATIBLE, [_check("c", CheckStatus.PASSED)]
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with patch(
+            "castlearq.main.evaluate_model_compatibility", return_value=result
+        ) as evaluate:
+            code = compatibility_command("m1", backend="CPU", out=out, err=err)
+        self.assertEqual(code, 0)
+        evaluate.assert_called_once_with(
+            "m1",
+            quantization=None,
+            filename=None,
+            backend="CPU",
+            dependencies=EvaluateCompatibilityDependencies(
+                model_store=None, observe_runtime_artifact=False
+            ),
+        )
 
     def test_it_does_not_download(self):
         from castlearq.main import compatibility_command

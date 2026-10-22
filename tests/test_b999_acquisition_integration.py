@@ -42,10 +42,15 @@ import unittest
 from pathlib import Path
 
 from castlearq.acquisition_resolution import (
+    AcquisitionBindingError,
+    bind,
+    bindings_path,
     resolve_acquisition_locator,
     resolve_binding,
 )
 from castlearq.acquisition_service import (
+    AcquisitionError,
+    AcquisitionErrorCategory,
     AcquisitionStatus,
     ModelAcquisitionService,
 )
@@ -61,7 +66,10 @@ from castlearq.downloads.downloader import (
     DownloadResultStatus,
 )
 from castlearq.downloads.planner import DownloadPlanner
-from castlearq.identity_admission import lookup as admit_lookup
+from castlearq.identity_admission import (
+    lookup as admit_lookup,
+    register as admit_register,
+)
 from castlearq.model_identity import logical_model_id, resolve_admitted_model_id
 from castlearq.model_store import ModelStore
 
@@ -249,6 +257,117 @@ class AdmittedNonCuratedAcquisitionTests(unittest.TestCase):
         destination = Path(outcome.destination)
         self.assertTrue(destination.is_file())
         self.assertEqual(destination.read_bytes(), b"0123456789")
+
+
+class AdmittedAcquisitionClosedPathTests(unittest.TestCase):
+    """Derivation and registration alone never authorize acquisition.
+
+    These cases use their own isolated registries and store so the shared
+    admitted fixture above is untouched: every test builds a fresh service
+    through the real composition root and asserts a fail-closed acquisition
+    with no discovery calls and no persisted artifacts.
+    """
+
+    UNADMITTED_REPO = "someowner/b999-never-admitted-gguf"
+    REGISTER_ONLY_REPO = "someowner/b999-registered-without-binding-gguf"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self._previous = {key: os.environ.get(key) for key in ENV_ROOTS}
+        for key in ENV_ROOTS:
+            os.environ[key] = str(Path(self.tmp.name) / key.lower())
+        self.addCleanup(self._restore_env)
+        self.store = ModelStore(Path(self.tmp.name) / "store")
+
+    def _restore_env(self):
+        for key, previous in self._previous.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
+    def _service(self, discovery):
+        planner = _RecordingPlanner(DownloadPlanner(model_store=self.store))
+        return (
+            compose_acquisition_service(
+                discovery_provider=discovery,
+                model_store=self.store,
+                planner_factory=lambda: planner,
+                downloader_factory=lambda store: _LocalDownloader(),
+            ),
+            planner,
+        )
+
+    def test_derived_but_neither_admitted_nor_bound_is_not_resolvable(self):
+        # Case B: the identity is derivable but was never admitted nor
+        # authorized, and the curated table has no row for it.
+        mid = resolve_admitted_model_id(SRC, self.UNADMITTED_REPO)
+        self.assertIsNone(logical_model_id(SRC, self.UNADMITTED_REPO))
+        self.assertIsNone(admit_lookup(SRC, self.UNADMITTED_REPO))
+        self.assertIsNone(resolve_binding(mid))
+        self.assertIsNone(resolve_acquisition_locator(mid))
+
+        discovery = _FakeDiscovery()
+        service, planner = self._service(discovery)
+        with self.assertRaises(AcquisitionError) as raised:
+            service.acquire(mid)
+        self.assertIs(
+            raised.exception.category,
+            AcquisitionErrorCategory.MODEL_NOT_RESOLVABLE,
+        )
+        # Fail-closed: resolution happens before discovery and persists
+        # nothing — no discovery calls, no planner specs, no manifests.
+        self.assertEqual(discovery.calls, [])
+        self.assertEqual(planner.specs, [])
+        self.assertIsNone(resolve_binding(mid))
+        self.assertEqual(self.store.list_artifacts(), [])
+
+    def test_registered_without_binding_is_still_not_resolvable(self):
+        # Case C: explicit admission alone is not acquisition authorization.
+        mid = resolve_admitted_model_id(SRC, self.REGISTER_ONLY_REPO)
+        admit_register(SRC, self.REGISTER_ONLY_REPO, mid)
+        self.assertEqual(admit_lookup(SRC, self.REGISTER_ONLY_REPO), mid)
+        self.assertIsNone(resolve_binding(mid))
+        self.assertIsNone(resolve_acquisition_locator(mid))
+
+        discovery = _FakeDiscovery()
+        service, planner = self._service(discovery)
+        with self.assertRaises(AcquisitionError) as raised:
+            service.acquire(mid)
+        self.assertIs(
+            raised.exception.category,
+            AcquisitionErrorCategory.MODEL_NOT_RESOLVABLE,
+        )
+        self.assertEqual(discovery.calls, [])
+        self.assertEqual(planner.specs, [])
+        self.assertIsNone(resolve_binding(mid))
+        self.assertEqual(self.store.list_artifacts(), [])
+
+    def test_curated_locator_keeps_precedence_and_rejects_conflict(self):
+        # Case D: curated authority wins and a contradictory binding is
+        # rejected without changing the persisted bindings file.
+        curated_mid = logical_model_id(SRC, CURATED_REPO)
+        self.assertIsNotNone(curated_mid)
+        self.assertEqual(
+            resolve_acquisition_locator(curated_mid),
+            (SRC, CURATED_REPO),
+        )
+        try:
+            bindings_before = bindings_path().read_bytes()
+        except FileNotFoundError:
+            bindings_before = None
+        with self.assertRaises(AcquisitionBindingError):
+            bind(curated_mid, SRC, self.UNADMITTED_REPO)
+        try:
+            bindings_after = bindings_path().read_bytes()
+        except FileNotFoundError:
+            bindings_after = None
+        self.assertEqual(bindings_after, bindings_before)
+        self.assertEqual(
+            resolve_acquisition_locator(curated_mid),
+            (SRC, CURATED_REPO),
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

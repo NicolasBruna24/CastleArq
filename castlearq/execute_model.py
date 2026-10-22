@@ -386,4 +386,5 @@ def execute_model(
         warnings=(*warnings, *result.warnings),
         diagnostics=result.diagnostics,
         runtime_metrics=result.runtime_metrics,
+        offload_evidence=result.offload_evidence,
     )

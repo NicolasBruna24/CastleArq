@@ -122,6 +122,123 @@ def _failure_result(*, stderr="runtime exploded\n", message="process failed"):
     )
 
 
+class ExecutionSummaryProjectionTests(unittest.TestCase):
+    """Observability summary: defensive presentation of ExecutionResult."""
+
+    def _rich_result(self, success=True):
+        from datetime import datetime, timezone
+
+        from castlearq.execution import ExecutionDiagnostics
+
+        diagnostics = ExecutionDiagnostics(
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            elapsed_seconds=1.25,
+            stdout_bytes=10,
+            stderr_bytes=5,
+            exit_code=0 if success else 1,
+            timed_out=False,
+            terminated_normally=True,
+            requested_backend="Vulkan",
+        )
+        evidence = mock.Mock()
+        evidence.status = mock.Mock(value="confirmed")
+        evidence.offloaded_layers = 23
+        evidence.total_layers = 23
+        evidence.source_stream = "stderr"
+        evidence.runtime_version = "build-test"
+        evidence.evidence_category = "final_count"
+        return diagnostics, evidence
+
+    def test_success_with_diagnostics_and_confirmed(self):
+        diagnostics, evidence = self._rich_result(success=True)
+        result = ExecutionResult(
+            True,
+            0,
+            "the answer\n",
+            "",
+            diagnostics=diagnostics,
+            offload_evidence=evidence,
+        )
+        code, out, err, _, _, _ = _invoke("m1", "hi", result=result)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "the answer\n")
+        self.assertIn("Requested backend: Vulkan", err)
+        self.assertIn("Elapsed: 1.25 s", err)
+        self.assertIn("GPU placement: confirmed 23/23 layers", err)
+        self.assertIn("not measured GPU utilization", err)
+
+    def test_failure_with_diagnostics_and_unknown(self):
+        from datetime import datetime, timezone
+
+        from castlearq.execution import ExecutionDiagnostics
+
+        diagnostics = ExecutionDiagnostics(
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            elapsed_seconds=0.5,
+            stdout_bytes=0,
+            stderr_bytes=5,
+            exit_code=1,
+            timed_out=False,
+            terminated_normally=True,
+            requested_backend="CPU",
+        )
+        evidence = mock.Mock()
+        evidence.status = mock.Mock(value="unknown")
+        evidence.evidence_category = mock.Mock(value="nonzero_exit")
+        result = ExecutionResult(
+            False,
+            1,
+            "",
+            "runtime exploded\n",
+            error=ExecutionErrorInfo(ExecutionErrorCode.PROCESS_FAILED, "boom"),
+            diagnostics=diagnostics,
+            offload_evidence=evidence,
+        )
+        code, out, err, _, _, _ = _invoke("m1", "hi", result=result)
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("Requested backend: CPU", err)
+        self.assertIn("Elapsed: 0.5 s", err)
+        self.assertIn("GPU placement: unknown (nonzero_exit)", err)
+        self.assertIn("runtime exploded", err)
+        self.assertIn("Execute error: boom", err)
+
+    def test_missing_diagnostics_and_evidence_are_unavailable(self):
+        evidence = mock.Mock()
+        evidence.status = mock.Mock(value="unknown")
+        evidence.evidence_category = mock.Mock(value="not_executed")
+        result = ExecutionResult(True, 0, "ok\n", "", offload_evidence=evidence)
+        code, out, err, _, _, _ = _invoke("m1", "hi", result=result)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "ok\n")
+        self.assertIn("Requested backend: unavailable", err)
+        self.assertIn("Elapsed: unavailable", err)
+        self.assertIn("GPU placement: unknown (not_executed)", err)
+        self.assertNotIn("1.25", err)
+
+    def test_absent_backend_and_evidence(self):
+        result = _success_result(stdout="ok\n")
+        code, out, err, _, _, _ = _invoke("m1", "hi", result=result)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "ok\n")
+        self.assertEqual(err, "")
+
+    def test_preparation_error_shows_no_summary(self):
+        from castlearq.execute_model import ExecutePreparationError
+
+        code, out, err, _, _, _ = _invoke(
+            "m1", "hi", error=ExecutePreparationError("nope")
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertNotIn("Requested backend:", out)
+        self.assertNotIn("Elapsed:", out)
+        self.assertNotIn("GPU placement:", out)
+        self.assertNotIn("GPU placement:", err)
+
+
 class RegistrationTests(unittest.TestCase):
     """T1: the ``execute`` command is registered in the CLI."""
 

@@ -64,6 +64,7 @@ class EvaluateCompatibilityDependencies:
     evaluate_fn: Callable[..., StrictEvaluation] | None = None
     evidence_reader: Callable[[Path], GGUFArchitectureEvidence] | None = None
     runtime_artifact_observer: Callable[..., RuntimeArtifactEvidence] | None = None
+    observe_runtime_artifact: bool = True
 
 
 @dataclass(frozen=True)
@@ -258,21 +259,27 @@ def evaluate_model_compatibility(
     # device/executable/artifact path was resolved, so absent context is never a
     # positive claim. A producer error propagates; it is never folded into a
     # NEGATIVE observation (B9.79 sections 4 and 7).
-    observer: Any = deps.runtime_artifact_observer
-    if observer is None:
-        observer = RuntimeArtifactObserver().observe
-    runtime_artifact_evidence = observer(
-        executable_path=capability.executable_path,
-        runtime_identity=capability.executable_path or capability.name,
-        runtime_version=capability.version,
-        artifact_path=artifact_path,
-        artifact_reference=resolved.artifact.artifact_id,
-        artifact_format=resolved.artifact.format,
-        artifact_architecture=architecture_evidence.architecture_raw,
-        device=(
-            capability.backend_argument(backend) if backend is not None else None
-        ),
-    )
+    # B9.79 opt-out: read-only callers (e.g. the ``compatibility`` command)
+    # may forbid any physical runtime observation. When disabled the observer
+    # is neither instantiated nor invoked; the evaluation receives ``None`` --
+    # absence of evidence, never a positive claim.
+    runtime_artifact_evidence: RuntimeArtifactEvidence | None = None
+    if deps.observe_runtime_artifact:
+        observer: Any = deps.runtime_artifact_observer
+        if observer is None:
+            observer = RuntimeArtifactObserver().observe
+        runtime_artifact_evidence = observer(
+            executable_path=capability.executable_path,
+            runtime_identity=capability.executable_path or capability.name,
+            runtime_version=capability.version,
+            artifact_path=artifact_path,
+            artifact_reference=resolved.artifact.artifact_id,
+            artifact_format=resolved.artifact.format,
+            artifact_architecture=architecture_evidence.architecture_raw,
+            device=(
+                capability.backend_argument(backend) if backend is not None else None
+            ),
+        )
     try:
         integration = integrate_fn()
     except Exception as error:

@@ -112,16 +112,90 @@ class HappyPathTests(_Case):
         )
         self.assertEqual(metadata["base_model_dir"], str(self.checkpoint))
         self.assertEqual(metadata["lora_rank"], 4)
+        # Additive input/output reference fields; existing fields unchanged.
+        self.assertEqual(
+            metadata["dataset_path"], str(Path(str(self.dataset)).expanduser())
+        )
+        # Final destination, never the temporary staging directory.
+        self.assertEqual(metadata["output_dir"], str(self.root / "adapter-out"))
+        self.assertNotIn("castlearq-train-", metadata["output_dir"])
+        # Adapter files only, sorted, excluding the metadata file itself.
+        self.assertEqual(
+            metadata["files"], ["adapter_config.json", "adapter_model.safetensors"]
+        )
+        # Adapter files and metadata are published together in one directory.
+        self.assertTrue((out / "adapter_config.json").exists())
+        self.assertTrue((out / "adapter_model.safetensors").exists())
+        self.assertTrue((out / "training_metadata.json").exists())
         # An injected runner predating device evidence serializes as null.
         self.assertIsNone(metadata["selected_device"])
         self.assertIsNone(metadata["effective_device"])
         # The result carries the same absence without inventing a device.
         self.assertIsNone(result.selected_device)
         self.assertIsNone(result.effective_device)
+        # Public TrainingResult.files semantics unchanged: it still includes
+        # training_metadata.json in addition to the adapter files.
+        self.assertIn("training_metadata.json", result.files)
+        self.assertEqual(
+            result.files,
+            tuple(
+                sorted(
+                    {
+                        "adapter_config.json",
+                        "adapter_model.safetensors",
+                        "training_metadata.json",
+                    }
+                )
+            ),
+        )
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["max_steps"], 2)
         self.assertEqual(calls[0]["lora_rank"], 4)
         self.assertEqual(calls[0]["lora_alpha"], 8)
+
+    def test_metadata_files_are_sorted_exclude_metadata_and_match_output(self):
+        calls: list = []
+
+        class _UnsortedRunner(_FakeRunner):
+            def run(self, **kwargs):
+                outcome = super().run(**kwargs)
+                # Report files in a deliberately non-sorted order to prove the
+                # metadata list is deterministically sorted, not runner-ordered.
+                outcome.files = (
+                    "adapter_model.safetensors",
+                    "adapter_config.json",
+                )
+                return outcome
+
+        result = train_adapter_model(
+            self._request(),
+            dependencies=TrainingDependencies(runner=_UnsortedRunner(calls)),
+        )
+        self.assertTrue(result.success, msg=str(result.error))
+        out = Path(result.output_dir or "")
+        metadata = json.loads(
+            (out / "training_metadata.json").read_text(encoding="utf-8")
+        )
+        files = metadata["files"]
+        # Deterministic sorted order regardless of runner-reported order.
+        self.assertEqual(files, sorted(files))
+        # Excludes the metadata file itself (no self-referential entry).
+        self.assertNotIn("training_metadata.json", files)
+        # Equals the adapter files the runner reported.
+        self.assertEqual(
+            files, ["adapter_config.json", "adapter_model.safetensors"]
+        )
+        # Corresponds to the adapter files actually published in the output
+        # directory: every listed file exists there, and the directory's
+        # non-metadata files match the list exactly.
+        for name in files:
+            self.assertTrue((out / name).is_file())
+        published_adapters = sorted(
+            entry.name
+            for entry in out.iterdir()
+            if entry.is_file() and entry.name != "training_metadata.json"
+        )
+        self.assertEqual(files, published_adapters)
 
     def test_runner_device_evidence_reaches_result(self):
         calls: list = []

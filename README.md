@@ -9,14 +9,16 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The published release is `0.5.1` (tag `v0.5.1`), available
-> on PyPI. It is the current published release. This release adds read-only
-> `search` and `inspect` commands, uses acquisition resolution as the
-> production acquisition path, and blocks a requested revision that conflicts
-> with the stored artifact
-> without replacing the existing artifact. Local GGUF files can still be
-> brought into the model store with `import`, and the `validate` command remains
-> available. It requires **Python 3.11 or newer**.
+> **Version note.** The current release candidate is `0.6.0`, and it has not yet
+> been tagged or published. It advances the production source state relative to
+> the `v0.5.0` baseline: it adds the admitted-model journey
+> (`admit`/`describe`/`refresh`/`reconcile`/`show`), a bounded SFT+LoRA training
+> prototype, and GPU offload evidence, while the HTTP contract exposed to
+> Desktop (`/health` with `version`, `/v1/models`, `/v1/artifacts`) is unchanged.
+> The previously published release was `0.5.1` (tag `v0.5.1`), available on
+> PyPI. Local GGUF files can still be brought into the model store with
+> `import`, and the `validate` command remains available. It requires
+> **Python 3.11 or newer**.
 
 ## What problem does it solve?
 
@@ -202,6 +204,37 @@ From here on, `MODEL_ID` means whatever identifier `list` shows for the
 artifact you want to work with: a catalog model id after `download`, or the
 label after `import`. For an imported artifact, that label is only the
 operational handle — the model's logical identity can remain `UNKNOWN`.
+
+### Route C: discover a GGUF repository and acquire it
+
+```bash
+# 1. Search remote GGUF repositories (read-only discovery metadata)
+castlearq search "qwen3 8b gguf"
+
+# 2. Inspect one repository: variants, quantizations, sizes, SHA-256, revision
+castlearq inspect someowner/somemodel-gguf
+
+# 3. Acquire one explicit artifact of that repository (multi-GB download).
+#    The repository is the locator; --quantization / --filename make the
+#    selection explicit. With several candidate files, a selector is required.
+castlearq download someowner/somemodel-gguf --quantization Q4_K_M
+
+# 4..7  continue exactly as in Route B with the printed model id
+castlearq list
+castlearq validate <MODEL_ID>
+castlearq compatibility <MODEL_ID>
+castlearq execute <MODEL_ID> "Reply with exactly: OK"
+```
+
+`download <owner/name>` needs no manual catalog edit: the logical model id is
+resolved through CastleArq's admitted identity authority (curated identity
+first, a deterministic derived identity otherwise) and explicitly registered
+in the existing identity-admission and acquisition-binding registries, both
+explicit and idempotent, and neither one records a partial state, before the
+unchanged download, verification and storage flow runs. The command prints
+both the repository and the resolved model id. Two different repositories can
+never share a logical id. Acquiring a model does **not** admit it for execution:
+`describe`/`compatibility` admission still applies before `execute`.
 
 `list` shows each stored artifact and its derived state; `validate` re-checks one
 artifact on demand and reports what it can and cannot prove. Both are read-only

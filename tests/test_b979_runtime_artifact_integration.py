@@ -278,6 +278,83 @@ class WiringTests(unittest.TestCase):
                 dependencies=_deps(runtime_artifact_observer=observer),
             )
 
+    def test_observation_disabled_skips_observer_and_sends_none(self):
+        """Opt-out: no physical runtime observation happens at all."""
+        observer = mock.Mock(return_value=_evidence(ArtifactObservation.POSITIVE))
+        captured = {}
+
+        def evaluate_fn(**kwargs):
+            captured.update(kwargs)
+            return "EVAL-SENTINEL"
+
+        result = uc.evaluate_model_compatibility(
+            "qwen2.5-coder-7b-instruct",
+            dependencies=_deps(
+                runtime_artifact_observer=observer,
+                observe_runtime_artifact=False,
+                evaluate_fn=evaluate_fn,
+            ),
+        )
+        observer.assert_not_called()
+        self.assertIsNone(captured["runtime_artifact_evidence"])
+        self.assertEqual(result.status, "evaluated")
+
+
+class BackendSelectionTests(unittest.TestCase):
+    """Explicit backend selection: declared knowledge only, no assumptions."""
+
+    def _evaluate(self, backend):
+        observer = mock.Mock()
+        result = uc.evaluate_model_compatibility(
+            "qwen2.5-coder-7b-instruct",
+            backend=backend,
+            dependencies=_deps(
+                evaluate_fn=None,
+                runtime_artifact_observer=observer,
+                observe_runtime_artifact=False,
+            ),
+        )
+        return result, observer
+
+    def test_explicit_backend_projects_declared_knowledge(self):
+        result, observer = self._evaluate("CPU")
+        self.assertEqual(result.status, "evaluated")
+        # N-4 canonization: "CPU" -> "cpu", then exact membership against the
+        # declared (empty-scope) llama.cpp backend knowledge.
+        self.assertEqual(result.evaluation.context.backend, "cpu")
+        self.assertIs(
+            _status(result.evaluation, "runtime backend support"),
+            CheckStatus.PASSED,
+        )
+        # No physical observation happened; the runtime-artifact check stays
+        # UNKNOWN with no observed value.
+        observer.assert_not_called()
+        self.assertIs(
+            _status(result.evaluation, "runtime artifact support"),
+            CheckStatus.UNKNOWN,
+        )
+        artifact_check = next(
+            check for check in result.evaluation.result.checks
+            if check.name == "runtime artifact support"
+        )
+        self.assertIsNone(artifact_check.observed)
+        # Selecting a backend does not convert the honest unknowns of this
+        # evaluation (no physical GGUF evidence here -> architecture UNKNOWN):
+        # the aggregation rules are untouched.
+        self.assertIs(
+            result.evaluation.result.status,
+            CompatibilityStatus.INSUFFICIENT_EVIDENCE,
+        )
+
+    def test_unlisted_backend_is_unknown_never_failed(self):
+        result, _ = self._evaluate("Metal")
+        # Outside the N-4 table -> None -> UNKNOWN; never FAILED, never PASSED.
+        self.assertIsNone(result.evaluation.context.backend)
+        self.assertIs(
+            _status(result.evaluation, "runtime backend support"),
+            CheckStatus.UNKNOWN,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

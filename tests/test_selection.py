@@ -84,7 +84,14 @@ class RuntimeBackendSelectorTests(unittest.TestCase):
 
     def test_compatible_supported_backend_selects_target(self):
         result = self.selector.select(compatibility(), capability(), executable())
-        self.assertEqual(result.target, ExecutionTarget("llama.cpp CLI", "Vulkan"))
+        self.assertEqual(
+            result.target,
+            ExecutionTarget(
+                runtime="llama.cpp CLI",
+                backend="Vulkan",
+                requested_backend="Vulkan",
+            ),
+        )
         self.assertEqual(result.warnings, ())
 
     def test_marginal_selection_reports_warning(self):

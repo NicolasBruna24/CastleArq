@@ -16,6 +16,7 @@
 """Concrete one-shot model runners."""
 
 from abc import ABC, abstractmethod
+from dataclasses import replace
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -35,6 +36,7 @@ from .execution import (
     InvalidExecutionRequestError,
     validate_execution_request,
 )
+from .offload_evidence import GpuOffloadEvidence, assess_gpu_offload
 from .runtime_metrics import parse_llama_human_output
 from .runtimes import RuntimeCapability
 
@@ -74,15 +76,26 @@ class LlamaCppRunner(ModelRunner):
         try:
             validate_execution_request(request)
         except InvalidExecutionRequestError as error:
-            return self._error_result(ExecutionErrorCode.INVALID_REQUEST, str(error))
+            return self._error_result(
+                ExecutionErrorCode.INVALID_REQUEST,
+                str(error),
+                offload_evidence=self._not_executed_offload(),
+            )
         validation_error = self._validate_inputs(
             executable_artifact, target, request
         )
         if validation_error is not None:
+            if validation_error.offload_evidence is None:
+                validation_error = replace(
+                    validation_error,
+                    offload_evidence=self._not_executed_offload(),
+                )
             return validation_error
 
         executable = self.capability.executable_path
         assert executable is not None
+        requested_backend = target.requested_backend
+        requested_device_argument = target.requested_device_argument
         device = self.capability.backend_argument(target.backend)
         assert device is not None
         argv = [
@@ -119,6 +132,8 @@ class LlamaCppRunner(ModelRunner):
                 None,
                 timed_out=True,
                 terminated_normally=False,
+                requested_backend=requested_backend,
+                requested_device_argument=requested_device_argument,
             )
             return ExecutionResult(
                 False,
@@ -127,13 +142,35 @@ class LlamaCppRunner(ModelRunner):
                 _output(error.stderr),
                 ExecutionErrorInfo(ExecutionErrorCode.TIMEOUT, "Execution timed out"),
                 diagnostics=diagnostics,
+                offload_evidence=assess_gpu_offload(
+                    _output(error.stdout),
+                    _output(error.stderr),
+                    None,
+                    timed_out=True,
+                    runtime_version=self.capability.version,
+                ),
             )
         except FileNotFoundError as error:
             return self._error_result(
                 ExecutionErrorCode.EXECUTABLE_MISSING,
                 str(error),
                 self._diagnostics(
-                    started_at, started_monotonic, b"", b"", None, False, False
+                    started_at,
+                    started_monotonic,
+                    b"",
+                    b"",
+                    None,
+                    False,
+                    False,
+                    requested_backend=requested_backend,
+                    requested_device_argument=requested_device_argument,
+                ),
+                offload_evidence=assess_gpu_offload(
+                    None,
+                    None,
+                    None,
+                    launch_failed=True,
+                    runtime_version=self.capability.version,
                 ),
             )
         except PermissionError as error:
@@ -141,7 +178,22 @@ class LlamaCppRunner(ModelRunner):
                 ExecutionErrorCode.PERMISSION_DENIED,
                 str(error),
                 self._diagnostics(
-                    started_at, started_monotonic, b"", b"", None, False, False
+                    started_at,
+                    started_monotonic,
+                    b"",
+                    b"",
+                    None,
+                    False,
+                    False,
+                    requested_backend=requested_backend,
+                    requested_device_argument=requested_device_argument,
+                ),
+                offload_evidence=assess_gpu_offload(
+                    None,
+                    None,
+                    None,
+                    launch_failed=True,
+                    runtime_version=self.capability.version,
                 ),
             )
         except OSError as error:
@@ -149,13 +201,34 @@ class LlamaCppRunner(ModelRunner):
                 ExecutionErrorCode.LAUNCH_FAILED,
                 str(error),
                 self._diagnostics(
-                    started_at, started_monotonic, b"", b"", None, False, False
+                    started_at,
+                    started_monotonic,
+                    b"",
+                    b"",
+                    None,
+                    False,
+                    False,
+                    requested_backend=requested_backend,
+                    requested_device_argument=requested_device_argument,
+                ),
+                offload_evidence=assess_gpu_offload(
+                    None,
+                    None,
+                    None,
+                    launch_failed=True,
+                    runtime_version=self.capability.version,
                 ),
             )
 
         stdout = _output(completed.stdout)
         stderr = _output(completed.stderr)
         runtime_metrics = parse_llama_human_output(stdout)
+        offload_evidence = assess_gpu_offload(
+            stdout,
+            stderr,
+            completed.returncode,
+            runtime_version=self.capability.version,
+        )
         diagnostics = self._diagnostics(
             started_at,
             started_monotonic,
@@ -164,6 +237,8 @@ class LlamaCppRunner(ModelRunner):
             completed.returncode,
             timed_out=False,
             terminated_normally=True,
+            requested_backend=requested_backend,
+            requested_device_argument=requested_device_argument,
         )
         if completed.returncode == 0:
             return ExecutionResult(
@@ -173,6 +248,7 @@ class LlamaCppRunner(ModelRunner):
                 stderr,
                 diagnostics=diagnostics,
                 runtime_metrics=runtime_metrics,
+                offload_evidence=offload_evidence,
             )
         return ExecutionResult(
             False,
@@ -185,6 +261,7 @@ class LlamaCppRunner(ModelRunner):
             ),
             diagnostics=diagnostics,
             runtime_metrics=runtime_metrics,
+            offload_evidence=offload_evidence,
         )
 
     def _validate_inputs(
@@ -273,6 +350,7 @@ class LlamaCppRunner(ModelRunner):
         code: ExecutionErrorCode,
         message: str,
         diagnostics: ExecutionDiagnostics | None = None,
+        offload_evidence: GpuOffloadEvidence | None = None,
     ) -> ExecutionResult:
         return ExecutionResult(
             False,
@@ -281,6 +359,17 @@ class LlamaCppRunner(ModelRunner):
             "",
             ExecutionErrorInfo(code, message),
             diagnostics=diagnostics,
+            offload_evidence=offload_evidence,
+        )
+
+    def _not_executed_offload(self) -> GpuOffloadEvidence:
+        """Unknown offload evidence for paths where no subprocess ran."""
+        return assess_gpu_offload(
+            None,
+            None,
+            None,
+            not_executed=True,
+            runtime_version=self.capability.version,
         )
 
     @staticmethod
@@ -292,6 +381,8 @@ class LlamaCppRunner(ModelRunner):
         exit_code: int | None,
         timed_out: bool,
         terminated_normally: bool,
+        requested_backend: str | None = None,
+        requested_device_argument: str | None = None,
     ) -> ExecutionDiagnostics:
         return ExecutionDiagnostics(
             started_at=started_at,
@@ -302,6 +393,8 @@ class LlamaCppRunner(ModelRunner):
             exit_code=exit_code,
             timed_out=timed_out,
             terminated_normally=terminated_normally,
+            requested_backend=requested_backend,
+            requested_device_argument=requested_device_argument,
         )
 
 

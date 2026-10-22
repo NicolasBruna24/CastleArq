@@ -1595,6 +1595,18 @@ def run_download(
     CLI responsibility (unchanged): argument validation, presentation of the
     :class:`AcquisitionOutcome`, and the exit status.
 
+    Discovered-repository form (compatible extension): the positional accepts
+    either a logical model ID (form above) OR a Hugging Face repository
+    locator in ``owner/name`` form. The two forms are unambiguous because no
+    logical model ID contains ``/``. With a repository, the CLI resolves the
+    logical identity through the existing admitted authority (curated first,
+    deterministic derivation on a curated miss) and explicitly registers it
+    in the existing identity-admission and acquisition-binding registries --
+    both fail-closed and idempotent -- via
+    :func:`castlearq.admitted_commands.ensure_discovered_repository`, then
+    delegates to the exact same service flow. The curated static catalog is
+    never edited and the acquisition service itself never creates bindings.
+
     Selection policy (explicit, no guessing), now enforced by the application
     boundary:
     - the logical ID must resolve to exactly one (source, repository)
@@ -1617,8 +1629,39 @@ def run_download(
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
     if not model_id:
-        print("Usage: python3 -m castlearq.main download <model-id>", file=err)
+        print(
+            "Usage: python3 -m castlearq.main download <model-id> | <owner/name>",
+            file=err,
+        )
         return 2
+
+    acquisition_target = model_id
+    resolved_repository: str | None = None
+    if "/" in model_id:
+        # Discovered-repository form. No logical model ID contains "/", so
+        # the two forms are unambiguous. Identity resolution and the explicit
+        # registry writes happen HERE, on the owner's request naming this
+        # exact repository; the acquisition service below is unchanged and
+        # never creates bindings itself.
+        from .acquisition_resolution import AcquisitionBindingError
+        from .admitted_commands import ensure_discovered_repository
+        from .identity_admission import IdentityAdmissionError
+
+        try:
+            acquisition_target = ensure_discovered_repository(
+                "huggingface", model_id
+            )
+        except (ValueError, IdentityAdmissionError, AcquisitionBindingError) as error:
+            print(f"Download error: {error}", file=err)
+            return 1
+        # The repository named by the owner is the authoritative locator for
+        # this invocation: it resolved to acquisition_target through the
+        # admitted authority above. It is passed verbatim to presentation so
+        # the final outcome stays traceable without reconstructing a
+        # repository from the model id.
+        resolved_repository = model_id
+        print(f"Repository: {model_id}", file=out)
+        print(f"Resolved model: {acquisition_target}", file=out)
 
     acquisition = service if service is not None else _compose_acquisition(
         source_factory=source_factory,
@@ -1629,7 +1672,7 @@ def run_download(
 
     try:
         outcome = acquisition.acquire(
-            model_id,
+            acquisition_target,
             quantization=quantization,
             filename=filename,
         )
@@ -1638,7 +1681,9 @@ def run_download(
         print(f"Download error: {error}", file=err)
         return 1
 
-    return _present_acquisition_outcome(outcome, out=out, err=err)
+    return _present_acquisition_outcome(
+        outcome, out=out, err=err, repository=resolved_repository
+    )
 
 
 def _compose_acquisition(
@@ -1787,8 +1832,17 @@ def _failure_detail(message: str) -> str:
     return detail if detail else message
 
 
-def _present_acquisition_outcome(outcome: AcquisitionOutcome, *, out, err) -> int:
-    """Present an application outcome and return the CLI exit status."""
+def _present_acquisition_outcome(
+    outcome: AcquisitionOutcome, *, out, err, repository: str | None = None
+) -> int:
+    """Present an application outcome and return the CLI exit status.
+
+    ``repository`` is the authoritative locator already resolved for this
+    invocation (the ``owner/name`` form of ``download``), passed verbatim by
+    the caller. It is echoed for traceability only and never reconstructed
+    from the model id. Curated model-id invocations pass ``None`` and their
+    output is unchanged.
+    """
     if outcome.status is AcquisitionStatus.BLOCKED:
         for reason in outcome.reasons or ("download plan is blocked",):
             print(f"Download error: {reason}", file=err)
@@ -1810,15 +1864,15 @@ def _present_acquisition_outcome(outcome: AcquisitionOutcome, *, out, err) -> in
         return 1
 
     if outcome.status is AcquisitionStatus.ALREADY_DOWNLOADED:
-        print(f"Model: {outcome.model_id}", file=out)
-        print(f"Artifact: {outcome.filename}", file=out)
-        print("Artifact already downloaded.", file=out)
-        return 0
+        if repository is not None:
+            print(f"Repository: {repository}", file=out)
         print(f"Model: {outcome.model_id}", file=out)
         print(f"Artifact: {outcome.filename}", file=out)
         print("Artifact already downloaded.", file=out)
         return 0
 
+    if repository is not None:
+        print(f"Repository: {repository}", file=out)
     print(f"Model: {outcome.model_id}", file=out)
     print(f"Artifact: {outcome.filename}", file=out)
     if outcome.size_bytes is not None:
@@ -2335,6 +2389,7 @@ def execute_command(
         )
         for warning in result.warnings:
             print(f"Warning: {warning}", file=err)
+        _print_execution_summary(result, err=err)
         return 0
     if result.stderr:
         print(
@@ -2346,7 +2401,67 @@ def execute_command(
         print(f"Execute error: {result.error.message}", file=err)
     for warning in result.warnings:
         print(f"Warning: {warning}", file=err)
+    _print_execution_summary(result, err=err)
     return 1
+
+
+def _print_execution_summary(result, *, err) -> None:
+    """Print the observability summary already carried by ``ExecutionResult``.
+
+    Presentation only, on the diagnostics stream: reads ``diagnostics`` and
+    ``offload_evidence`` defensively and never fabricates values. Missing
+    diagnostics render as ``unavailable``; a missing requested backend renders
+    as ``unavailable``; missing evidence renders as
+    ``GPU placement: unavailable``. Offload placement is runtime-reported
+    layer placement, never measured GPU utilization, and ``NOT_CONFIRMED``
+    is preserved literally. Model stdout is left byte-identical.
+    """
+    diagnostics = getattr(result, "diagnostics", None)
+    evidence = getattr(result, "offload_evidence", None)
+    if diagnostics is None and evidence is None:
+        # Nothing informative to report: keep the pre-existing streams
+        # byte-identical instead of printing three "unavailable" lines.
+        return
+    requested_backend = getattr(diagnostics, "requested_backend", None)
+    print(f"Requested backend: {requested_backend or 'unavailable'}", file=err)
+    elapsed = getattr(diagnostics, "elapsed_seconds", None)
+    if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)):
+        print("Elapsed: unavailable", file=err)
+    else:
+        print(f"Elapsed: {elapsed} s", file=err)
+    if evidence is None:
+        print("GPU placement: unavailable", file=err)
+        return
+    status = str(getattr(getattr(evidence, "status", ""), "value", getattr(evidence, "status", "")) or "")
+    if status == "confirmed":
+        layers = ""
+        offloaded = getattr(evidence, "offloaded_layers", None)
+        total = getattr(evidence, "total_layers", None)
+        if offloaded is not None and total is not None:
+            layers = f" {offloaded}/{total} layers"
+        source = getattr(evidence, "source_stream", None)
+        version = getattr(evidence, "runtime_version", None)
+        detail = "".join(
+            (
+                f" (source: {source})" if source else "",
+                f" [runtime: {version}]" if version else "",
+            )
+        )
+        print(f"GPU placement: confirmed{layers}{detail}", file=err)
+        print(
+            "Note: runtime-reported layer placement, not measured GPU utilization.",
+            file=err,
+        )
+        return
+    if status == "not_confirmed":
+        print("GPU placement: not_confirmed", file=err)
+        return
+    category = getattr(evidence, "evidence_category", None)
+    category = str(getattr(category, "value", category) or "")
+    if category:
+        print(f"GPU placement: unknown ({category})", file=err)
+    else:
+        print("GPU placement: unknown", file=err)
 
 
 def _compatibility_evaluation_payload(result) -> dict:
@@ -2388,6 +2503,7 @@ def compatibility_command(
     *,
     quantization: str | None = None,
     filename: str | None = None,
+    backend: str | None = None,
     out=None,
     err=None,
     model_store: ModelStore | None = None,
@@ -2408,7 +2524,9 @@ def compatibility_command(
       use case ``execute`` uses;
     * it creates no persistent state and writes no session or manifest;
     * it does not alter evaluation policy: it reuses ``to_admission`` for the
-      exit code only, exactly as ``execute`` does.
+      exit code only, exactly as ``execute`` does;
+    * an explicit ``backend`` (when given) is forwarded verbatim to the use
+      case; it is never detected, defaulted or validated physically.
 
     Exit codes follow the existing CLI convention: ``0`` when the evaluation
     admits execution, ``1`` when it does not, ``2`` on usage error.
@@ -2438,7 +2556,10 @@ def compatibility_command(
             model_id,
             quantization=quantization,
             filename=filename,
-            dependencies=EvaluateCompatibilityDependencies(model_store=model_store),
+            backend=backend,
+            dependencies=EvaluateCompatibilityDependencies(
+                model_store=model_store, observe_runtime_artifact=False
+            ),
         )
     except (
         ModelArtifactResolutionError,
@@ -2707,6 +2828,7 @@ usage flow:
   0. search the catalog:   castlearq search "<query>"
   1. discover models:      castlearq models
   2. download a model:     castlearq download <model-id>
+                           castlearq download <owner/name> --quantization <Q>
   3. import a local GGUF:  castlearq import <path>
   4. list local artifacts: castlearq list
   5. check compatibility:  castlearq compatibility <model-id>
@@ -2752,10 +2874,12 @@ read-only inspection:
           revision. Read-only: it downloads nothing and changes no state. All
           metadata is reported as the provider DECLARED it, never as verified;
           a value the provider did not declare is printed as Unknown. Missing
-          values are never defaulted and no model identity is created: the
-          repository is a discovery locator, not a logical model id. Use the
-          reported variants with the existing `--quantization` / `--filename`
-          inputs of `download` to acquire.
+          values are never defaulted and no model identity is created here:
+          the repository is a discovery locator, not a logical model id. To
+          acquire, pass the repository itself to `download <owner/name>`
+          together with the reported `--quantization` / `--filename`: the
+          logical identity is resolved and explicitly registered at that
+          point, without editing the curated catalog.
   models  scored model recommendations
   list    locally stored artifacts and their derived state
   validate <model-id>
@@ -3150,7 +3274,8 @@ def main() -> int:
         nargs="?",
         help=(
             "command-specific value: model-id for download/run/chat/execute/"
-            "compatibility/validate; source provider for source; "
+            "compatibility/validate; a discovered repository (owner/name) is "
+            "also accepted by download; source provider for source; "
             "repository for plan/inspect"
         ),
     )
@@ -3179,6 +3304,14 @@ def main() -> int:
     parser.add_argument(
         "--filename",
         help="exact artifact filename to select for download, execute, compatibility, run or chat",
+    )
+    parser.add_argument(
+        "--backend",
+        help=(
+            "explicit execution backend for 'compatibility' (e.g. CPU, Vulkan); "
+            "evaluated against declared knowledge only, never detected or "
+            "assumed, and never validated physically"
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -3279,14 +3412,14 @@ def main() -> int:
         "--context-note",
         help="provenance note recorded for admitted observe",
     )
-     parser.add_argument(
-         "--physical-gguf",
-         action="store_true",
-         help=(
-             "read general.architecture from the resolved local GGUF for "
-             "admitted observe instead of recording --value"
-         ),
-     )
+    parser.add_argument(
+        "--physical-gguf",
+        action="store_true",
+        help=(
+            "read general.architecture from the resolved local GGUF for "
+            "admitted observe instead of recording --value"
+        ),
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -3342,7 +3475,7 @@ def main() -> int:
         "search": ("limit", "cursor"),
         "inspect": (),
         "plan": (),
-        "compatibility": ("quantization", "filename"),
+        "compatibility": ("quantization", "filename", "backend"),
         "validate": ("quantization", "filename"),
         "download": ("quantization", "filename"),
         "import": ("label",),
@@ -3394,7 +3527,8 @@ def main() -> int:
         "serve",
         "store",
     )
-    for flag in ("prompt", "quantization", "filename", "label", "limit", "cursor"):
+    for flag in ("prompt", "quantization", "filename", "label", "limit", "cursor",
+                 "backend"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     for flag in ("host", "port"):
@@ -3515,6 +3649,7 @@ def main() -> int:
             args.provider,
             quantization=args.quantization,
             filename=args.filename,
+            backend=args.backend,
             model_store=model_store,
             **json_kwargs,
         )

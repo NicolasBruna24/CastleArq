@@ -122,12 +122,95 @@ class RunDownloadTests(unittest.TestCase):
         self.assertEqual(run_download("unknown-model", err=err), 1)
         self.assertIn("no unique source repository", err.getvalue())
 
-    def test_repository_id_is_rejected_as_identity(self):
-        err = io.StringIO()
-        self.assertEqual(
-            run_download("Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", err=err), 1
-        )
-        self.assertIn("no unique source repository", err.getvalue())
+    def test_repository_form_resolves_identity_and_acquires(self):
+        """A repository (owner/name) is the explicit locator form of download.
+
+        The logical identity is resolved through the admitted authority
+        (the curated identity for this repository) and explicitly registered
+        in the isolated registries, then the unchanged acquisition flow runs.
+        No curated-catalog edit is involved.
+        """
+        import os
+
+        with tempfile.TemporaryDirectory() as roots:
+            environment = {
+                "CASTLEARQ_IDENTITY_REGISTRY_ROOT": os.path.join(roots, "identity"),
+                "CASTLEARQ_ACQUISITION_BINDINGS_ROOT": os.path.join(
+                    roots, "bindings"
+                ),
+            }
+            with patch.dict(os.environ, environment):
+                out, err = io.StringIO(), io.StringIO()
+                code = run_download(
+                    "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+                    source_factory=_source_factory([self.artifact]),
+                    planner_factory=_planner_factory(_plan(self.artifact)),
+                    downloader_factory=_downloader_factory(
+                        DownloadResult(
+                            True,
+                            DownloadResultStatus.SUCCESS,
+                            Path("/models/qwen/artifact/model.gguf"),
+                            10,
+                        )
+                    ),
+                    model_store=self.store,
+                    out=out,
+                    err=err,
+                )
+                out, err = out.getvalue(), err.getvalue()
+        self.assertEqual(code, 0, err)
+        self.assertIn("Repository: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", out)
+        self.assertIn("Resolved model: qwen2.5-coder-7b-instruct", out)
+        self.assertIn("Download complete.", out)
+        # Traceability: the final outcome block echoes the same authoritative
+        # repository alongside the resolved model id.
+        self.assertIn("Model: qwen2.5-coder-7b-instruct", out)
+        outcome_block = out.split("Download complete.")[0]
+        self.assertIn("Repository: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", out)
+        self.assertIn("Model: qwen2.5-coder-7b-instruct", outcome_block)
+        entries = self.store.list_artifacts()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].artifact.model_id, "qwen2.5-coder-7b-instruct")
+
+    def test_repository_form_keeps_traceability_when_already_downloaded(self):
+        """An already-downloaded owner/name keeps repository traceability.
+
+        The ALREADY_DOWNLOADED branch receives the same authoritative
+        repository the owner named, so `Model:` stays paired with its
+        `Repository:` instead of showing an opaque derived id alone.
+        """
+        import os
+
+        with tempfile.TemporaryDirectory() as roots:
+            environment = {
+                "CASTLEARQ_IDENTITY_REGISTRY_ROOT": os.path.join(roots, "identity"),
+                "CASTLEARQ_ACQUISITION_BINDINGS_ROOT": os.path.join(
+                    roots, "bindings"
+                ),
+            }
+            with patch.dict(os.environ, environment):
+                out, err = io.StringIO(), io.StringIO()
+                code = run_download(
+                    "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+                    source_factory=_source_factory([self.artifact]),
+                    planner_factory=_planner_factory(
+                        _plan(
+                            self.artifact,
+                            status=DownloadPlanStatus.ALREADY_DOWNLOADED,
+                        )
+                    ),
+                    model_store=self.store,
+                    out=out,
+                    err=err,
+                )
+                out, err = out.getvalue(), err.getvalue()
+        self.assertEqual(code, 0, err)
+        self.assertIn("Repository: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", out)
+        self.assertIn("Resolved model: qwen2.5-coder-7b-instruct", out)
+        self.assertIn("Model: qwen2.5-coder-7b-instruct", out)
+        self.assertIn("Artifact already downloaded.", out)
+        # No new artifact is persisted on the already-downloaded path.
+        self.assertEqual(self.store.list_artifacts(), [])
 
     def test_source_error_is_operational_error(self):
         from castlearq.sources import SourceError

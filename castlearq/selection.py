@@ -93,7 +93,14 @@ class RuntimeBackendSelector:
                 else ()
             )
             return RuntimeSelection(
-                ExecutionTarget(capability.name, recommended_backend),
+                ExecutionTarget(
+                    runtime=capability.name,
+                    backend=recommended_backend,
+                    requested_backend=recommended_backend,
+                    requested_device_argument=capability.backend_argument(
+                        recommended_backend
+                    ),
+                ),
                 warnings,
             )
 
@@ -103,7 +110,12 @@ class RuntimeBackendSelector:
                 "is unavailable."
             )
             return RuntimeSelection(
-                ExecutionTarget(capability.name, "CPU"),
+                ExecutionTarget(
+                    runtime=capability.name,
+                    backend="CPU",
+                    requested_backend="CPU",
+                    requested_device_argument=capability.backend_argument("CPU"),
+                ),
                 (warning,),
             )
         raise RuntimeSelectionError(
