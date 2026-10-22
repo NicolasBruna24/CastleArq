@@ -9,7 +9,8 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** Versions are identified by their annotated tags and
+> **Version note.** The published release is `0.6.0` (tag `v0.6.0`), available
+> on PyPI. Versions are identified by their annotated tags and
 > CastleArq publications. This source state advances the production source
 > state relative to the `v0.5.0` baseline: it adds the admitted-model journey
 > (`admit`/`describe`/`refresh`/`reconcile`/`show`), a bounded SFT+LoRA training
