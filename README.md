@@ -10,13 +10,14 @@ manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
 > **Version note.** Versions are identified by their annotated tags and
-> CastleArq publications. This distribution corresponds to the source state
-> recorded in the `v0.6.0` tag. It advances the production source state
-> relative to the `v0.5.0` baseline: it adds the admitted-model journey
+> CastleArq publications. This source state advances the production source
+> state relative to the `v0.5.0` baseline: it adds the admitted-model journey
 > (`admit`/`describe`/`refresh`/`reconcile`/`show`), a bounded SFT+LoRA training
 > prototype, and GPU offload evidence, while the HTTP contract exposed to
 > Desktop (`/health` with `version`, `/v1/models`, `/v1/artifacts`) is unchanged.
-> Requires Python 3.11 or newer.
+> Local GGUF files can still be brought into the model store with `import`, and
+> the `validate` command remains available for stored artifacts. Requires Python
+> 3.11 or newer.
 
 ## What problem does it solve?
 

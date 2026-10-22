@@ -161,17 +161,45 @@ jobs:
           path, version = sys.argv[1], sys.argv[2]
           text = open(path, encoding="utf-8").read()
 
+          # The manifest records two sets of artifact digests for the same
+          # file names: "Original artifacts in `dist/`" (historical) and
+          # "New candidate artifacts (this preparation)" (publication
+          # target).  A naive global search picks the historical hashes
+          # first because that section appears earlier.  This parser
+          # isolates the candidate section and verifies exactly one digest
+          # per artifact, failing closed on any ambiguity.
+          candidate_heading = "### New candidate artifacts (this preparation)"
+          idx = text.find(candidate_heading)
+          if idx == -1:
+              sys.exit(
+                  f"FAIL: candidate artifacts section not found in {path};"
+                  f" expected heading '{candidate_heading}'"
+              )
+          section = text[idx:]
+          m = re.search(r"\n#{2,3}\s", section[1:])
+          if m:
+              section = section[: m.start() + 1]
+
           wheel = f"castlearq-{version}-py3-none-any.whl"
           sdist = f"castlearq-{version}.tar.gz"
           for name in (wheel, sdist):
               pattern = re.compile(
-                  re.escape(name) + r".{0,200}?SHA-256:\s*([0-9a-fA-F]{64})",
-                  re.DOTALL,
+                  re.escape(name)
+                  + r"[ \t]*\n[ \t]*SHA-256:[ \t]*([0-9a-fA-F]{64})",
               )
-              match = pattern.search(text)
-              if not match:
-                  sys.exit(f"no SHA-256 recorded for {name} in {path}")
-              print(f"{match.group(1).lower()}  dist/{name}")
+              matches = pattern.findall(section)
+              if len(matches) == 0:
+                  sys.exit(
+                      f"FAIL: no SHA-256 recorded for {name} in the"
+                      f" candidate section of {path}"
+                  )
+              if len(matches) > 1:
+                  sys.exit(
+                      f"FAIL: multiple SHA-256 values found for {name} in"
+                      f" the candidate section of {path} — ambiguous manifest"
+                  )
+              digest = matches[0].lower()
+              print(f"{digest}  dist/{name}")
           PY
           cat expected.sha256
 
