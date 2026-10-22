@@ -9,16 +9,14 @@ llama.cpp is the runtime that loads the model and generates text. CastleArq
 manages model files, evaluates compatibility, applies admission and orchestrates
 execution against that runtime.
 
-> **Version note.** The current release candidate is `0.6.0`, and it has not yet
-> been tagged or published. It advances the production source state relative to
-> the `v0.5.0` baseline: it adds the admitted-model journey
+> **Version note.** Versions are identified by their annotated tags and
+> CastleArq publications. This distribution corresponds to the source state
+> recorded in the `v0.6.0` tag. It advances the production source state
+> relative to the `v0.5.0` baseline: it adds the admitted-model journey
 > (`admit`/`describe`/`refresh`/`reconcile`/`show`), a bounded SFT+LoRA training
 > prototype, and GPU offload evidence, while the HTTP contract exposed to
 > Desktop (`/health` with `version`, `/v1/models`, `/v1/artifacts`) is unchanged.
-> The previously published release was `0.5.1` (tag `v0.5.1`), available on
-> PyPI. Local GGUF files can still be brought into the model store with
-> `import`, and the `validate` command remains available. It requires
-> **Python 3.11 or newer**.
+> Requires Python 3.11 or newer.
 
 ## What problem does it solve?
 
