@@ -27,7 +27,7 @@ def _sha256(path):
 class OpenVINOConversionService:
     def __init__(self, store, timeout=300.0, run_process=None):
         self.store=store; self.timeout=timeout; self._run=run_process or subprocess.run
-    def convert(self, model, precision="fp16", revision=None, task=None, destination=None):
+    def convert(self, model, precision="fp16", revision=None, task="text-generation-with-past", destination=None):
         if precision not in VALID_PRECISIONS:
             return ConversionResult(False,None,None,"Unsupported precision: "+precision)
         tool=shutil.which("optimum-cli")
