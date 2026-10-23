@@ -243,7 +243,7 @@ def _readme_commands() -> set[str]:
     for line in section.splitlines():
         # Rows look like:  | `command ARG` | description |
         # The command is the first token inside the first backticked span.
-        row = re.match(r"^\|\s*`([a-z][a-z0-9]*)", line)
+        row = re.match(r"^\|\s*`([a-z][a-z0-9]*(?:-[a-z0-9]+)*)", line)
         if row:
             names.add(row.group(1))
     return names

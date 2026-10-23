@@ -833,6 +833,8 @@ flags.
 | `admitted --op observe --model-id ID --claim CLAIM --value VALUE --context-note NOTE` | Explicitly record one durable local observation |
 | `admitted --op refresh --model-id ID` | Explicit on-demand refresh (stages pending only) |
 | `admitted --op reconcile --model-id ID --claim CLAIM --decision DECISION --basis BASIS` | Explicit claim-scoped reconciliation |
+| `convert MODEL --quantization fp16|int8|int4` | Convert a local model to OpenVINO (default fp16) |
+| `ov-run MODEL PROMPT --backend GPU --limit N` | Run OpenVINO inference on a converted artifact |
 
 `import PATH` copies a local GGUF file into the model store. It reports the
 artifact's **content ID** (the SHA-256 CastleArq computed, which is the file's
