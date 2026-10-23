@@ -94,6 +94,7 @@ from .downloads import (
     DownloadResultStatus,
     Downloader,
 )
+from .conversion import OpenVINOConversionService
 from .models import ArtifactSpec, ArtifactState, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runtimes import (
@@ -3251,6 +3252,22 @@ def _admitted_command(
         return 2
     return _ac.reconcile_command(model_id, {claim: decision}, basis=basis, out=out, err=err)
 
+def convert_command(model, *, precision="fp16", model_store=None, as_json=False) -> int:
+    if model_store is None:
+        resolution = resolve_model_store(None)
+        model_store = ModelStore(resolution.path)
+    service = OpenVINOConversionService(model_store)
+    result = service.convert(model, precision=precision)
+    if as_json:
+        payload = {"message": result.message, "success": result.success}
+        if result.artifact is not None:
+            payload["artifact"] = _json_artifact(result.artifact)
+        return _emit_json_envelope("convert", 0 if result.success else 1, payload)
+    print(result.message)
+    return 0 if result.success else 1
+
+
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -3268,7 +3285,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "train", "chat", "serve", "store", "admitted"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "train", "chat", "serve", "store", "admitted", "convert"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -3492,6 +3509,7 @@ def main() -> int:
         "chat": ("quantization", "filename"),
         "serve": (),
         "store": (),
+        "convert": ("quantization",),
         "admitted": (
             "op",
             "source",
@@ -3526,6 +3544,7 @@ def main() -> int:
         "chat",
         "serve",
         "store",
+        "convert",
     )
     for flag in ("prompt", "quantization", "filename", "label", "limit", "cursor",
                  "backend"):
@@ -3744,6 +3763,13 @@ def main() -> int:
             context_note=args.context_note,
             physical_gguf=args.physical_gguf,
         )
+    elif args.command == "convert":
+        if args.provider is None:
+            parser.error("convert requires a model")
+        precision = args.quantization or "fp16"
+        if precision not in ("fp16", "int8", "int4"):
+            parser.error("invalid precision")
+        return convert_command(args.provider, precision=precision, model_store=model_store, **json_kwargs)
     return 0
 
 

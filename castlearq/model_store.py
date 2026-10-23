@@ -319,6 +319,10 @@ class ModelStore:
             # remains provenance-derived, so existing manifests keep their
             # existing identity and no store has to be migrated.
             "content_id": artifact.content_id,
+            # B126: optional related (auxiliary) files belonging to the same
+            # artifact. Persisted so bundles round-trip. Empty tuple when absent.
+            "files": list(artifact.files),
+            "files_sha256": dict(artifact.file_checksums) if artifact.file_checksums else None,
             # B9.41: `state` and `verified` are deliberately NOT persisted —
             # the local artifact state is derived by `inspect_manifest()` from
             # manifest expectations plus filesystem facts, never read back
@@ -373,6 +377,22 @@ class ModelStore:
                 state = ArtifactState.VERIFIED if digest == artifact.sha256.lower() else ArtifactState.FAILED
                 message = None if state == ArtifactState.VERIFIED else "SHA-256 differs from manifest"
                 return StoredArtifact(artifact, state, safe_manifest, message)
+            if artifact.is_bundle:
+                for aux in artifact.files:
+                    try:
+                        aux_path = self._safe_existing_path(
+                            safe_manifest.parent / self._safe_filename(aux)
+                        )
+                    except (UnsafePathError, ValueError):
+                        return StoredArtifact(artifact, ArtifactState.FAILED, safe_manifest, "Unsafe auxiliary file path")
+                    if aux_path.is_symlink():
+                        raise UnsafePathError("Auxiliary file is a symlink")
+                    if not aux_path.exists():
+                        return StoredArtifact(artifact, ArtifactState.NOT_DOWNLOADED, safe_manifest)
+                    expected = artifact.file_checksums.get(aux)
+                    if expected is not None:
+                        if _sha256(aux_path) != expected.lower():
+                            return StoredArtifact(artifact, ArtifactState.FAILED, safe_manifest, "SHA-256 differs from manifest")
             return StoredArtifact(artifact, ArtifactState.DOWNLOADED, safe_manifest)
         except (OSError, ValueError, KeyError, TypeError, UnsafePathError) as error:
             return StoredArtifact(None, ArtifactState.FAILED, manifest_path, str(error))
@@ -518,6 +538,22 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         not isinstance(revision, str) or not revision.strip()
     ):
         raise ValueError("Invalid manifest revision")
+    files_value = payload.get("files", [])
+    if files_value is None:
+        files_value = []
+    if not isinstance(files_value, list) or not all(isinstance(x, str) and x for x in files_value):
+        raise ValueError("Invalid manifest field: files")
+    files_tuple = tuple(files_value)
+    checksums_value = payload.get("files_sha256")
+    if checksums_value is None:
+        checksums_value = {}
+    if not isinstance(checksums_value, dict) or not all(isinstance(k,str) and k and isinstance(v,str) and v for k,v in checksums_value.items()):
+        raise ValueError("Invalid manifest field: files_sha256")
+    # validate hex
+    for v in checksums_value.values():
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", v):
+            raise ValueError("Invalid manifest field: files_sha256")
+    file_checksums = dict(checksums_value)
     return ArtifactSpec(
         model_id=str(payload["model_id"]),
         source=_optional_str(payload, "source"),
@@ -531,6 +567,8 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         state=state,
         content_id=_optional_str(payload, "content_id"),
         revision=revision,
+        files=files_tuple,
+        file_checksums=file_checksums,
     )
 
 

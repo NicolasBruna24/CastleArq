@@ -15,7 +15,7 @@
 
 """Data structures for model metadata and quantization estimates."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
 @dataclass(frozen=True)
@@ -77,6 +77,16 @@ class ArtifactSpec:
     # promotes `sha256` to a verified claim. Absence is `None`; it is never
     # fabricated and never defaulted to "main".
     revision: str | None = None
+    # B126: optional related (auxiliary) files that belong to the same artifact.
+    files: tuple[str, ...] = ()
+    # B126.4: optional SHA-256 declarations for auxiliary files, keyed by
+    # filename. Additive and optional; absent means no declared checksum.
+    file_checksums: dict[str, str] = field(default_factory=dict)
+
+
+    @property
+    def is_bundle(self) -> bool:
+        return bool(self.files)
 
     @property
     def artifact_id(self) -> str:
