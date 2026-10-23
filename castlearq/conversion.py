@@ -27,7 +27,7 @@ def _sha256(path):
 class OpenVINOConversionService:
     def __init__(self, store, timeout=300.0, run_process=None):
         self.store=store; self.timeout=timeout; self._run=run_process or subprocess.run
-    def convert(self, model, precision="fp16", revision=None, task="text-generation-with-past", destination=None):
+    def convert(self, model, precision="fp16", revision=None, task="text-generation-with-past", destination=None, source_path=None):
         if not model or not str(model).strip():
             return ConversionResult(False,None,None,"Model identifier is required")
         if precision not in VALID_PRECISIONS:
@@ -47,7 +47,8 @@ class OpenVINOConversionService:
             if destination.exists():
                 return ConversionResult(False,None,None,"Destination already exists: "+str(destination))
             destination.mkdir(parents=True, exist_ok=True)
-        argv=[tool,"export","openvino","--model",model,"--weight-format",precision]
+        model_source = str(source_path) if source_path is not None else str(model).strip()
+        argv=[tool,"export","openvino","--model",model_source,"--weight-format",precision]
         # Note: optimum-cli export openvino in the installed version does not
         # support --revision; revision is recorded as requested metadata only.
         if task: argv += ["--task",task]
@@ -99,7 +100,19 @@ class OpenVINOConversionService:
             return ConversionResult(False,None,None,str(e),None,stdout if 'stdout' in locals() else "",stderr if 'stderr' in locals() else "")
 
 
-from dataclasses import dataclass
+    def convert_local(self, source, allowed_root, model_id=None, precision="fp16", revision=None, task="text-generation-with-past", destination=None):
+        try:
+            self.store._safe_local_model_path(source, allowed_root)
+            resolved=Path(source).resolve()
+        except Exception as e:
+            return ConversionResult(False,None,None,"Invalid local model path: "+str(e))
+        if not model_id:
+            model_id=resolved.name
+        try:
+            self.store._safe_model_id(model_id)
+        except Exception as e:
+            return ConversionResult(False,None,None,"Unsafe model identifier: "+str(e))
+        return self.convert(model=model_id, precision=precision, revision=revision, task=task, destination=destination, source_path=resolved)
 
 @dataclass(frozen=True)
 class ImportResult:

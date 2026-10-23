@@ -489,6 +489,20 @@ class ModelStore:
             raise UnsafePathError("Unsafe model identifier")
         return sanitized
 
+    @staticmethod
+    def _safe_local_model_path(value, allowed_root):
+        from pathlib import Path
+        path=Path(value)
+        if not path.exists() or not path.is_dir():
+            raise UnsafePathError("Local model path must be an existing directory")
+        resolved=path.resolve()
+        root=Path(allowed_root).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            raise UnsafePathError("Local model path is outside the allowed root")
+        if any(p.is_symlink() for p in [resolved]+list(resolved.rglob("*"))):
+            raise UnsafePathError("Symlinks are not allowed in the local model path")
     def _safe_filename(self, filename: str) -> str:
         return self._safe_component(filename)
 
