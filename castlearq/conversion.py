@@ -28,11 +28,17 @@ class OpenVINOConversionService:
     def __init__(self, store, timeout=300.0, run_process=None):
         self.store=store; self.timeout=timeout; self._run=run_process or subprocess.run
     def convert(self, model, precision="fp16", revision=None, task="text-generation-with-past", destination=None):
+        if not model or not str(model).strip():
+            return ConversionResult(False,None,None,"Model identifier is required")
         if precision not in VALID_PRECISIONS:
-            return ConversionResult(False,None,None,"Unsupported precision: "+precision)
+            return ConversionResult(False,None,None,"Unsupported precision: "+str(precision)+"; expected one of "+", ".join(VALID_PRECISIONS))
         tool=shutil.which("optimum-cli")
         if tool is None:
             return ConversionResult(False,None,None,"optimum-cli not found; install optimum-intel to enable conversion")
+        if task is not None:
+            if not isinstance(task,str) or not task.strip():
+                return ConversionResult(False,None,None,"Task must be a non-empty string")
+            task=task.strip()
         owned_destination = destination is None
         if owned_destination:
             destination=Path(tempfile.mkdtemp(prefix="ov-export-"))
@@ -54,7 +60,11 @@ class OpenVINOConversionService:
         stdout=proc.stdout or ""; stderr=proc.stderr or ""
         if proc.returncode != 0:
             if owned_destination: shutil.rmtree(destination,ignore_errors=True)
-            return ConversionResult(False,None,None,"optimum-cli failed (exit %d)"%proc.returncode,proc.returncode,stdout,stderr)
+            detail=(stderr or "").strip()
+            message="optimum-cli failed (exit %d)"%proc.returncode
+            if detail:
+                message+=": "+detail.splitlines()[-1]
+            return ConversionResult(False,None,None,message,proc.returncode,stdout,stderr)
         try:
             xmls=list(destination.rglob("*.xml"))
             if not xmls: raise ValueError("No OpenVINO .xml found in output")
