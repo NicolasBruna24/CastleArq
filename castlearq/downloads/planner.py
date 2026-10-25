@@ -102,7 +102,7 @@ class DownloadPlanner:
             f"{destination}.part"
         ).exists()
         if manifest_path.exists():
-            stored = self.model_store.inspect_manifest(manifest_path)
+            stored = self.model_store.inspect_manifest(manifest_path, verify=True)
             if stored.state in {ArtifactState.DOWNLOADED, ArtifactState.VERIFIED}:
                 stored_revision = (
                     stored.artifact.revision if stored.artifact is not None else None

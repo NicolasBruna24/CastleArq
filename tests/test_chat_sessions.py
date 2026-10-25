@@ -1422,7 +1422,7 @@ class ServiceTests(unittest.TestCase):
         resolved = SimpleNamespace(
             model=SimpleNamespace(model_id="logical-id"), artifact=SimpleNamespace())
         prep = SimpleNamespace(
-            executable_artifact=SimpleNamespace(), target=SimpleNamespace(),
+            executable_artifact=SimpleNamespace(artifact=SimpleNamespace(backend="gguf")), target=SimpleNamespace(),
             # B9.88: ExecutionPreparation always carries this field; the stub
             # must mirror the real shape now that it is propagated.
             selection_warnings=(),
@@ -1470,6 +1470,7 @@ class ServiceTests(unittest.TestCase):
                 rs, "prepare"):
             rc.return_value.resolve.return_value = SimpleNamespace(
                 model=SimpleNamespace(model_id="m"), artifact=SimpleNamespace())
+            rs.prepare.return_value = SimpleNamespace(executable_artifact=SimpleNamespace(artifact=SimpleNamespace(backend="gguf")), target=SimpleNamespace(), selection_warnings=())
             with self.assertRaises(ChatLaunchFailedError):
                 rs.open_chat_session("x", dependencies=mk)
 
@@ -1602,7 +1603,7 @@ class ChatSessionOpenedWarningsTests(unittest.TestCase):
         from castlearq import run_service as rs
 
         prep = SimpleNamespace(
-            executable_artifact=SimpleNamespace(),
+            executable_artifact=SimpleNamespace(artifact=SimpleNamespace(backend="gguf")),
             target=SimpleNamespace(),
             selection_warnings=("sel-a", "sel-b"),
         )

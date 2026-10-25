@@ -44,13 +44,14 @@ from castlearq.api import (
     MAX_REQUEST_BODY_BYTES,
     build_server,
     get_version,
+    _artifact_dto,
     list_artifact_dtos,
     list_model_dtos,
     parse_run_request,
 )
 from castlearq.main import main as cli_main
 from castlearq.model_store import ModelStore
-from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
 
 HOST = "127.0.0.1"
 
@@ -269,6 +270,7 @@ class ArtifactEndpointTests(unittest.TestCase):
                 "model_id",
                 "filename",
                 "quantization",
+                "backend",
                 "size_bytes",
                 "state",
                 "artifact_id",
@@ -1031,3 +1033,33 @@ class RunEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BackendDtoContractTests(unittest.TestCase):
+    def _entry(self, artifact=None, state=ArtifactState.NOT_DOWNLOADED, message=None):
+        from castlearq.model_store import StoredArtifact
+        return StoredArtifact(
+            artifact=artifact,
+            state=state,
+            manifest_path=Path("/tmp/x/manifest.json"),
+            message=message,
+        )
+
+    def test_artifact_dto_backend_gguf(self):
+        dto = _artifact_dto(self._entry(artifact(backend="gguf")))
+        self.assertEqual(dto.backend, "gguf")
+        self.assertEqual(dto.to_dict()["backend"], "gguf")
+
+    def test_artifact_dto_backend_openvino(self):
+        dto = _artifact_dto(self._entry(artifact(backend="openvino")))
+        self.assertEqual(dto.backend, "openvino")
+        self.assertEqual(dto.to_dict()["backend"], "openvino")
+
+    def test_artifact_dto_backend_absent(self):
+        dto = _artifact_dto(self._entry(artifact()))
+        self.assertIsNone(dto.backend)
+        self.assertIsNone(dto.to_dict()["backend"])
+
+    def test_artifact_dto_without_artifact_is_none(self):
+        dto = _artifact_dto(self._entry(None, ArtifactState.FAILED, "invalid manifest"))
+        self.assertIsNone(dto.backend)
+        self.assertIsNone(dto.to_dict()["backend"])
