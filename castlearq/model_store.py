@@ -212,12 +212,12 @@ class ModelStore:
     def __init__(self, root: Path | None = None) -> None:
         self.root = (root or default_models_directory()).expanduser()
 
-    def list_artifacts(self) -> list[StoredArtifact]:
+    def list_artifacts(self, *, verify: bool = False) -> list[StoredArtifact]:
         if not self.root.exists():
             return []
         entries: list[StoredArtifact] = []
         for manifest_path in sorted(self.root.glob("*/ */manifest.json".replace(" ", ""))):
-            entries.append(self.inspect_manifest(manifest_path))
+            entries.append(self.inspect_manifest(manifest_path, verify=verify))
         return entries
 
     def save_manifest(self, artifact: ArtifactSpec) -> Path:
@@ -270,7 +270,7 @@ class ModelStore:
         it were complete, so an interrupted import stays recoverable and can
         never be mistaken for a successful one.
         """
-        for stored in self.list_artifacts():
+        for stored in self.list_artifacts(verify=True):
             artifact = stored.artifact
             if artifact is None or artifact.content_id != content_id:
                 continue
@@ -302,6 +302,7 @@ class ModelStore:
             "repository": artifact.repository,
             "filename": artifact.filename,
             "format": artifact.format,
+            "backend": artifact.backend,
             "quantization": artifact.quantization,
             "download_url": artifact.download_url,
             "size_bytes": artifact.size_bytes,
@@ -349,7 +350,7 @@ class ModelStore:
         os.fsync(directory_fd)
         return manifest_path
 
-    def inspect_manifest(self, manifest_path: Path) -> StoredArtifact:
+    def inspect_manifest(self, manifest_path: Path, *, verify: bool = True) -> StoredArtifact:
         try:
             safe_manifest = self._safe_existing_path(manifest_path)
             self._reject_symlink_components(safe_manifest)
@@ -372,12 +373,12 @@ class ModelStore:
                 return StoredArtifact(
                     artifact, ArtifactState.FAILED, safe_manifest, "File size differs from manifest"
                 )
-            if artifact.sha256:
+            if verify and artifact.sha256:
                 digest = _sha256(file_path)
                 state = ArtifactState.VERIFIED if digest == artifact.sha256.lower() else ArtifactState.FAILED
                 message = None if state == ArtifactState.VERIFIED else "SHA-256 differs from manifest"
                 return StoredArtifact(artifact, state, safe_manifest, message)
-            if artifact.is_bundle:
+            if verify and artifact.is_bundle:
                 for aux in artifact.files:
                     try:
                         aux_path = self._safe_existing_path(
@@ -574,6 +575,7 @@ def _artifact_from_payload(payload: dict[str, object]) -> ArtifactSpec:
         repository=_optional_str(payload, "repository"),
         filename=str(payload["filename"]),
         format=str(payload.get("format", "Unknown")),
+        backend=_optional_str(payload, "backend"),
         quantization=str(payload.get("quantization", "Unknown")),
         download_url=payload.get("download_url") if isinstance(payload.get("download_url"), str) else None,
         size_bytes=size,

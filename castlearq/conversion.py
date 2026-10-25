@@ -24,6 +24,19 @@ def _sha256(path):
             h.update(c)
     return h.hexdigest()
 
+
+def _is_under_git_dir(path: Path, source: Path) -> bool:
+    """Return True if ``path`` resides inside a ``.git`` directory relative to ``source``.
+
+    Used to keep Git metadata out of imported OpenVINO bundles without
+    indiscriminately excluding every hidden file.
+    """
+    try:
+        relative = path.relative_to(source)
+    except ValueError:
+        return True
+    return any(part == ".git" for part in relative.parts)
+
 class OpenVINOConversionService:
     def __init__(self, store, timeout=300.0, run_process=None):
         self.store=store; self.timeout=timeout; self._run=run_process or subprocess.run
@@ -89,7 +102,7 @@ class OpenVINOConversionService:
                 target.parent.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(p,target)
             manifest=self.store.save_manifest(spec)
-            inspected=self.store.inspect_manifest(manifest)
+            inspected=self.store.inspect_manifest(manifest, verify=True)
             if inspected.state not in (ArtifactState.DOWNLOADED,ArtifactState.VERIFIED):
                 raise ValueError("Registered artifact failed inspection: "+str(inspected.message))
             if owned_destination:
@@ -129,13 +142,23 @@ class OpenVINOImportService:
         source = Path(source)
         if not source.is_dir():
             return ImportResult(False, None, None, "Source directory not found: " + str(source))
+        managed = None
         try:
-            xmls = [p for p in source.rglob("*") if p.is_file() and p.name == "openvino_model.xml"]
+            xmls = [
+                p for p in source.rglob("*")
+                if p.is_file() and p.name == "openvino_model.xml"
+                and not _is_under_git_dir(p, source)
+            ]
             if len(xmls) != 1:
                 raise ValueError("Expected exactly one openvino_model.xml, found %d" % len(xmls))
             entry_xml = xmls[0]
-            all_files = [p for p in source.rglob("*") if p.is_file()]
+            all_files = [
+                p for p in source.rglob("*")
+                if p.is_file() and not _is_under_git_dir(p, source)
+            ]
             for p in source.rglob("*"):
+                if _is_under_git_dir(p, source):
+                    continue
                 if p.is_symlink():
                     raise UnsafePathError("Symlink not allowed: " + str(p))
                 try:
@@ -160,21 +183,44 @@ class OpenVINOImportService:
                 repository=repository,
                 filename=entry_xml.name,
                 format="OpenVINO IR",
+                backend="openvino",
                 quantization=precision,
                 revision=revision,
                 files=aux_tuple,
                 file_checksums=checksum_map,
             )
             managed = self.store.artifact_directory(spec)
-            managed.mkdir(parents=True, exist_ok=True)
+
+            # Reject if the destination directory already exists, with or
+            # without a manifest, to avoid silent overwrites of preexisting
+            # content. The exclusive mkdir below also guards against a
+            # concurrent import racing for the same destination.
+            if managed.exists():
+                return ImportResult(
+                    False,
+                    None,
+                    None,
+                    f"Artifact directory already exists in the store: {managed}",
+                )
+            try:
+                managed.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                return ImportResult(
+                    False,
+                    None,
+                    None,
+                    f"Artifact directory already exists in the store: {managed}",
+                )
             for p in all_files:
                 target = managed / p.relative_to(source)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(p, target)
             manifest = self.store.save_manifest(spec)
-            inspected = self.store.inspect_manifest(manifest)
+            inspected = self.store.inspect_manifest(manifest, verify=True)
             if inspected.state not in (ArtifactState.DOWNLOADED, ArtifactState.VERIFIED):
                 raise ValueError("Registered artifact failed inspection: " + str(inspected.message))
             return ImportResult(True, spec, manifest, "Import completed")
         except Exception as e:
+            if managed is not None and managed.exists():
+                shutil.rmtree(managed, ignore_errors=True)
             return ImportResult(False, None, None, str(e))

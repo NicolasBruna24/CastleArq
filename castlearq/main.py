@@ -94,7 +94,7 @@ from .downloads import (
     DownloadResultStatus,
     Downloader,
 )
-from .conversion import OpenVINOConversionService
+from .conversion import OpenVINOConversionService, OpenVINOImportService
 from .models import ArtifactSpec, ArtifactState, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
 from .runtimes import (
@@ -984,6 +984,7 @@ def list_command(
                 {
                     "model_id": model_id,
                     "filename": artifact.filename,
+                    "backend": artifact.backend,
                     "quantization": _json_quantization(artifact.quantization),
                     "size_bytes": artifact.size_bytes,
                     "status": entry.state,
@@ -1149,6 +1150,118 @@ def import_command(
     print("  Memory estimate: UNKNOWN")
     for warning in result.warnings:
         print(f"  Warning: {warning}")
+    return 0
+
+
+def import_openvino_command(
+    source: str | None,
+    model_id: str | None,
+    *,
+    precision: str = "INT4",
+    revision: str | None = None,
+    model_store: ModelStore | None = None,
+    as_json: bool = False,
+) -> int:
+    """Import a local OpenVINO IR directory into the managed model store.
+
+    Presentation layer only. Every decision -- source validation, bundle
+    structure, auxiliary checksums, manifest registration -- belongs to
+    ``OpenVINOImportService``. The CLI computes no hash, copies no file and
+    builds no ``ArtifactSpec``.
+
+    Nothing is resolved or executed here: importing makes an artifact
+    available, and the user runs it later through the existing commands.
+    """
+    if not source:
+        usage = (
+            "Usage: python3 -m castlearq.main import-openvino "
+            "<source-dir> <model-id> [--precision PRECISION] [--revision REVISION]"
+        )
+        if as_json:
+            print(usage, file=sys.stderr)
+            return _emit_json_envelope(
+                "import-openvino",
+                2,
+                {},
+                error=json_output.error("usage_error", usage),
+            )
+        print(usage)
+        return 2
+    if not model_id or not model_id.strip():
+        usage = "import-openvino requires a non-empty <model-id>"
+        if as_json:
+            print(usage, file=sys.stderr)
+            return _emit_json_envelope(
+                "import-openvino",
+                2,
+                {},
+                error=json_output.error("usage_error", usage),
+            )
+        print(usage)
+        return 2
+
+    service = OpenVINOImportService(
+        model_store if model_store is not None else ModelStore()
+    )
+    result = service.import_directory(
+        Path(source).expanduser(),
+        model_id,
+        precision=precision,
+        revision=revision,
+    )
+
+    if not result.success:
+        if as_json:
+            return _emit_json_envelope(
+                "import-openvino",
+                1,
+                {},
+                error=json_output.error("import_error", result.message or "unknown failure"),
+            )
+        print("CastleArq - OpenVINO artifact import")
+        print("==========================")
+        print("  Status: FAILED")
+        print(f"  Reason: {result.message or 'unknown failure'}")
+        print("  Nothing was imported; the model store is unchanged.")
+        return 1
+
+    if as_json:
+        artifact = result.artifact
+        return _emit_json_envelope(
+            "import-openvino",
+            0,
+            {
+                "status": "success",
+                "message": result.message,
+                "artifact": {
+                    "model_id": artifact.model_id if artifact else None,
+                    "filename": artifact.filename if artifact else None,
+                    "format": artifact.format if artifact else None,
+                    "backend": artifact.backend if artifact else None,
+                    "quantization": artifact.quantization if artifact else None,
+                    "content_id": artifact.content_id if artifact else None,
+                },
+                "storage": {
+                    "path": str(result.manifest_path.parent) if result.manifest_path else None,
+                    "manifest": str(result.manifest_path) if result.manifest_path else None,
+                },
+            },
+        )
+
+    print("CastleArq - OpenVINO artifact import")
+    print("==========================")
+    print("  Status: SUCCESS")
+    print(f"  Message: {result.message}")
+    artifact = result.artifact
+    if artifact is not None:
+        print(f"  Model ID: {artifact.model_id}")
+        print(f"  Filename: {artifact.filename}")
+        print(f"  Format: {artifact.format}")
+        print(f"  Backend: {artifact.backend}")
+        print(f"  Quantization: {artifact.quantization}")
+        print(f"  Content ID: {artifact.content_id}")
+    if result.manifest_path is not None:
+        print(f"  Manifest: {result.manifest_path}")
     return 0
 
 
@@ -3285,7 +3398,7 @@ def main() -> int:
         version=f"castlearq {get_version()}",
         help="show the installed CastleArq version and exit",
     )
-    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "run", "execute", "train", "chat", "serve", "store", "admitted", "convert"), help="command to execute")
+    parser.add_argument("command", nargs="?", choices=("detect", "diagnose", "verify", "models", "list", "runtime", "source", "search", "inspect", "plan", "compatibility", "validate", "download", "import", "import-openvino", "run", "execute", "train", "chat", "serve", "store", "admitted", "convert", "ov-run"), help="command to execute")
     parser.add_argument(
         "provider",
         nargs="?",
@@ -3339,6 +3452,11 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="interactive persistent mode for ov-run (reads prompts from stdin)",
+    )
+    parser.add_argument(
         "--cursor",
         help=(
             "opaque next_cursor from a previous search, forwarded unchanged; "
@@ -3350,6 +3468,13 @@ def main() -> int:
         help=(
             "presentation/storage label for import; sanitized by the model "
             "store and never used as a logical model identity"
+        ),
+    )
+    parser.add_argument(
+        "--precision",
+        help=(
+            "OpenVINO precision for 'import-openvino' (fp16, int8, int4); "
+            "defaults to INT4"
         ),
     )
     parser.add_argument(
@@ -3496,6 +3621,7 @@ def main() -> int:
         "validate": ("quantization", "filename"),
         "download": ("quantization", "filename"),
         "import": ("label",),
+        "import-openvino": ("precision", "revision"),
         "run": ("prompt", "quantization", "filename"),
         "execute": ("quantization", "filename"),
         "train": (
@@ -3510,6 +3636,7 @@ def main() -> int:
         "serve": (),
         "store": (),
         "convert": ("quantization",),
+        "ov-run": ("backend", "limit"),
         "admitted": (
             "op",
             "source",
@@ -3545,9 +3672,10 @@ def main() -> int:
         "serve",
         "store",
         "convert",
+        "import-openvino",
     )
     for flag in ("prompt", "quantization", "filename", "label", "limit", "cursor",
-                 "backend"):
+                 "backend", "precision"):
         if getattr(args, flag) is not None and flag not in supported_flags[args.command]:
             parser.error(f"--{flag} is not valid for command '{args.command}'")
     for flag in ("host", "port"):
@@ -3700,6 +3828,18 @@ def main() -> int:
             model_store=model_store,
             **json_kwargs,
         )
+    elif args.command == "import-openvino":
+        if args.provider is None or args.repository is None:
+            parser.error("import-openvino requires <source-dir> <model-id>")
+        precision = args.precision or "INT4"
+        return import_openvino_command(
+            args.provider,
+            args.repository,
+            precision=precision,
+            revision=args.revision,
+            model_store=model_store,
+            **json_kwargs,
+        )
     elif args.command == "run":
         if args.repository is not None:
             parser.error("run accepts exactly one model-id")
@@ -3763,6 +3903,46 @@ def main() -> int:
             context_note=args.context_note,
             physical_gguf=args.physical_gguf,
         )
+    elif args.command == "ov-run":
+        if args.provider is None:
+            parser.error("ov-run requires <model-id>")
+        if not args.interactive and args.repository is None:
+            parser.error("ov-run requires <model-id> <prompt>")
+        from pathlib import Path
+        from castlearq.openvino_inference import OpenVINOInferenceService
+        store = model_store if model_store is not None else ModelStore()
+        manifests = list(Path(str(store.root)).glob(f"{args.provider.replace('/', '__')}/*/manifest.json"))
+        if not manifests:
+            print("Artifact not found", file=sys.stderr)
+            return 1
+        if len(manifests) > 1:
+            print("Ambiguous artifact: multiple manifests found for the given model id", file=sys.stderr)
+            return 1
+        svc = OpenVINOInferenceService(store)
+        try:
+            if args.interactive:
+                for line in sys.stdin:
+                    prompt = line.strip()
+                    if not prompt:
+                        continue
+                    if prompt.lower() == "exit":
+                        break
+                    res = svc.generate(manifests[0], prompt, device=(args.backend or "CPU"), max_new_tokens=int(args.limit or 8))
+                    print(res.text)
+                    print(f"requested_backend={res.requested_backend} initialization_status={res.initialization_status} effective_device={res.effective_device}", file=sys.stderr)
+                svc.close()
+                return 0
+            res = svc.generate(manifests[0], args.repository, device=(args.backend or "CPU"), max_new_tokens=int(args.limit or 8))
+        except Exception as e:
+            print(f"OpenVINO error: {e}", file=sys.stderr)
+            try:
+                svc.close()
+            except Exception:
+                pass
+            return 1
+        print(res.text)
+        print(f"requested_backend={res.requested_backend} initialization_status={res.initialization_status} effective_device={res.effective_device}", file=sys.stderr)
+        return 0
     elif args.command == "convert":
         if args.provider is None:
             parser.error("convert requires a model")

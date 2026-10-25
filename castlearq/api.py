@@ -301,6 +301,7 @@ class ArtifactDTO:
     model_id: str | None
     filename: str | None
     quantization: str | None
+    backend: str | None
     size_bytes: int | None
     state: str
     artifact_id: str | None
@@ -311,6 +312,7 @@ class ArtifactDTO:
             "model_id": self.model_id,
             "filename": self.filename,
             "quantization": self.quantization,
+            "backend": self.backend,
             "size_bytes": self.size_bytes,
             "state": self.state,
             "artifact_id": self.artifact_id,
@@ -415,6 +417,7 @@ class ChatSessionRequestDTO:
     model_id: str
     quantization: str | None = None
     filename: str | None = None
+    device: str = "CPU"
 
 
 @dataclass(frozen=True)
@@ -468,7 +471,7 @@ class ChatTurnResponseDTO:
         }
 
 
-_CHAT_SESSION_ALLOWED_FIELDS = frozenset({"model_id", "quantization", "filename"})
+_CHAT_SESSION_ALLOWED_FIELDS = frozenset({"model_id", "quantization", "filename", "device"})
 
 
 def parse_chat_session_request(payload: object) -> ChatSessionRequestDTO:
@@ -491,10 +494,14 @@ def parse_chat_session_request(payload: object) -> ChatSessionRequestDTO:
         not isinstance(filename, str) or not filename.strip()
     ):
         raise ValueError("filename must be a non-empty string when provided")
+    device = payload.get("device", "CPU")
+    if device not in ("CPU", "GPU"):
+        raise ValueError("device must be CPU or GPU")
     return ChatSessionRequestDTO(
         model_id=model_id.strip(),
         quantization=quantization.strip() if quantization is not None else None,
         filename=filename.strip() if filename is not None else None,
+        device=device,
     )
 
 
@@ -877,6 +884,7 @@ def _artifact_dto(entry: StoredArtifact) -> ArtifactDTO:
             model_id=None,
             filename=None,
             quantization=None,
+            backend=None,
             size_bytes=None,
             state=entry.state.value,
             artifact_id=None,
@@ -886,6 +894,7 @@ def _artifact_dto(entry: StoredArtifact) -> ArtifactDTO:
         model_id=artifact.model_id,
         filename=artifact.filename,
         quantization=artifact.quantization,
+        backend=artifact.backend,
         size_bytes=artifact.size_bytes,
         state=entry.state.value,
         artifact_id=artifact.artifact_id,
@@ -1297,6 +1306,7 @@ def _make_handler(
                         # minted and checked. No second evaluation, no second
                         # to_admission, no second capability detection.
                         admission=admission,
+                        device=request.device,
                     )
                 except ModelNotFoundError as error:
                     self._send_json(404, {"error": str(error)})
@@ -1521,6 +1531,10 @@ def _make_handler(
                         self._handle_chat_turn(parts[0])
                         return
                 # POST is only defined for /v1/run, chat session creation and
+                if path == "/v1/openvino/infer":
+                    self._handle_openvino_infer()
+                    return
+
                 # chat turns; everything else keeps Block 1 behaviour (405).
                 self._method_not_allowed()
                 return
@@ -1532,6 +1546,79 @@ def _make_handler(
                     self._send_json(500, {"error": "internal server error"})
                 except OSError:
                     pass
+
+        def _handle_openvino_infer(self) -> None:
+            from pathlib import Path
+            from castlearq.openvino_inference import (
+                OpenVINOInferenceService, MissingDependencyError, InvalidArtifactError,
+                PipelineInitError, GenerationError,
+            )
+            body = self._read_json_body()
+            if body is None:
+                return
+            if not isinstance(body, dict):
+                self._send_json(400, {"error": "request body must be an object"})
+                return
+            model_id = body.get("model_id")
+            prompt = body.get("prompt")
+            device = body.get("device", "CPU")
+            max_tokens = body.get("max_tokens", 512)
+            if not isinstance(model_id, str) or not model_id.strip():
+                self._send_json(400, {"error": "model_id is required"})
+                return
+            if not isinstance(prompt, str) or not prompt.strip():
+                self._send_json(400, {"error": "prompt is required"})
+                return
+            if device not in ("CPU", "GPU"):
+                self._send_json(400, {"error": "device must be CPU or GPU"})
+                return
+            if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0 or max_tokens > 2048:
+                self._send_json(400, {"error": "max_tokens must be a positive integer <= 2048"})
+                return
+            manifest_path = None
+            root = getattr(store, "root", None)
+            if root is not None:
+                for mp in sorted(Path(root).glob("*/ */manifest.json".replace(" ", ""))):
+                    try:
+                        stored = store.inspect_manifest(mp)
+                    except Exception:
+                        continue
+                    art = getattr(stored, "artifact", stored)
+                    if getattr(art, "model_id", None) == model_id:
+                        manifest_path = mp
+                        break
+            if manifest_path is None:
+                self._send_json(404, {"error": "model not found"})
+                return
+            svc = OpenVINOInferenceService(store)
+            try:
+                result = svc.generate(manifest_path, prompt, device=device, max_new_tokens=max_tokens)
+            except MissingDependencyError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+            except InvalidArtifactError as exc:
+                self._send_json(422, {"error": str(exc)})
+                return
+            except PipelineInitError as exc:
+                self._send_json(500, {"error": str(exc)})
+                return
+            except GenerationError as exc:
+                self._send_json(500, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            self._send_json(200, {
+                "text": result.text,
+                "model_id": model_id,
+                "requested_device": device,
+                "device": device,
+                "initialization_status": getattr(result, "initialization_status", "ok"),
+                "effective_device": getattr(result, "effective_device", "unknown"),
+                "finish_reason": getattr(result, "finish_reason", None),
+                "physical_telemetry": getattr(result, "physical_telemetry", None),
+            })
+
 
         def _method_not_allowed(self) -> None:
             self._send_json(

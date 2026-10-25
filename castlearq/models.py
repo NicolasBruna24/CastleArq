@@ -42,6 +42,11 @@ class ArtifactSpec:
     repository: str | None
     filename: str
     format: str = "Unknown"
+    backend: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.backend is not None and self.backend not in {"gguf", "openvino"}:
+            raise ValueError(f"Invalid artifact backend: {self.backend}")
     quantization: str = "Unknown"
     download_url: str | None = None
     size_bytes: int | None = None

@@ -33,6 +33,7 @@ import signal
 import stat
 import subprocess
 import threading
+from pathlib import Path
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -67,6 +68,10 @@ class ChatLaunchError(ChatSessionError):
 
 class ChatProcessError(ChatSessionError):
     """Raised when the runtime process dies or a pipe fails mid-turn."""
+
+
+class ChatSessionConfigError(ChatSessionError):
+    """Raised when a session is configured or used outside its limits."""
 
 
 @dataclass(frozen=True)
@@ -461,3 +466,149 @@ def _validate_selected_inputs(
     if str(path).endswith(".part"):
         raise ChatLaunchError("partial artifacts cannot be executed")
     return None
+
+class OpenVINOChatSession(ChatSession):
+    """Conservative OpenVINO chat session with explicit, per-session history.
+
+    The session owns only its conversation history and turn lock. It does NOT
+    own the underlying OpenVINO pipeline: ``OpenVINOInferenceService`` may
+    cache a pipeline, so closing a session must not release resources that
+    could belong to the service or to another session.
+    """
+
+    def __init__(
+        self,
+        manifest_path,
+        *,
+        device: str = "CPU",
+        service,
+        max_new_tokens: int = 8,
+        max_transcript_chars: int = 4000,
+    ) -> None:
+        if isinstance(max_transcript_chars, bool) or not isinstance(max_transcript_chars, int):
+            raise ChatSessionConfigError(
+                "max_transcript_chars must be a positive integer, got "
+                f"{type(max_transcript_chars).__name__}"
+            )
+        if max_transcript_chars <= 0:
+            raise ChatSessionConfigError(
+                f"max_transcript_chars must be positive, got {max_transcript_chars}"
+            )
+        self._manifest_path = Path(manifest_path)
+        self._device = device
+        self._service = service
+        self._max_new_tokens = max_new_tokens
+        self._max_transcript_chars = max_transcript_chars
+        self._history: list[tuple[str, str]] = []
+        self._lock = threading.Lock()
+        self._closed = False
+        self._closed_lock = threading.Lock()
+        self._closed_cv = threading.Condition(self._closed_lock)
+        # Number of send() calls that have started a generation but have not yet
+        # finished (they hold self._lock). close() waits until this is zero so
+        # an in-flight turn completes before the service is shut down.
+        self._active_sends = 0
+        # Service ownership: this session creates (acquires) the service when it
+        # is supplied from this phase (None means the owner passes one in).
+        self._service_owned = True
+        # Service close is invoked at most once even with concurrent close()
+        # calls (see _close_service).
+        self._service_closed = False
+        self._service_closed_lock = threading.Lock()
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise ChatSessionClosedError("session is closed")
+
+    def send(self, prompt: str) -> ChatTurn:
+        # The session lock serialises turns. Nothing may start a generation after
+        # this session has been closed, so the closed state is checked here,
+        # under the session lock.
+        with self._lock:
+            with self._closed_cv:
+                if self._closed:
+                    raise ChatSessionClosedError("session is closed")
+                self._active_sends += 1
+            try:
+                # The current turn must fit on its own, with its role prefix, before
+                # any older turn is considered for removal.
+                current_transcript = "User: " + prompt + "\nAssistant:"
+                if len(current_transcript) > self._max_transcript_chars:
+                    raise ChatSessionConfigError(
+                        "prompt exceeds max_transcript_chars "
+                        f"({len(current_transcript)} > {self._max_transcript_chars})"
+                    )
+                # Keep the newest history turns until the full transcript (history
+                # plus the current turn, with role prefixes) fits within the limit.
+                # Older turns are dropped from the transcript, while the full
+                # history stays intact on the session.
+                selected = list(self._history)
+                while True:
+                    parts = []
+                    for user_text, assistant_text in selected:
+                        parts.append("User: " + user_text + "\nAssistant: " + assistant_text)
+                    parts.append("User: " + prompt + "\nAssistant:")
+                    full_prompt = "\n".join(parts)
+                    if len(full_prompt) <= self._max_transcript_chars:
+                        break
+                    selected.pop(0)
+                result = self._service.generate(
+                    self._manifest_path,
+                    full_prompt,
+                    device=self._device,
+                    max_new_tokens=self._max_new_tokens,
+                )
+                turn = ChatTurn(user=prompt, assistant=result.text)
+                # Append only after a successful generation, never on failure.
+                self._history.append((prompt, result.text))
+                return turn
+            finally:
+                with self._closed_cv:
+                    self._active_sends -= 1
+                    self._closed_cv.notify_all()
+
+    def _close_service(self) -> None:
+        # Close the exclusive service exactly once. This method is idempotent
+        # with respect to repeated calls on the same session.
+        with self._service_closed_lock:
+            if self._service_closed:
+                return
+            self._service_closed = True
+        # Delegates to the service, which is responsible for its own pipeline
+        # cache and resource release policy. OpenVINO native resource cleanup
+        # is not assumed beyond this reference drop.
+        self._service.close()
+
+    def cancel(self) -> None:
+        # OpenVINO GenAI generation is not cancellable through the current
+        # service API. This is a documented no-op, not a real interruption.
+        return None
+
+    def close(self) -> None:
+        # This method waits for active turns to finish before stopping the
+        # service, so an in-flight send is allowed to complete normally.
+        # The service is closed exactly once (and only by the closing session
+        # that owns it). Concurrent close() calls never double-close the
+        # service or deadlock: the closed state and the service-close flag are
+        # guarded by their own locks and the block below runs at most once per
+        # session.
+        with self._closed_cv:
+            # Wait until there are no active sends (each send holds the session
+            # lock while generating). We are inside the closed condition's lock,
+            # and send() only uses _closed_cv briefly under _lock, so the order
+            # is: _lock (send) -> _closed_cv; _closed_cv (close) -> no reverse
+            # acquisition, hence no lock ordering deadlock.
+            if self._closed:
+                while self._active_sends > 0:
+                    self._closed_cv.wait()
+                return
+            # Mark as closing so no new sends are admitted.
+            self._closed = True
+            while self._active_sends > 0:
+                self._closed_cv.wait()
+            self._close_service()
+            self._closed_cv.notify_all()
+
+    @property
+    def history(self) -> list[tuple[str, str]]:
+        return list(self._history)

@@ -418,6 +418,7 @@ def open_chat_session(
     filename: str | None = None,
     dependencies: ChatDependencies | None = None,
     admission: EvaluationAdmission | None = None,
+    device: str = "CPU",
 ) -> ChatSessionOpened:
     """Resolve, prepare and launch one persistent interactive chat session.
 
@@ -431,6 +432,10 @@ def open_chat_session(
     this path. ``None`` is not authorization; it fails closed.
     """
     from .chat import ChatSessionError, start_chat_session
+    from .openvino_inference import OpenVINOInferenceService
+
+    if not isinstance(device, str) or device not in {"CPU", "GPU"}:
+        raise ValueError("device must be 'CPU' or 'GPU'")
 
     deps = dependencies or ChatDependencies()
     store = deps.model_store if deps.model_store is not None else ModelStore()
@@ -461,17 +466,42 @@ def open_chat_session(
             message, warnings=getattr(error, "warnings", ())
         ) from error
 
-    factory = deps.session_factory or start_chat_session
-    try:
-        session = factory(
-            capability,
-            preparation.executable_artifact,
-            preparation.target,
+    backend = preparation.executable_artifact.artifact.backend
+    if backend == "gguf":
+        factory = deps.session_factory or start_chat_session
+        try:
+            session = factory(
+                capability,
+                preparation.executable_artifact,
+                preparation.target,
+            )
+        except ChatSessionError as error:
+            raise ChatLaunchFailedError(str(error)) from error
+        return ChatSessionOpened(
+            session=session,
+            model_id=resolved.model.model_id,
+            warnings=preparation.selection_warnings,
         )
-    except ChatSessionError as error:
-        raise ChatLaunchFailedError(str(error)) from error
-    return ChatSessionOpened(
-        session=session,
-        model_id=resolved.model.model_id,
-        warnings=preparation.selection_warnings,
+    if backend == "openvino":
+        service = OpenVINOInferenceService(store)
+        try:
+            from .chat import OpenVINOChatSession
+            session = OpenVINOChatSession(
+                preparation.executable_artifact.path.parent / "manifest.json",
+                device=device,
+                service=service,
+            )
+        except Exception as error:
+            try:
+                service.close()
+            except Exception:
+                pass
+            raise ChatLaunchFailedError(str(error)) from error
+        return ChatSessionOpened(
+            session=session,
+            model_id=resolved.model.model_id,
+            warnings=preparation.selection_warnings,
+        )
+    raise RunPreparationFailedError(
+        f"Unsupported or missing backend: {backend!r}"
     )

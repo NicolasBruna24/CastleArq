@@ -447,5 +447,44 @@ class Sha256RecomputationTests(unittest.TestCase):
             self.assertEqual(hashed.call_count, 2)
 
 
+    def test_artifact_backend_gguf_persists_and_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            spec = artifact(backend="gguf")
+            manifest = store.save_manifest(spec)
+            entry = store.inspect_manifest(manifest)
+            self.assertEqual(entry.artifact.backend, "gguf")
+
+    def test_artifact_backend_openvino_persists_and_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            spec = artifact(backend="openvino")
+            manifest = store.save_manifest(spec)
+            entry = store.inspect_manifest(manifest)
+            self.assertEqual(entry.artifact.backend, "openvino")
+
+    def test_historical_manifest_without_backend_reads_none(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ModelStore(Path(directory))
+            spec = artifact()
+            manifest = store.save_manifest(spec)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload.pop("backend", None)
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            entry = store.inspect_manifest(manifest)
+            self.assertIsNone(entry.artifact.backend)
+            payload2 = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertNotIn("backend", payload2)
+
+    def test_artifact_spec_accepts_backends(self):
+        for value in ("gguf", "openvino", None):
+            spec = ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", backend=value)
+            self.assertEqual(spec.backend, value)
+
+    def test_artifact_spec_rejects_invalid_backend(self):
+        with self.assertRaises(ValueError):
+            ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", backend="foo")
+
+
 if __name__ == "__main__":
     unittest.main()
