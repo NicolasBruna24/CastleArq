@@ -340,6 +340,45 @@ class OpenVINOImportDestinationProtectionTests(unittest.TestCase):
         self.assertEqual(files_before, files_after, "El conflicto no debe crear ni modificar archivos")
 
 
+    def test_empty_xml_rejected(self):
+        src = self.root / "src"
+        src.mkdir()
+        (src / "openvino_model.xml").write_text("")
+        (src / "openvino_model.bin").write_bytes(b"x")
+        svc = OpenVINOImportService(self.store)
+        result = svc.import_directory(src, "m")
+        self.assertFalse(result.success)
+        # No artifact directory should have been created in the store
+        # for model_id "m": the concrete path is store_root / "m"
+        m_dir = self.store.root / "m"
+        self.assertFalse(m_dir.is_dir())
+
+    def test_oserror_reading_xml_size_rejected(self):
+        import unittest.mock
+        from pathlib import Path
+
+        src = self.root / "src"
+        src.mkdir()
+        xml_file = src / "openvino_model.xml"
+        xml_file.write_text("<model/>")
+        target_path = xml_file.resolve()
+
+        # Save original Path.stat to delegate for non-target paths
+        original_stat = Path.stat
+
+        def mock_stat_with_check(path_self, follow_symlinks=True):
+            # path_self is the Path instance on which stat() is called
+            # (provided by autospec=True in the patch)
+            if path_self.resolve() == target_path:
+                raise OSError("simulated stat failure")
+            # Delegate to original method for other paths (avoids recursion)
+            return original_stat(path_self, follow_symlinks)
+
+        with unittest.mock.patch("pathlib.Path.stat", side_effect=mock_stat_with_check, autospec=True):
+            svc = OpenVINOImportService(self.store)
+            result = svc.import_directory(src, "m")
+        self.assertFalse(result.success)
+        self.assertIn("Could not read openvino_model.xml size", result.message)
 class OpenVINOImportFailureCleanupTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

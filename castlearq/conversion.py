@@ -152,6 +152,18 @@ class OpenVINOImportService:
             if len(xmls) != 1:
                 raise ValueError("Expected exactly one openvino_model.xml, found %d" % len(xmls))
             entry_xml = xmls[0]
+
+# --- P0.1 Validación de tamaño del .xml ---
+            # Verify the openvino_model.xml file has non-zero size before proceeding.
+            # An empty .xml indicates a corrupted or incomplete model bundle;
+            # this check catches that case early, before any files are copied.
+            try:
+                file_size = entry_xml.stat().st_size
+            except OSError as exc:
+                raise ValueError("Could not read openvino_model.xml size") from exc
+            if file_size == 0:
+                raise ValueError("Empty openvino_model.xml; expected a non-empty model definition file")
+
             all_files = [
                 p for p in source.rglob("*")
                 if p.is_file() and not _is_under_git_dir(p, source)
