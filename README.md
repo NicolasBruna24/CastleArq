@@ -834,6 +834,8 @@ flags.
 | `admitted --op refresh --model-id ID` | Explicit on-demand refresh (stages pending only) |
 | `admitted --op reconcile --model-id ID --claim CLAIM --decision DECISION --basis BASIS` | Explicit claim-scoped reconciliation |
 | `convert MODEL --quantization fp16|int8|int4` | Convert a local model to OpenVINO (default fp16) |
+| `import-openvino <source-dir> <model-id> [--precision PRECISION] [--revision REVISION]` | Import a local OpenVINO IR directory into the managed model store. Validates structure, copies files and registers manifest. Does not run inference. |
+| `ov-run <model-id> <prompt> [--backend BACKEND] [--limit LIMIT]` | Run OpenVINO inference with a prompt. Device backend default: CPU. Tokens limit default: 8. |
 
 `import PATH` copies a local GGUF file into the model store. It reports the
 artifact's **content ID** (the SHA-256 CastleArq computed, which is the file's
