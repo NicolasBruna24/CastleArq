@@ -197,7 +197,7 @@ class _FakeStore:
     def __init__(self, entries):
         self._entries = entries
 
-    def list_artifacts(self):
+    def list_artifacts(self, *, verify: bool = False):
         return self._entries
 
 
