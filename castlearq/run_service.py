@@ -455,18 +455,27 @@ def open_chat_session(
             raise ModelNotFoundError(message) from error
         raise RunPreparationFailedError(message) from error
 
-    try:
-        preparation = prepare(
-            resolved.model, resolved.artifact, capability, store,
-            admission=admission,
-        )
-    except (PreparationError, ExecuteAdmissionDeniedError) as error:
-        message = getattr(error, "message", None) or str(error)
-        raise RunPreparationFailedError(
-            message, warnings=getattr(error, "warnings", ())
-        ) from error
+    if getattr(resolved.artifact, "backend", None) == "openvino":
+        try:
+            from .execution import ArtifactExecutionPreflight
+            executable_artifact = ArtifactExecutionPreflight(store).validate(resolved.artifact)
+        except Exception as error:
+            raise RunPreparationFailedError(str(error)) from error
+        preparation = None
+    else:
+        try:
+            preparation = prepare(
+                resolved.model, resolved.artifact, capability, store,
+                admission=admission,
+            )
+        except (PreparationError, ExecuteAdmissionDeniedError) as error:
+            message = getattr(error, "message", None) or str(error)
+            raise RunPreparationFailedError(
+                message, warnings=getattr(error, "warnings", ())
+            ) from error
+        executable_artifact = preparation.executable_artifact
 
-    backend = preparation.executable_artifact.artifact.backend
+    backend = executable_artifact.artifact.backend
     if backend == "gguf":
         factory = deps.session_factory or start_chat_session
         try:
@@ -480,14 +489,18 @@ def open_chat_session(
         return ChatSessionOpened(
             session=session,
             model_id=resolved.model.model_id,
-            warnings=preparation.selection_warnings,
+            warnings=getattr(preparation, "selection_warnings", ()),
         )
     if backend == "openvino":
         service = OpenVINOInferenceService(store)
         try:
+            model_dir = executable_artifact.path.parent
+            spec = resolved.artifact
+            service._validate_artifact_files(model_dir, spec)
+            service._validate_integrated_tokenizer(model_dir, spec)
             from .chat import OpenVINOChatSession
             session = OpenVINOChatSession(
-                preparation.executable_artifact.path.parent / "manifest.json",
+                executable_artifact.path.parent / "manifest.json",
                 device=device,
                 service=service,
             )
@@ -500,7 +513,7 @@ def open_chat_session(
         return ChatSessionOpened(
             session=session,
             model_id=resolved.model.model_id,
-            warnings=preparation.selection_warnings,
+            warnings=getattr(preparation, "selection_warnings", ()),
         )
     raise RunPreparationFailedError(
         f"Unsupported or missing backend: {backend!r}"

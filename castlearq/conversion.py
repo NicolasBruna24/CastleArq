@@ -189,6 +189,17 @@ class OpenVINOImportService:
                 checksums[rel] = _sha256(p)
             aux_tuple = tuple(sorted(set(aux)))
             checksum_map = {k: checksums[k] for k in aux_tuple}
+            content_hasher = __import__("hashlib").sha256()
+            for _p in sorted(all_files, key=lambda x: x.relative_to(source).as_posix()):
+                _rel = _p.relative_to(source).as_posix()
+                content_hasher.update(_rel.encode('utf-8'))
+                content_hasher.update(b'\0')
+                with _p.open('rb') as _f:
+                    for _c in iter(lambda: _f.read(65536), b''):
+                        content_hasher.update(_c)
+                content_hasher.update(b'\0')
+            content_id = content_hasher.hexdigest()
+
             spec = ArtifactSpec(
                 model_id=model_id,
                 source="openvino-import",
@@ -200,6 +211,7 @@ class OpenVINOImportService:
                 revision=revision,
                 files=aux_tuple,
                 file_checksums=checksum_map,
+                content_id=content_id,
             )
             managed = self.store.artifact_directory(spec)
 
