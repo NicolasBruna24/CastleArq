@@ -120,7 +120,7 @@ class ModelArtifactResolver:
 
         matching = [
             entry
-            for entry in self.model_store.list_artifacts()
+            for entry in self.model_store.list_artifacts(verify=True)
             if entry.artifact is not None
             and entry.artifact.model_id == model.model_id
         ]

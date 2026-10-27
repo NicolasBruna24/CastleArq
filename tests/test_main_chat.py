@@ -143,8 +143,23 @@ def pipeline(tmp_path, monkeypatch):
             pass
 
         def validate(self, artifact):
+            # Crear ArtifactSpec con backend="gguf" para tests GGUF
+            gguf_artifact = ArtifactSpec(
+                model_id=artifact.model_id,
+                source=artifact.source,
+                repository=artifact.repository,
+                filename=artifact.filename,
+                format=artifact.format,
+                backend="gguf",
+                state=artifact.state,
+                quantization=artifact.quantization,
+                download_url=artifact.download_url,
+                size_bytes=artifact.size_bytes,
+                sha256=artifact.sha256,
+                content_id=artifact.content_id,
+            )
             return ExecutableArtifact(
-                artifact=artifact,
+                artifact=gguf_artifact,
                 path=tmp_path / "model.gguf",
                 size_verified=True,
                 checksum_verified=True,

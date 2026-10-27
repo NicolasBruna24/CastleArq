@@ -23,6 +23,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, EvaluationAdmission
 from castlearq.execution import ExecutionRequest, ExecutionTarget
 from castlearq.execution import ExecutionErrorCode, ExecutionErrorInfo, ExecutionResult
 from castlearq.main import (
@@ -104,7 +105,7 @@ class MainRunTests(unittest.TestCase):
         )
         self.resolved = ResolvedModelArtifact(self.model, self.artifact)
         self.preparation = SimpleNamespace(
-            executable_artifact=Mock(),
+            executable_artifact=SimpleNamespace(artifact=SimpleNamespace(backend="gguf")),
             target=ExecutionTarget("llama.cpp CLI", "Vulkan"),
             compatibility_warnings=(),
             selection_warnings=(),
@@ -157,6 +158,12 @@ class MainRunTests(unittest.TestCase):
         from castlearq.run_service import ModelNotFoundError
 
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once", side_effect=ModelNotFoundError("missing")
         ) as boundary:
             error = io.StringIO()
@@ -170,6 +177,12 @@ class MainRunTests(unittest.TestCase):
         from castlearq.run_service import RunPreparationFailedError
 
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once",
             side_effect=RunPreparationFailedError(
                 "Model compatibility does not permit execution",
@@ -190,7 +203,13 @@ class MainRunTests(unittest.TestCase):
         )
         out = io.StringIO()
         error = io.StringIO()
-        with patch("castlearq.main.run_once", return_value=outcome):
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", return_value=outcome):
             with redirect_stdout(out), redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
@@ -208,7 +227,13 @@ class MainRunTests(unittest.TestCase):
         )
         out = io.StringIO()
         error = io.StringIO()
-        with patch("castlearq.main.run_once", return_value=outcome):
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", return_value=outcome):
             with redirect_stdout(out), redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
@@ -223,7 +248,13 @@ class MainRunTests(unittest.TestCase):
         )
         out = io.StringIO()
         error = io.StringIO()
-        with patch("castlearq.main.run_once", return_value=outcome):
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", return_value=outcome):
             with redirect_stdout(out), redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
@@ -235,6 +266,12 @@ class MainRunTests(unittest.TestCase):
 
         error = io.StringIO()
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once",
             side_effect=RunExecutionFailedError("process failed"),
         ), redirect_stderr(error):
@@ -253,6 +290,12 @@ class MainRunTests(unittest.TestCase):
 
         error = io.StringIO()
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once",
             side_effect=RunExecutionFailedError(
                 "process failed", stderr="runtime diagnostic\n"
@@ -269,6 +312,12 @@ class MainRunTests(unittest.TestCase):
 
         error = io.StringIO()
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once",
             side_effect=RunExecutionFailedError("process failed"),
         ), redirect_stderr(error):
@@ -278,7 +327,13 @@ class MainRunTests(unittest.TestCase):
 
     def test_run_model_forwards_quantization_and_filename_to_boundary(self):
         outcome = RunOutcome(self.model.model_id, "ok\n", 0, ())
-        with patch("castlearq.main.run_once", return_value=outcome) as boundary:
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", return_value=outcome) as boundary:
             code = run_model(
                 self.model.model_id,
                 "hello",
@@ -295,7 +350,13 @@ class MainRunTests(unittest.TestCase):
 
     def test_run_delegates_to_application_boundary(self):
         """B9.89: the CLI no longer resolves, prepares or runs the runtime."""
-        with patch("castlearq.main.run_once", return_value=RunOutcome(self.model.model_id, "ok\n", 0, ())):
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", return_value=RunOutcome(self.model.model_id, "ok\n", 0, ())):
             self.assertEqual(run_model(self.model.model_id, "hello"), 0)
 
     def test_admission_is_evaluated_once_and_forwarded_by_identity(self):
@@ -327,7 +388,13 @@ class MainRunTests(unittest.TestCase):
             captured["admission"] = kwargs.get("admission")
             return RunOutcome(self.model.model_id, "ok\n", 0, ())
 
-        with patch("castlearq.main.run_once", side_effect=capture):
+        with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch("castlearq.main.run_once", side_effect=capture):
             code = run_model(self.model.model_id, "hello")
         self.assertEqual(code, 0)
         self.assertIsNotNone(captured["admission"])
@@ -337,12 +404,18 @@ class MainRunTests(unittest.TestCase):
         from castlearq.run_service import RunPreparationFailedError
 
         with patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=Mock(warnings=()),
+        ), patch(
+            "castlearq.main.to_admission",
+            return_value=EvaluationAdmission("ok"),
+        ), patch(
             "castlearq.main.run_once",
             side_effect=RunPreparationFailedError(
                 "denied",
                 warnings=("shared", "unique"),
             ),
-        ):
+        ) as boundary:
             error = io.StringIO()
             with redirect_stderr(error):
                 code = run_model(self.model.model_id, "hello")
@@ -371,7 +444,7 @@ class MainRunTests(unittest.TestCase):
             backend_arguments=(("CPU", "none"),),
         )
         preparation = SimpleNamespace(
-            executable_artifact=Mock(),
+            executable_artifact=SimpleNamespace(artifact=SimpleNamespace(backend="gguf")),
             target=ExecutionTarget("llama.cpp CLI", "CPU"),
             compatibility_warnings=(),
             selection_warnings=(),
@@ -380,6 +453,21 @@ class MainRunTests(unittest.TestCase):
             "castlearq.main.detect_llama_capability", return_value=capability
         ), patch(
             "castlearq.run_service.prepare", return_value=preparation
+        ), patch(
+            "castlearq.main.evaluate_model_compatibility",
+            return_value=EvaluateModelCompatibilityResult(
+                model_id=self.model.model_id,
+                artifact=self.artifact,
+                runtime=None,
+                capability=capability,
+                evaluation=Mock(
+                    result=Mock(status=CompatibilityStatus.COMPATIBLE),
+                ),
+                integration=None,
+                status="evaluated",
+                blocking_outcome=None,
+                imported=False,
+            ),
         ):
             out = io.StringIO()
             err = io.StringIO()

@@ -93,7 +93,7 @@ class LegacyManifestMigrationTests(ManifestMigrationTestsBase):
         artifact_file = migrated_manifest.parent / payload["filename"]
         self.assertEqual(artifact_file.read_bytes(), ARTIFACT_BYTES)
         entry = self.store.list_artifacts()[0]
-        self.assertEqual(entry.state, ArtifactState.VERIFIED)
+        self.assertEqual(entry.state, ArtifactState.DOWNLOADED)
         self.assertEqual(entry.artifact.model_id, QWEN_LOGICAL_ID)
 
     def test_migration_is_idempotent(self):
@@ -148,7 +148,7 @@ class NewSchemaManifestTests(ManifestMigrationTestsBase):
         self.assertNotIn("verified", migrated_payload)
         self.assertEqual(migrated_payload["model_id"], QWEN_LOGICAL_ID)
         entry = self.store.list_artifacts()[0]
-        self.assertEqual(entry.state, ArtifactState.VERIFIED)
+        self.assertEqual(entry.state, ArtifactState.DOWNLOADED)
 
 
 class UnmappedManifestTests(ManifestMigrationTestsBase):

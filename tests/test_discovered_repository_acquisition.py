@@ -225,7 +225,7 @@ class DiscoveredRepositoryAcquisitionTests(_RegistryIsolatedTestCase):
         self.assertEqual(entry.artifact.repository, REPO_A)
         self.assertEqual(entry.artifact.filename, "dis-a-q4_k_m.gguf")
         self.assertEqual(entry.artifact.quantization, "Q4_K_M")
-        self.assertEqual(entry.state.value, "verified")
+        self.assertEqual(entry.state.value, "downloaded")
 
     def test_explicit_quantization_and_filename_select_the_exact_artifact(self):
         variants = (
@@ -363,7 +363,7 @@ class DiscoveredRepositoryAcquisitionTests(_RegistryIsolatedTestCase):
 
         # Listing reports the stored artifact with a derived local state.
         (entry,) = self.store.list_artifacts()
-        self.assertEqual(entry.state.value, "verified")
+        self.assertEqual(entry.state.value, "downloaded")
 
         # Resolution for execution stays fail-closed until the model is
         # explicitly described (the existing admission gate is not weakened).

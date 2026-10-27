@@ -356,25 +356,29 @@ class OpenVINOImportDestinationProtectionTests(unittest.TestCase):
     def test_oserror_reading_xml_size_rejected(self):
         import unittest.mock
         from pathlib import Path
+        import os
 
         src = self.root / "src"
         src.mkdir()
         xml_file = src / "openvino_model.xml"
         xml_file.write_text("<model/>")
-        target_path = xml_file.resolve()
+        (src / "openvino_model.bin").write_bytes(b"x")
 
-        # Save original Path.stat to delegate for non-target paths
+        original_is_file = Path.is_file
         original_stat = Path.stat
 
-        def mock_stat_with_check(path_self, follow_symlinks=True):
-            # path_self is the Path instance on which stat() is called
-            # (provided by autospec=True in the patch)
-            if path_self.resolve() == target_path:
-                raise OSError("simulated stat failure")
-            # Delegate to original method for other paths (avoids recursion)
-            return original_stat(path_self, follow_symlinks)
+        def patched_is_file(path_self):
+            if str(path_self) == str(xml_file):
+                return True
+            return original_is_file(path_self)
 
-        with unittest.mock.patch("pathlib.Path.stat", side_effect=mock_stat_with_check, autospec=True):
+        def patched_stat(path_self, *args, **kwargs):
+            if str(path_self) == str(xml_file):
+                raise OSError("simulated stat failure")
+            return original_stat(path_self, *args, **kwargs)
+
+        with unittest.mock.patch("pathlib.Path.is_file", patched_is_file), \
+             unittest.mock.patch("pathlib.Path.stat", patched_stat):
             svc = OpenVINOImportService(self.store)
             result = svc.import_directory(src, "m")
         self.assertFalse(result.success)

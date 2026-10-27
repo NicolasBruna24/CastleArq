@@ -626,12 +626,19 @@ class ArtifactRegistrationVerticalTests(unittest.TestCase):
         manifest = published.parent / "manifest.json"
         self.assertTrue(manifest.exists())
 
-        # 3. The store discovers exactly one artifact and derives VERIFIED.
+        # 3. The store discovers exactly one artifact and derives VERIFIED when inspected with verification.
         entries = self.store.list_artifacts()
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].artifact.model_id, self.MODEL_ID)
         self.assertEqual(entries[0].artifact.filename, self.FILENAME)
-        self.assertEqual(entries[0].state, ArtifactState.VERIFIED)
+        # First reading: state is DOWNLOADED (verify=False default).
+        self.assertEqual(entries[0].state, ArtifactState.DOWNLOADED)
+        # Second reading with explicit verification: hash is real and matches.
+        verified_entries = [e for e in self.store.list_artifacts(verify=True) if e.artifact.model_id == self.MODEL_ID]
+        self.assertEqual(len(verified_entries), 1)
+        self.assertEqual(verified_entries[0].state, ArtifactState.VERIFIED)
+
+        # 4. The resolver can resolve the freshly downloaded artifact.
 
         # 4. The resolver can resolve the freshly downloaded artifact.
         resolved = ModelArtifactResolver(self.store).resolve(
