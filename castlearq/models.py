@@ -45,8 +45,33 @@ class ArtifactSpec:
     backend: str | None = None
 
     def __post_init__(self) -> None:
-        if self.backend is not None and self.backend not in {"gguf", "openvino"}:
-            raise ValueError(f"Invalid artifact backend: {self.backend}")
+        fmt = (self.format or "").strip()
+        fmt_lower = fmt.lower()
+        backend = self.backend
+
+        # Normalize known formats for matching only (do not rewrite format).
+        gguf_format = fmt_lower == "gguf"
+        openvino_format = fmt_lower in {"openvino ir", "openvino"}
+
+        if backend is None:
+            if gguf_format:
+                derived = "gguf"
+            elif openvino_format:
+                derived = "openvino"
+            else:
+                derived = None
+        else:
+            if backend not in {"gguf", "openvino"}:
+                raise ValueError(f"Invalid artifact backend: {backend}")
+            # Compatibility check
+            if backend == "gguf" and not gguf_format:
+                raise ValueError(f"Backend {backend!r} incompatible with format {self.format!r}")
+            if backend == "openvino" and not openvino_format:
+                raise ValueError(f"Backend {backend!r} incompatible with format {self.format!r}")
+            derived = backend
+
+        # frozen dataclass: use object.__setattr__
+        object.__setattr__(self, "backend", derived)
     quantization: str = "Unknown"
     download_url: str | None = None
     size_bytes: int | None = None

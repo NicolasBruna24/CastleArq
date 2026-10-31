@@ -1050,14 +1050,23 @@ class BackendDtoContractTests(unittest.TestCase):
         self.assertEqual(dto.to_dict()["backend"], "gguf")
 
     def test_artifact_dto_backend_openvino(self):
-        dto = _artifact_dto(self._entry(artifact(backend="openvino")))
+        dto = _artifact_dto(self._entry(artifact(backend="openvino", format="openvino")))
         self.assertEqual(dto.backend, "openvino")
         self.assertEqual(dto.to_dict()["backend"], "openvino")
 
     def test_artifact_dto_backend_absent(self):
-        dto = _artifact_dto(self._entry(artifact()))
+        dto = _artifact_dto(self._entry(artifact(format="Unknown")))
         self.assertIsNone(dto.backend)
         self.assertIsNone(dto.to_dict()["backend"])
+
+    def test_artifact_dto_backend_gguf_derives_from_format(self):
+        dto = _artifact_dto(self._entry(artifact()))
+        self.assertEqual(dto.backend, "gguf")
+        self.assertEqual(dto.to_dict()["backend"], "gguf")
+
+    def test_artifact_dto_backend_openvino_requires_openvino_format(self):
+        with self.assertRaises(ValueError):
+            artifact(backend="openvino", format="GGUF")
 
     def test_artifact_dto_without_artifact_is_none(self):
         dto = _artifact_dto(self._entry(None, ArtifactState.FAILED, "invalid manifest"))
