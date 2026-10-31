@@ -458,7 +458,7 @@ class Sha256RecomputationTests(unittest.TestCase):
     def test_artifact_backend_openvino_persists_and_reads(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
-            spec = artifact(backend="openvino")
+            spec = artifact(backend="openvino", format="openvino")
             manifest = store.save_manifest(spec)
             entry = store.inspect_manifest(manifest)
             self.assertEqual(entry.artifact.backend, "openvino")
@@ -472,14 +472,14 @@ class Sha256RecomputationTests(unittest.TestCase):
             payload.pop("backend", None)
             manifest.write_text(json.dumps(payload), encoding="utf-8")
             entry = store.inspect_manifest(manifest)
-            self.assertIsNone(entry.artifact.backend)
+            self.assertEqual(entry.artifact.backend, "gguf")
             payload2 = json.loads(manifest.read_text(encoding="utf-8"))
             self.assertNotIn("backend", payload2)
 
     def test_artifact_spec_accepts_backends(self):
-        for value in ("gguf", "openvino", None):
-            spec = ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", backend=value)
-            self.assertEqual(spec.backend, value)
+        for backend, fmt, expected in (("gguf", "GGUF", "gguf"), ("openvino", "openvino", "openvino"), (None, "GGUF", "gguf")):
+            spec = ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", format=fmt, backend=backend)
+            self.assertEqual(spec.backend, expected)
 
     def test_artifact_spec_rejects_invalid_backend(self):
         with self.assertRaises(ValueError):
