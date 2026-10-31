@@ -64,7 +64,7 @@ jobs:
     name: verify release artifacts
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     outputs:
       version: ${{ steps.identify.outputs.version }}
       tag: ${{ steps.identify.outputs.tag }}
@@ -143,6 +143,66 @@ jobs:
           fi
           echo "GitHub Release $TAG is published and bound to tag $target."
 
+      - name: Read expected SHA-256 from release manifest
+        if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
+        env:
+          VERSION: ${{ steps.identify.outputs.version }}
+        run: |
+          set -euo pipefail
+          manifest="docs/release/v${VERSION}-manifest.md"
+          if [ ! -f "$manifest" ]; then
+            echo "Release manifest not found: $manifest" >&2
+            exit 1
+          fi
+          echo "Reading expected hashes from $manifest"
+          python3 - "$manifest" "$VERSION" > expected.sha256 <<'PY'
+          import re
+          import sys
+
+          path, version = sys.argv[1], sys.argv[2]
+          text = open(path, encoding="utf-8").read()
+
+          candidate_heading = "### New candidate artifacts (this preparation)"
+          occurrences = text.count(candidate_heading)
+          if occurrences == 0:
+              sys.exit(
+                  f"FAIL: candidate artifacts section not found in {path};"
+                  f" expected heading '{candidate_heading}'"
+              )
+          if occurrences > 1:
+              sys.exit(
+                  f"FAIL: candidate artifacts section is ambiguous in {path};"
+                  f" expected exactly one heading '{candidate_heading}'"
+              )
+          idx = text.find(candidate_heading)
+          section = text[idx:]
+          m = re.search(r"\n#{2,3}\s", section[1:])
+          if m:
+              section = section[: m.start() + 1]
+
+          wheel = f"castlearq-{version}-py3-none-any.whl"
+          sdist = f"castlearq-{version}.tar.gz"
+          for name in (wheel, sdist):
+              pattern = re.compile(
+                  re.escape(name)
+                  + r"[ \t]*\n[ \t]*SHA-256:[ \t]*([0-9a-fA-F]{64})",
+              )
+              matches = pattern.findall(section)
+              if len(matches) == 0:
+                  sys.exit(
+                      f"FAIL: no SHA-256 recorded for {name} in the"
+                      f" candidate section of {path}"
+                  )
+              if len(matches) > 1:
+                  sys.exit(
+                      f"FAIL: multiple SHA-256 values found for {name} in"
+                      f" the candidate section of {path} — ambiguous manifest"
+                  )
+              digest = matches[0].lower()
+              print(f"{digest}  dist/{name}")
+          PY
+          cat expected.sha256
+
       - name: Download the audited artifacts from the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -164,6 +224,42 @@ jobs:
             fi
           done
           ls -l dist
+
+      - name: Verify pinned SHA-256 for v0.6.1 (fail closed)
+        if: ${{ steps.identify.outputs.tag == 'v0.6.1' }}
+        run: |
+          set -euo pipefail
+          expected_wheel="3bc785df311bac91b0781b829acf85ba79ffc95e3352ba227c1358d9537e7bb7"
+          expected_sdist="d7a7710b94ca9e2430cbab01daabb37a8dbb40577857d1eff3ed8254f5ae05f5"
+          for f in dist/castlearq-0.6.1-py3-none-any.whl dist/castlearq-0.6.1.tar.gz; do
+            if [ ! -f "$f" ]; then
+              echo "Missing artifact: $f" >&2
+              exit 1
+            fi
+          done
+          actual_wheel=$(sha256sum dist/castlearq-0.6.1-py3-none-any.whl | cut -d' ' -f1)
+          actual_sdist=$(sha256sum dist/castlearq-0.6.1.tar.gz | cut -d' ' -f1)
+          if [ "$actual_wheel" != "$expected_wheel" ]; then
+            echo "Wheel SHA-256 mismatch" >&2
+            exit 1
+          fi
+          if [ "$actual_sdist" != "$expected_sdist" ]; then
+            echo "Sdist SHA-256 mismatch" >&2
+            exit 1
+          fi
+          echo "Pinned SHA-256 verified for v0.6.1."
+
+      - name: Verify SHA-256 against release manifest (fail closed)
+        if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
+        run: |
+          set -euo pipefail
+          echo "Expected:"; cat expected.sha256
+          echo "Actual:";  (cd dist && sha256sum *.whl *.tar.gz)
+          if ! sha256sum --check expected.sha256 --strict; then
+            echo "SHA-256 MISMATCH — refusing to continue to publication." >&2
+            exit 1
+          fi
+          echo "All artifact hashes match the release manifest."
 
       - name: Generate release-manifest.json and SHA256SUMS
         env:
@@ -221,6 +317,13 @@ jobs:
       # present in the index, the run aborts before any OIDC token is minted.
       # Combined with the tag-keyed concurrency group above, the same artifacts
       # can never be published twice from two triggers.
+      - name: Check out the validated tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+          fetch-depth: 0
+
       - name: Refuse to publish a version that already exists
         env:
           VERSION: ${{ needs.verify.outputs.version }}
