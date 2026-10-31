@@ -64,7 +64,7 @@ jobs:
     name: verify release artifacts
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     outputs:
       version: ${{ steps.identify.outputs.version }}
       tag: ${{ steps.identify.outputs.tag }}
@@ -143,7 +143,8 @@ jobs:
           fi
           echo "GitHub Release $TAG is published and bound to tag $target."
 
-      - name: Read expected SHA-256 from the release manifest
+      - name: Read expected SHA-256 from release manifest
+        if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
         env:
           VERSION: ${{ steps.identify.outputs.version }}
         run: |
@@ -161,20 +162,19 @@ jobs:
           path, version = sys.argv[1], sys.argv[2]
           text = open(path, encoding="utf-8").read()
 
-          # The manifest records two sets of artifact digests for the same
-          # file names: "Original artifacts in `dist/`" (historical) and
-          # "New candidate artifacts (this preparation)" (publication
-          # target).  A naive global search picks the historical hashes
-          # first because that section appears earlier.  This parser
-          # isolates the candidate section and verifies exactly one digest
-          # per artifact, failing closed on any ambiguity.
           candidate_heading = "### New candidate artifacts (this preparation)"
-          idx = text.find(candidate_heading)
-          if idx == -1:
+          occurrences = text.count(candidate_heading)
+          if occurrences == 0:
               sys.exit(
                   f"FAIL: candidate artifacts section not found in {path};"
                   f" expected heading '{candidate_heading}'"
               )
+          if occurrences > 1:
+              sys.exit(
+                  f"FAIL: candidate artifacts section is ambiguous in {path};"
+                  f" expected exactly one heading '{candidate_heading}'"
+              )
+          idx = text.find(candidate_heading)
           section = text[idx:]
           m = re.search(r"\n#{2,3}\s", section[1:])
           if m:
@@ -225,7 +225,32 @@ jobs:
           done
           ls -l dist
 
-      - name: Verify SHA-256 against the manifest (fail closed)
+      - name: Verify pinned SHA-256 for v0.6.1 (fail closed)
+        if: ${{ steps.identify.outputs.tag == 'v0.6.1' }}
+        run: |
+          set -euo pipefail
+          expected_wheel="3bc785df311bac91b0781b829acf85ba79ffc95e3352ba227c1358d9537e7bb7"
+          expected_sdist="d7a7710b94ca9e2430cbab01daabb37a8dbb40577857d1eff3ed8254f5ae05f5"
+          for f in dist/castlearq-0.6.1-py3-none-any.whl dist/castlearq-0.6.1.tar.gz; do
+            if [ ! -f "$f" ]; then
+              echo "Missing artifact: $f" >&2
+              exit 1
+            fi
+          done
+          actual_wheel=$(sha256sum dist/castlearq-0.6.1-py3-none-any.whl | cut -d' ' -f1)
+          actual_sdist=$(sha256sum dist/castlearq-0.6.1.tar.gz | cut -d' ' -f1)
+          if [ "$actual_wheel" != "$expected_wheel" ]; then
+            echo "Wheel SHA-256 mismatch" >&2
+            exit 1
+          fi
+          if [ "$actual_sdist" != "$expected_sdist" ]; then
+            echo "Sdist SHA-256 mismatch" >&2
+            exit 1
+          fi
+          echo "Pinned SHA-256 verified for v0.6.1."
+
+      - name: Verify SHA-256 against release manifest (fail closed)
+        if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
         run: |
           set -euo pipefail
           echo "Expected:"; cat expected.sha256
@@ -236,11 +261,44 @@ jobs:
           fi
           echo "All artifact hashes match the release manifest."
 
+      - name: Generate release-manifest.json and SHA256SUMS
+        env:
+          VERSION: ${{ steps.identify.outputs.version }}
+          TAG: ${{ steps.identify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p manifest
+          python3 scripts/release_manifest.py generate \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --artifacts-dir dist \
+            --manifest-out manifest/release-manifest.json \
+            --sums-out manifest/SHA256SUMS
+
+      - name: Validate release manifests
+        run: |
+          set -euo pipefail
+          python3 scripts/release_manifest.py validate \
+            --manifest manifest/release-manifest.json \
+            --artifacts-dir dist \
+            --sums-path manifest/SHA256SUMS
+          echo "Release manifests are valid."
+
+      - name: Attach manifests to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.identify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" manifest/release-manifest.json manifest/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Hand the verified artifacts to the publish job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-distributions
-          path: dist/
+          path: |
+            dist/
+            manifest/
           if-no-files-found: error
           retention-days: 1
 
@@ -259,6 +317,13 @@ jobs:
       # present in the index, the run aborts before any OIDC token is minted.
       # Combined with the tag-keyed concurrency group above, the same artifacts
       # can never be published twice from two triggers.
+      - name: Check out the validated tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+          fetch-depth: 0
+
       - name: Refuse to publish a version that already exists
         env:
           VERSION: ${{ needs.verify.outputs.version }}
@@ -280,7 +345,16 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: verified-distributions
-          path: dist/
+          path: .
+
+      - name: Verify distributions before publish
+        run: |
+          set -euo pipefail
+          python3 scripts/release_manifest.py validate \
+            --manifest manifest/release-manifest.json \
+            --artifacts-dir dist \
+            --sums-path manifest/SHA256SUMS
+          echo "Distributions verified before publish."
 
       # No credential, token or password is configured anywhere. The OIDC
       # exchange below mints a short-lived PyPI token scoped to this run.
