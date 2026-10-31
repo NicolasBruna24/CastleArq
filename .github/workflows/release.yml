@@ -143,66 +143,6 @@ jobs:
           fi
           echo "GitHub Release $TAG is published and bound to tag $target."
 
-      - name: Read expected SHA-256 from the release manifest
-        env:
-          VERSION: ${{ steps.identify.outputs.version }}
-        run: |
-          set -euo pipefail
-          manifest="docs/release/v${VERSION}-manifest.md"
-          if [ ! -f "$manifest" ]; then
-            echo "Release manifest not found: $manifest" >&2
-            exit 1
-          fi
-          echo "Reading expected hashes from $manifest"
-          python3 - "$manifest" "$VERSION" > expected.sha256 <<'PY'
-          import re
-          import sys
-
-          path, version = sys.argv[1], sys.argv[2]
-          text = open(path, encoding="utf-8").read()
-
-          # The manifest records two sets of artifact digests for the same
-          # file names: "Original artifacts in `dist/`" (historical) and
-          # "New candidate artifacts (this preparation)" (publication
-          # target).  A naive global search picks the historical hashes
-          # first because that section appears earlier.  This parser
-          # isolates the candidate section and verifies exactly one digest
-          # per artifact, failing closed on any ambiguity.
-          candidate_heading = "### New candidate artifacts (this preparation)"
-          idx = text.find(candidate_heading)
-          if idx == -1:
-              sys.exit(
-                  f"FAIL: candidate artifacts section not found in {path};"
-                  f" expected heading '{candidate_heading}'"
-              )
-          section = text[idx:]
-          m = re.search(r"\n#{2,3}\s", section[1:])
-          if m:
-              section = section[: m.start() + 1]
-
-          wheel = f"castlearq-{version}-py3-none-any.whl"
-          sdist = f"castlearq-{version}.tar.gz"
-          for name in (wheel, sdist):
-              pattern = re.compile(
-                  re.escape(name)
-                  + r"[ \t]*\n[ \t]*SHA-256:[ \t]*([0-9a-fA-F]{64})",
-              )
-              matches = pattern.findall(section)
-              if len(matches) == 0:
-                  sys.exit(
-                      f"FAIL: no SHA-256 recorded for {name} in the"
-                      f" candidate section of {path}"
-                  )
-              if len(matches) > 1:
-                  sys.exit(
-                      f"FAIL: multiple SHA-256 values found for {name} in"
-                      f" the candidate section of {path} — ambiguous manifest"
-                  )
-              digest = matches[0].lower()
-              print(f"{digest}  dist/{name}")
-          PY
-          cat expected.sha256
-
       - name: Download the audited artifacts from the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -225,22 +165,44 @@ jobs:
           done
           ls -l dist
 
-      - name: Verify SHA-256 against the manifest (fail closed)
+      - name: Generate release-manifest.json and SHA256SUMS
+        env:
+          VERSION: ${{ steps.identify.outputs.version }}
+          TAG: ${{ steps.identify.outputs.tag }}
         run: |
           set -euo pipefail
-          echo "Expected:"; cat expected.sha256
-          echo "Actual:";  (cd dist && sha256sum *.whl *.tar.gz)
-          if ! sha256sum --check expected.sha256 --strict; then
-            echo "SHA-256 MISMATCH — refusing to continue to publication." >&2
-            exit 1
-          fi
-          echo "All artifact hashes match the release manifest."
+          mkdir -p manifest
+          python3 scripts/release_manifest.py generate \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --artifacts-dir dist \
+            --manifest-out manifest/release-manifest.json \
+            --sums-out manifest/SHA256SUMS
+
+      - name: Validate release manifests
+        run: |
+          set -euo pipefail
+          python3 scripts/release_manifest.py validate \
+            --manifest manifest/release-manifest.json \
+            --artifacts-dir dist \
+            --sums-path manifest/SHA256SUMS
+          echo "Release manifests are valid."
+
+      - name: Attach manifests to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.identify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" manifest/release-manifest.json manifest/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Hand the verified artifacts to the publish job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-distributions
-          path: dist/
+          path: |
+            dist/
+            manifest/
           if-no-files-found: error
           retention-days: 1
 
@@ -280,7 +242,16 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: verified-distributions
-          path: dist/
+          path: .
+
+      - name: Verify distributions before publish
+        run: |
+          set -euo pipefail
+          python3 scripts/release_manifest.py validate \
+            --manifest manifest/release-manifest.json \
+            --artifacts-dir dist \
+            --sums-path manifest/SHA256SUMS
+          echo "Distributions verified before publish."
 
       # No credential, token or password is configured anywhere. The OIDC
       # exchange below mints a short-lived PyPI token scoped to this run.
