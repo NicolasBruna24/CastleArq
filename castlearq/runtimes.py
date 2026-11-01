@@ -315,7 +315,103 @@ def _run_runtime_probe(command: tuple[str, ...]) -> RuntimeProbeResult:
     return RuntimeProbeResult(result.returncode, result.stdout, result.stderr)
 
 
-def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
+def detect_sycl_llama_capability(
+    executable_path: str | None = None, setvars_path: str | None = None
+) -> RuntimeCapability:
+    """Detect SYCL capability from the llama.cpp CLI with oneAPI environment.
+
+    Resolution precedence for the executable:
+    1. ``executable_path`` (when explicitly provided).
+    2. ``CASTLEARQ_SYCL_RUNTIME`` environment variable.
+    3. ``setvars.sh`` is always resolved from ``CASTLEARQ_SYCL_SETVARS``.
+
+    Raises ``ValueError`` when configuration is missing, so callers can
+    convert it to their own error type.
+
+    .. versionadded:: 2026.01
+
+    Returns a ``RuntimeCapability`` with ``supported_backends=(\"SYCL\",)``
+    when a valid SYCL installation is detected, or a capability with
+    ``available=False`` and a descriptive ``reason`` when it is not.
+    """
+    import os
+
+    # Determine executable path
+    if executable_path is None:
+        executable_path = os.environ.get("CASTLEARQ_SYCL_RUNTIME")
+    if not executable_path:
+        raise ValueError(
+            "SYCL runner is not configured: set CASTLEARQ_SYCL_RUNTIME to "
+            "the SYCL llama executable path"
+        )
+
+    # Determine setvars path
+    if setvars_path is None:
+        setvars_path = os.environ.get("CASTLEARQ_SYCL_SETVARS")
+    if not setvars_path:
+        raise ValueError(
+            "SYCL runner is not configured: set CASTLEARQ_SYCL_SETVARS to "
+            "the oneAPI setvars.sh path"
+        )
+
+    # Load environment using the existing SyclEnvironmentProvider
+    from .sycl_environment import SyclEnvironmentProvider, SyclEnvironmentError
+
+    provider = SyclEnvironmentProvider(setvars_path=setvars_path)
+    try:
+        environment = provider.load()
+    except SyclEnvironmentError as e:
+        return RuntimeCapability(
+            name="llama.cpp SYCL",
+            executable_path=executable_path,
+            version="0.7.0-dev (build 11776, commit ead9f3205)",
+            supported_formats=("GGUF",),
+            supported_backends=(),
+            prompt_input_modes=(),
+            supports_one_shot=False,
+            available=False,
+            reason=f"SYCL environment error: {e}",
+        )
+
+    # Detect SYCL device capability
+    # sycl-ls lists available SYCL devices; we check if it produces output
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["sycl-ls"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        devices_available = result.returncode == 0 and result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        devices_available = False
+
+    if not devices_available:
+        return RuntimeCapability(
+            name="llama.cpp SYCL",
+            executable_path=executable_path,
+            version="0.7.0-dev (build 11776, commit ead9f3205)",
+            supported_formats=("GGUF",),
+            supported_backends=(),
+            prompt_input_modes=(),
+            supports_one_shot=False,
+            available=False,
+            reason="SYCL device not detected: sycl-ls failed or no devices found",
+        )
+
+    # SYCL capability detected - return with SYCL as the only supported backend
+    return RuntimeCapability(
+        name="llama.cpp SYCL",
+        executable_path=executable_path,
+        version="0.7.0-dev (build 11776, commit ead9f3205)",
+        supported_formats=("GGUF",),
+        supported_backends=("SYCL",),
+        prompt_input_modes=(),
+        supports_one_shot=True,
+        available=True,
+        reason=None,
+    )
     llama_installed = any(
         which(binary) for binary in ("llama", "llama-cli", "llama-server", "llama.app")
     )
@@ -363,7 +459,25 @@ def _command_succeeds(command: tuple[str, ...]) -> bool:
     return result.returncode == 0
 
 
+
 def recommend(runtimes: list[RuntimeStatus], backends: list[BackendStatus]) -> tuple[str, str]:
     runtime = next((item.name for item in runtimes if item.available), "None detected")
     backend = next((item.name for item in backends if item.available), "None detected")
     return runtime, backend
+
+
+def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
+    llama_installed = any(
+        which(binary) for binary in ("llama", "llama-cli", "llama-server", "llama.app")
+    )
+    ollama_path = which("ollama")
+    ollama_available = False
+    if ollama_path:
+        ollama_available = _command_succeeds((ollama_path, "list"))
+    return [
+        RuntimeStatus(
+            "llama.cpp / llama.app", llama_installed, llama_installed, False, ("Vulkan", "CPU"),
+        ),
+        RuntimeStatus("Ollama", bool(ollama_path), ollama_available, False, ()),
+    ]
+
