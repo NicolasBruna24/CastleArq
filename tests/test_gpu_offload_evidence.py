@@ -41,7 +41,7 @@ INTERMEDIATE = (
 class AssessGpuOffloadTests(unittest.TestCase):
     def test_exact_positive_sample_is_confirmed(self):
         evidence = assess_gpu_offload(
-            "out", f"info\n{FINAL}\nmore", 0, runtime_version=VERSION)
+            "out", f"info\n{FINAL}\nmore", 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.CONFIRMED)
         self.assertEqual(evidence.evidence_category, "final_count")
         self.assertEqual(evidence.offloaded_layers, 23)
@@ -50,34 +50,34 @@ class AssessGpuOffloadTests(unittest.TestCase):
 
     def test_partial_positive_sample_is_confirmed(self):
         evidence = assess_gpu_offload(
-            "", PARTIAL, 0, runtime_version=VERSION)
+            "", PARTIAL, 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.CONFIRMED)
         self.assertEqual(evidence.offloaded_layers, 12)
         self.assertEqual(evidence.total_layers, 23)
 
     def test_no_final_count_is_unknown(self):
         evidence = assess_gpu_offload(
-            "some output", "more output", 0, runtime_version=VERSION)
+            "some output", "more output", 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.UNKNOWN)
         self.assertEqual(evidence.evidence_category, "no_final_count")
         self.assertIsNone(evidence.offloaded_layers)
 
     def test_intermediate_only_is_unknown(self):
         evidence = assess_gpu_offload(
-            "", INTERMEDIATE, 0, runtime_version=VERSION)
+            "", INTERMEDIATE, 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.UNKNOWN)
         self.assertEqual(evidence.evidence_category, "no_final_count")
 
     def test_duplicate_identical_finals_are_confirmed(self):
         evidence = assess_gpu_offload(
-            FINAL, f"x\n{FINAL}\n{FINAL}", 0, runtime_version=VERSION)
+            FINAL, f"x\n{FINAL}\n{FINAL}", 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.CONFIRMED)
         self.assertEqual(evidence.offloaded_layers, 23)
         self.assertEqual(evidence.source_stream, "stderr")
 
     def test_stdout_only_report_records_stdout_stream(self):
         evidence = assess_gpu_offload(
-            f"info\n{FINAL}\nmore", "", 0, runtime_version=VERSION)
+            f"info\n{FINAL}\nmore", "", 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.CONFIRMED)
         self.assertEqual(evidence.source_stream, "stdout")
         self.assertEqual(evidence.offloaded_layers, 23)
@@ -85,7 +85,7 @@ class AssessGpuOffloadTests(unittest.TestCase):
 
     def test_conflicting_finals_are_unknown(self):
         evidence = assess_gpu_offload(
-            FINAL, PARTIAL, 0, runtime_version=VERSION)
+            FINAL, PARTIAL, 0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.UNKNOWN)
         self.assertEqual(evidence.evidence_category,
                          "conflicting_reports")
@@ -104,7 +104,7 @@ class AssessGpuOffloadTests(unittest.TestCase):
     def test_zero_count_stays_unknown(self):
         evidence = assess_gpu_offload(
             "", "load_tensors: offloaded 0/23 layers to GPU",
-            0, runtime_version=VERSION)
+            0, runtime_version=VERSION, backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.UNKNOWN)
         self.assertEqual(evidence.evidence_category, "unvalidated_zero")
         self.assertNotEqual(evidence.status, OffloadStatus.NOT_CONFIRMED)
@@ -128,7 +128,7 @@ class AssessGpuOffloadTests(unittest.TestCase):
 
     def test_version_prefix_is_accepted(self):
         evidence = assess_gpu_offload(
-            "", FINAL, 0, runtime_version=f"version: {VERSION}")
+            "", FINAL, 0, runtime_version=f"version: {VERSION}", backend="CPU")
         self.assertEqual(evidence.status, OffloadStatus.CONFIRMED)
 
     def test_nonzero_exit_is_unknown(self):

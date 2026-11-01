@@ -96,6 +96,7 @@ class LlamaCppRunner(ModelRunner):
         assert executable is not None
         requested_backend = target.requested_backend
         requested_device_argument = target.requested_device_argument
+        effective_backend = target.backend.upper()
         device = self.capability.backend_argument(target.backend)
         assert device is not None
         argv = [
@@ -148,6 +149,7 @@ class LlamaCppRunner(ModelRunner):
                     None,
                     timed_out=True,
                     runtime_version=self.capability.version,
+                    backend=effective_backend,
                 ),
             )
         except FileNotFoundError as error:
@@ -171,6 +173,7 @@ class LlamaCppRunner(ModelRunner):
                     None,
                     launch_failed=True,
                     runtime_version=self.capability.version,
+                    backend=effective_backend,
                 ),
             )
         except PermissionError as error:
@@ -194,6 +197,7 @@ class LlamaCppRunner(ModelRunner):
                     None,
                     launch_failed=True,
                     runtime_version=self.capability.version,
+                    backend=effective_backend,
                 ),
             )
         except OSError as error:
@@ -217,6 +221,7 @@ class LlamaCppRunner(ModelRunner):
                     None,
                     launch_failed=True,
                     runtime_version=self.capability.version,
+                    backend=effective_backend,
                 ),
             )
 
@@ -228,6 +233,7 @@ class LlamaCppRunner(ModelRunner):
             stderr,
             completed.returncode,
             runtime_version=self.capability.version,
+                    backend=effective_backend,
         )
         diagnostics = self._diagnostics(
             started_at,

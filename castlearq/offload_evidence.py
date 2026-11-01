@@ -33,6 +33,14 @@ SUPPORTED_RUNTIME_VERSION = "0.4.0-dev (build 10909, commit a2878d30d)"
 
 SUPPORTED_RUNTIME_VERSIONS = frozenset({SUPPORTED_RUNTIME_VERSION})
 
+
+#: Runtime versions allowed for CPU/Vulkan backend.
+#: Only build 10909 is valid; build 11776 (SYCL) is not admitted.
+SUPPORTED_RUNTIME_VERSIONS_CPU_VULKAN = frozenset({SUPPORTED_RUNTIME_VERSION})
+
+#: Runtime versions allowed for SYCL backend.
+#: Only build 11776 is valid; build 10909 (CPU/Vulkan) is not admitted.
+SUPPORTED_RUNTIME_VERSIONS_SYCL = frozenset({"0.7.0-dev (build 11776, commit ead9f3205)"})
 #: Exact final-report line observed in build 10909 stderr, e.g.
 #: ``load_tensors: offloaded 23/23 layers to GPU``. ASCII digits only.
 _FINAL_COUNT = re.compile(
@@ -82,6 +90,7 @@ class GpuOffloadEvidence:
     total_layers: int | None = None
     source_stream: str | None = None
     runtime_version: str | None = None
+    backend: str | None = None
 
 
 
@@ -100,11 +109,12 @@ def normalize_runtime_version(version: str | None) -> str | None:
 
 
 def _unknown(category: OffloadEvidenceCategory, version: str | None = None,
-             ) -> GpuOffloadEvidence:
+              backend: str | None = None) -> GpuOffloadEvidence:
     return GpuOffloadEvidence(
         status=OffloadStatus.UNKNOWN,
         evidence_category=category.value,
         runtime_version=version,
+        backend=backend,
     )
 
 
@@ -117,6 +127,7 @@ def assess_gpu_offload(
     launch_failed: bool = False,
     not_executed: bool = False,
     runtime_version: str | None = None,
+    backend: str | None = None,
 ) -> GpuOffloadEvidence:
     """Classify runtime-reported layer offload for one inference run.
 
@@ -135,11 +146,28 @@ def assess_gpu_offload(
         return _unknown(OffloadEvidenceCategory.TIMEOUT, runtime_version)
     if not isinstance(exit_code, bool) and exit_code != 0:
         return _unknown(OffloadEvidenceCategory.NONZERO_EXIT,
-                        runtime_version)
-    if normalize_runtime_version(runtime_version) not in (
-            SUPPORTED_RUNTIME_VERSIONS):
+                        runtime_version, backend)
+    # --- Backend-aware version validation ---
+    norm_version = normalize_runtime_version(runtime_version)
+
+    if backend is None:
+        # No backend supplied: fail-closed, no ambiguous admission.
         return _unknown(OffloadEvidenceCategory.UNSUPPORTED_VERSION,
-                        runtime_version)
+                        runtime_version, backend)
+    elif backend in ("CPU", "VULKAN"):
+        allowed = SUPPORTED_RUNTIME_VERSIONS_CPU_VULKAN
+    elif backend == "SYCL":
+        allowed = SUPPORTED_RUNTIME_VERSIONS_SYCL
+    else:
+        # Desconocido -> fail-closed
+        return _unknown(OffloadEvidenceCategory.UNSUPPORTED_VERSION,
+                        runtime_version, backend)
+
+    if norm_version not in allowed:
+        return _unknown(OffloadEvidenceCategory.UNSUPPORTED_VERSION,
+                        runtime_version, backend)
+    # -------------------------------------------
+
     found: list[tuple[int, int, str]] = []
     for text, stream in ((stdout, "stdout"), (stderr, "stderr")):
         if not isinstance(text, str) or not text:
@@ -176,4 +204,5 @@ def assess_gpu_offload(
         total_layers=tot,
         source_stream=source,
         runtime_version=runtime_version,
+        backend=backend,
     )
