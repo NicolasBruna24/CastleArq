@@ -190,9 +190,10 @@ class LocalArtifactImporter:
             quantization="Unknown",
             download_url=None,
             size_bytes=size_bytes,
-            # The integrity declaration is the computed digest: the file must
-            # match the bytes that were imported. See the docstring.
-            sha256=content_id,
+            # The integrity declaration (sha256) is left as None;
+            # it is the caller's responsibility to declare it independently
+            # if they wish to enable inspect_manifest verification.
+            sha256=None,
             state=ArtifactState.DOWNLOADED,
             content_id=content_id,
         )
