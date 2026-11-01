@@ -234,6 +234,7 @@ def prepare(
     model_store: ModelStore,
     *,
     admission: EvaluationAdmission | None = None,
+    requested_backend: str | None = None,
 ) -> ExecutionPreparation:
     """Resolve compatibility, preflight and selection without launching.
 
@@ -277,7 +278,7 @@ def prepare(
 
     try:
         selection = RuntimeBackendSelector().select(
-            compatibility, capability, executable_artifact
+            compatibility, capability, executable_artifact, requested_backend=requested_backend
         )
     except RuntimeSelectionError as error:
         raise PreparationError(
@@ -304,6 +305,7 @@ def run_once(
     timeout_seconds: float | None = None,
     dependencies: RunDependencies | None = None,
     admission: EvaluationAdmission | None = None,
+    requested_backend: str | None = None,
 ) -> RunOutcome:
     """Execute one prompt through the shared pipeline.
 
@@ -337,7 +339,7 @@ def run_once(
     try:
         preparation = prepare(
             resolved.model, resolved.artifact, capability, store,
-            admission=admission,
+            admission=admission, requested_backend=requested_backend,
         )
     except (PreparationError, ExecuteAdmissionDeniedError) as error:
         message = getattr(error, "message", None) or str(error)

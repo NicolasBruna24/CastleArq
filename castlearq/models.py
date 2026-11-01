@@ -49,26 +49,34 @@ class ArtifactSpec:
         fmt_lower = fmt.lower()
         backend = self.backend
 
-        # Normalize known formats for matching only (do not rewrite format).
-        gguf_format = fmt_lower == "gguf"
-        openvino_format = fmt_lower in {"openvino ir", "openvino"}
-
+        # B9.41 + architectural decision: backend is explicit and independent
+        # of format. No automatic inference from format to backend.
+        # Decisions:
+        # - backend=None stays None (no auto-derivation).
+        # - When format is "Unknown" (default/declared absent), any explicit
+        #   backend is accepted (the format does not constrain it).
+        # - When format is known (GGUF, OpenVINO), explicit backend must be
+        #   compatible; incompatible combos raise ValueError.
         if backend is None:
-            if gguf_format:
-                derived = "gguf"
-            elif openvino_format:
-                derived = "openvino"
-            else:
-                derived = None
+            # No auto-normalization: backend stays None.
+            # Previously this auto-derived 'gguf' for GGUF format, which
+            # broke the round-trip contract and the "no implicit inference"
+            # decision. Backend=None means "unspecified".
+            derived = None
         else:
+            # Explicit backend: validate compatibility with format only
+            # when the format is known (not "Unknown").
             if backend not in {"gguf", "openvino"}:
                 raise ValueError(f"Invalid artifact backend: {backend}")
-            # Compatibility check
-            if backend == "gguf" and not gguf_format:
+            # If format is "Unknown", any explicit backend is accepted.
+            if fmt_lower == "unknown":
+                derived = backend
+            elif backend == "gguf" and fmt_lower != "gguf":
                 raise ValueError(f"Backend {backend!r} incompatible with format {self.format!r}")
-            if backend == "openvino" and not openvino_format:
+            elif backend == "openvino" and fmt_lower not in {"openvino ir", "openvino"}:
                 raise ValueError(f"Backend {backend!r} incompatible with format {self.format!r}")
-            derived = backend
+            else:
+                derived = backend
 
         # frozen dataclass: use object.__setattr__
         object.__setattr__(self, "backend", derived)

@@ -58,6 +58,7 @@ class RuntimeBackendSelector:
         executable_artifact: ExecutableArtifact,
         *,
         allow_cpu_fallback: bool = False,
+        requested_backend: str | None = None,
     ) -> RuntimeSelection:
         # B9.78: the legacy INCOMPATIBLE/UNKNOWN verdict is no longer an
         # admission gate. Strict admission already decided whether execution may
@@ -85,7 +86,19 @@ class RuntimeBackendSelector:
                 "Artifact format is not supported by the runtime",
             )
 
-        recommended_backend = compatibility.recommended_backend
+        # If requested_backend is explicitly provided, use it directly
+        # otherwise fall back to the compatibility recommended_backend
+        if requested_backend is not None:
+            if requested_backend in capability.supported_backends:
+                recommended_backend = requested_backend
+            else:
+                raise RuntimeSelectionError(
+                    SelectionErrorCode.BACKEND_UNSUPPORTED,
+                    f"Requested backend '{requested_backend}' is not supported by the runtime",
+                )
+        else:
+            recommended_backend = compatibility.recommended_backend
+        
         if recommended_backend in capability.supported_backends:
             warnings = (
                 ("Compatibility is marginal; execution may be resource constrained.",)

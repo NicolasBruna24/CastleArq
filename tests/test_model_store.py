@@ -458,7 +458,9 @@ class Sha256RecomputationTests(unittest.TestCase):
     def test_artifact_backend_openvino_persists_and_reads(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ModelStore(Path(directory))
-            spec = artifact(backend="openvino")
+            # Use format="Unknown" so that explicit backend="openvino" is accepted
+            # per the architectural decision: backend is independent of format when format is Unknown.
+            spec = ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", format="Unknown", backend="openvino")
             manifest = store.save_manifest(spec)
             entry = store.inspect_manifest(manifest)
             self.assertEqual(entry.artifact.backend, "openvino")
