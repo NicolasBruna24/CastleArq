@@ -1,12 +1,8 @@
-
 # Copyright 2026 Nicolas Bruna
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 # http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,7 +20,7 @@ domain/application layer. The HTTP API (``castlearq.api``) adapts this pipeline
 over HTTP without calling the CLI or ``subprocess``.
 
 Block 3.1 adds :func:`open_chat_session`, the session-opening counterpart
-of :func:`run_once`: same resolver -> ``prepare`` sequence, but the final
+of ``run_once``: same resolver -> ``prepare`` sequence, but the final
 step launches a persistent interactive session via ``castlearq.chat`` instead of
 a one-shot runner. The HTTP layer calls this service; it never touches the
 resolver, preflight, selector, argv or subprocess directly.
@@ -197,6 +193,58 @@ def detect_runtime_statuses(
     ]
 
 
+def _select_runner(
+    capability: RuntimeCapability,
+    target: ExecutionTarget,
+    configured_runner: Any = None,
+) -> Any:
+    """Select and return the appropriate runner for the given execution target.
+
+    Selection logic:
+    - If a runner is explicitly configured, return it (after basic SYCL compatibility check).
+    - For SYCL backend targets, build/return a ``SyclLlamaRunner``.
+    - For CPU/Vulkan backends, return a ``LlamaCppRunner``.
+    - Raise ``RunPreparationFailedError`` for unsupported or mismatched backends.
+
+    Args:
+        capability: The detected ``RuntimeCapability`` providing executable path and version.
+        target: The ``ExecutionTarget`` describing the desired runtime and backend.
+        configured_runner: An optional runner instance to use directly.
+
+    Returns:
+        An instance of ``LlamaCppRunner`` or ``SyclLlamaRunner`` suitable for the target.
+
+    Raises:
+        ``RunPreparationFailedError``: If the backend is unsupported or a mismatched runner is injected.
+    """
+    if configured_runner is not None:
+        # If a runner was injected, validate it matches the target backend
+        backend = getattr(target, "backend", None)
+        if backend == "SYCL":
+            from castlearq.sycl_runner import SyclLlamaRunner as _SyllRunner
+            if not isinstance(configured_runner, _SyllRunner):
+                raise RunPreparationFailedError(
+                    f"Injected runner is not a SyclLlamaRunner; cannot satisfy SYCL target with {type(configured_runner).__name__}"
+                )
+        # For CPU/Vulkan, accept any runner injection (backward compatible)
+        return configured_runner
+
+    # No injected runner: select based on target backend
+    backend = getattr(target, "backend", None)
+    if backend == "SYCL":
+        # Build SyclLlamaRunner using the existing factory function
+        # Provide executable_path from capability if available, otherwise rely on env vars
+        from .sycl_runner import build_sycl_runner as _build_sycl_runner
+        runner = _build_sycl_runner(capability=capability)
+        return runner
+    elif backend in ("CPU", "Vulkan"):
+        return LlamaCppRunner(capability)
+    else:
+        raise RunPreparationFailedError(
+            f"Unsupported backend: {backend!r}. Supported backends are: CPU, Vulkan, SYCL"
+        )
+
+
 def _require_admission(admission: EvaluationAdmission | None) -> None:
     """B9.78 — the mandatory strict admission gate for the run/chat path.
 
@@ -347,11 +395,13 @@ def run_once(
             message, warnings=getattr(error, "warnings", ())
         ) from error
 
-    runner = deps.runner if deps.runner is not None else LlamaCppRunner(capability)
+    # Select the runner based on the preparation target backend
+    target = preparation.target
+    runner = _select_runner(capability, target, deps.runner if deps.runner is not None else None)
     request = ExecutionRequest(
         resolved.artifact,
         prompt,
-        target=preparation.target,
+        target=target,
         timeout_seconds=(
             timeout_seconds
             if timeout_seconds is not None
