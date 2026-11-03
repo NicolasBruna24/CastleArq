@@ -674,8 +674,8 @@ class HttpAdmissionContractTests(unittest.TestCase):
 
         * each of the four symbols §5.5 names must be **imported** by
           ``castlearq/api.py`` from the module that owns it -- ``castlearq.evaluate_compatibility``
-          for the evaluation and admission conversion, ``castlearq.execute_model`` for
-          the use case and its admission type;
+          for the evaluation and admission conversion, ``castlearq.admission`` for
+          the shared admission type, and ``castlearq.execute_model`` for the use case;
         * and none of them may be **defined** in ``castlearq/api.py`` itself.
 
         All four symbols are checked because §5.5 names all four. Where one is
@@ -704,7 +704,7 @@ class HttpAdmissionContractTests(unittest.TestCase):
         owners = {
             "evaluate_model_compatibility": "castlearq.evaluate_compatibility",
             "to_admission": "castlearq.evaluate_compatibility",
-            "EvaluationAdmission": "castlearq.execute_model",
+            "EvaluationAdmission": "castlearq.admission",
             "execute_model": "castlearq.execute_model",
         }
         for symbol, owner in owners.items():

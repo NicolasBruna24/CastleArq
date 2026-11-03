@@ -20,12 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .admission import EvaluationAdmission
 from .application_wiring import compose_and_integrate
 from .compatibility_knowledge import KnowledgeRegistry, KnowledgeScope
 from .compatibility_domain import CheckStatus, CompatibilityStatus
 from .evaluation_composition import compose_evaluation
 from .evaluation_pipeline import StrictEvaluation
-from .execute_model import EvaluationAdmission
 from .gguf_reader import (
     GGUFArchitectureEvidence,
     GGUFReadError,

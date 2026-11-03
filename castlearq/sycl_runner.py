@@ -4,21 +4,26 @@ import os
 import subprocess
 import time
 from datetime import datetime, timezone
-from typing import Any
 
 from .execution import (
-    ExecutionErrorInfo,
-    ExecutionErrorCode,
-    ExecutionResult,
+    ExecutableArtifact,
     ExecutionDiagnostics,
-    InvalidExecutionRequestError,
-    validate_execution_request,
+    ExecutionErrorCode,
+    ExecutionErrorInfo,
+    ExecutionRequest,
+    ExecutionResult,
+    ExecutionTarget,
 )
 from .offload_evidence import assess_gpu_offload
-from .sycl_environment import SyclEnvironmentProvider, SyclEnvironmentError
+from .runner import ExecutionRunner
+from .runtimes import RuntimeCapability
+from .sycl_environment import SyclEnvironmentError, SyclEnvironmentProvider
 
 
-def build_sycl_runner(capability=None, runtime_version=None) -> "SyclLlamaRunner":
+def build_sycl_runner(
+    capability: RuntimeCapability,
+    runtime_version: str | None = None,
+) -> SyclLlamaRunner:
     """Build a ``SyclLlamaRunner`` from a capability and/or environment.
 
     Resolution precedence for the executable:
@@ -30,11 +35,16 @@ def build_sycl_runner(capability=None, runtime_version=None) -> "SyclLlamaRunner
     Raises ``ValueError`` when configuration is missing, so callers can
     convert it to their own error type.
     """
-    import os
+    if (
+        not isinstance(capability, RuntimeCapability)
+        or capability.name != "llama.cpp SYCL"
+        or "SYCL" not in capability.supported_backends
+    ):
+        raise ValueError(
+            "SYCL runner requires a llama.cpp SYCL capability that supports SYCL"
+        )
 
-    executable_path = None
-    if capability is not None:
-        executable_path = getattr(capability, "executable_path", None)
+    executable_path = capability.executable_path
     if not executable_path:
         executable_path = os.environ.get("CASTLEARQ_SYCL_RUNTIME")
     if not executable_path:
@@ -51,10 +61,10 @@ def build_sycl_runner(capability=None, runtime_version=None) -> "SyclLlamaRunner
     # Extract version from capability when provided; takes priority over
     # the explicit runtime_version parameter so that a detected version
     # is never silently overridden.
-    detected_version = getattr(capability, "version", None) if capability else None
+    detected_version = capability.version
     runtime_version_final = (
         detected_version
-        if capability is not None and detected_version is not None
+        if detected_version is not None
         else runtime_version
     )
     kwargs = {
@@ -64,7 +74,7 @@ def build_sycl_runner(capability=None, runtime_version=None) -> "SyclLlamaRunner
     if runtime_version_final is not None:
         kwargs["runtime_version"] = runtime_version_final
     return SyclLlamaRunner(**kwargs)
-class SyclLlamaRunner:
+class SyclLlamaRunner(ExecutionRunner):
 
 
     def __init__(self, executable_path, setvars_path, env_provider=None, run_process=None,
@@ -79,7 +89,12 @@ class SyclLlamaRunner:
         self.runtime_version = runtime_version
         self.timeout_seconds = timeout_seconds
 
-    def run(self, executable_artifact, target=None, request=None):
+    def run(
+        self,
+        executable_artifact: ExecutableArtifact,
+        target: ExecutionTarget | None = None,
+        request: ExecutionRequest | None = None,
+    ) -> ExecutionResult:
         # request may be object with prompt, timeout_seconds
         prompt = getattr(request, "prompt", "") if request is not None else ""
         timeout = getattr(request, "timeout_seconds", None) if request is not None else None

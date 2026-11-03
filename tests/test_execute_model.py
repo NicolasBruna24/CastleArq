@@ -28,6 +28,11 @@ from castlearq.execution import (
     ExecutionTarget,
     PreflightErrorCode,
 )
+from castlearq.execution_preparation import (
+    AdmissionDeniedError,
+    ExecutionPreparation,
+    PreparationFailureError,
+)
 from castlearq.models import ArtifactSpec, ModelSpec
 from castlearq.runner import ModelRunner
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
@@ -372,6 +377,11 @@ class CapabilityTests(unittest.TestCase):
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_public_import_is_the_neutral_admission_definition(self):
+        from castlearq.admission import EvaluationAdmission
+
+        self.assertIs(em.EvaluationAdmission, EvaluationAdmission)
+
     def test_no_admission_denies_by_default(self):
         # B9.78: the B9.19 transitional rule is complete. An absent signal is a
         # denial, never authorization, and no preparation work happens.
@@ -380,6 +390,7 @@ class AdmissionTests(unittest.TestCase):
         # admitting signal for tests that do not care about the gate.
         error = h.run_error(admission=None)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
+        self.assertIsInstance(error.__cause__, AdmissionDeniedError)
         self.assertEqual(len(h.compatibility_calls), 0)
         self.assertEqual(len(h.preflight.calls), 0)
         self.assertEqual(len(h.selector.calls), 0)
@@ -509,6 +520,190 @@ class LegacyCompatibilityGateTests(unittest.TestCase):
         self.assertEqual(h.preflight.calls, [])
 
 
+class SharedPreparationDelegationTests(unittest.TestCase):
+    def test_execute_model_delegates_preparation_and_forwards_injections(self):
+        h = _Harness()
+        preparation = ExecutionPreparation(
+            executable_artifact=h.preflight.executable,
+            target=h.selector.target,
+            compatibility_warnings=("compatibility warning",),
+            selection_warnings=("selection warning",),
+        )
+
+        with mock.patch.object(
+            em, "prepare_execution", return_value=preparation
+        ) as prepare_execution:
+            result = h.run(backend_preference="CPU")
+
+        self.assertTrue(result.success)
+        prepare_execution.assert_called_once()
+        args, kwargs = prepare_execution.call_args
+        self.assertIs(args[0], h.model)
+        self.assertIs(args[1], h.artifact)
+        self.assertIs(args[2], h.capability)
+        self.assertIs(args[3], h.deps.model_store)
+        self.assertEqual(kwargs["admission"].verdict, "compatible")
+        self.assertIsNone(kwargs.get("requested_backend"))
+
+        preparation_dependencies = kwargs["dependencies"]
+        self.assertIs(
+            preparation_dependencies.compatibility_result_provider(
+                h.model, h.capability
+            ),
+            h.compatibility,
+        )
+        self.assertIs(
+            preparation_dependencies.preflight_factory(h.deps.model_store),
+            h.preflight,
+        )
+        self.assertIs(preparation_dependencies.selector_factory(), h.selector)
+        self.assertEqual(h.runner.calls[0][2].target, preparation.target)
+
+    def test_falsey_compatibility_provider_uses_legacy_fallback(self):
+        h = _Harness()
+
+        class FalseyCompatibilityProvider:
+            def __bool__(self):
+                return False
+
+            def __call__(self, model, capability):
+                raise AssertionError("falsey provider must not be invoked")
+
+        h.deps = em.ExecuteModelDependencies(
+            model_store=h.deps.model_store,
+            models=h.deps.models,
+            capability_provider=h.deps.capability_provider,
+            compatibility_provider=FalseyCompatibilityProvider(),
+            preflight_factory=h.deps.preflight_factory,
+            selector=h.deps.selector,
+            runner=h.deps.runner,
+        )
+
+        with mock.patch.object(
+            em, "detect_hardware", return_value=mock.Mock(gpus=[])
+        ):
+            with mock.patch.object(em, "detect_backends", return_value=[]):
+                with mock.patch.object(
+                    em, "assess_model", return_value=h.compatibility
+                ) as assess:
+                    result = h.run()
+
+        self.assertTrue(result.success)
+        assess.assert_called_once()
+
+    def test_preflight_factory_error_is_not_translated(self):
+        h = _Harness()
+        factory_error = ArtifactPreflightError(
+            PreflightErrorCode.MISSING_ARTIFACT, "factory failed"
+        )
+
+        def fail_factory(store):
+            raise factory_error
+
+        h.deps = em.ExecuteModelDependencies(
+            model_store=h.deps.model_store,
+            models=h.deps.models,
+            capability_provider=h.deps.capability_provider,
+            compatibility_provider=h.deps.compatibility_provider,
+            preflight_factory=fail_factory,
+            selector=h.deps.selector,
+            runner=h.deps.runner,
+        )
+
+        error = h.run_error()
+
+        self.assertIs(error, factory_error)
+        self.assertIsNone(error.__cause__)
+        self.assertEqual(h.selector.calls, [])
+        self.assertEqual(h.runner.calls, [])
+
+    def test_selector_factory_error_is_not_translated(self):
+        h = _Harness(deps_overrides={"selector": None})
+        factory_error = RuntimeSelectionError(
+            SelectionErrorCode.BACKEND_UNSUPPORTED, "selector factory failed"
+        )
+
+        with mock.patch.object(
+            em, "RuntimeBackendSelector", side_effect=factory_error
+        ):
+            error = h.run_error()
+
+        self.assertIs(error, factory_error)
+        self.assertIsNone(error.__cause__)
+        self.assertEqual(h.preflight.calls, [h.artifact])
+        self.assertEqual(h.runner.calls, [])
+
+    def test_validate_error_is_translated_and_chained(self):
+        h = _Harness(
+            preflight=_FakePreflight(
+                error=ArtifactPreflightError(
+                    PreflightErrorCode.MISSING_ARTIFACT, "validation failed"
+                )
+            )
+        )
+
+        error = h.run_error()
+
+        self.assertIsInstance(error, em.ExecutePreparationError)
+        self.assertIsInstance(error.__cause__, PreparationFailureError)
+        self.assertIsInstance(error.__cause__.__cause__, ArtifactPreflightError)
+        self.assertEqual(str(error), "validation failed")
+        self.assertEqual(h.selector.calls, [])
+        self.assertEqual(h.runner.calls, [])
+
+    def test_select_error_is_translated_and_chained(self):
+        selection_error = RuntimeSelectionError(
+            SelectionErrorCode.BACKEND_UNSUPPORTED, "selection failed"
+        )
+        h = _Harness(selector=_FakeSelector(error=selection_error))
+
+        error = h.run_error()
+
+        self.assertIsInstance(error, em.ExecutePreparationError)
+        self.assertIsInstance(error.__cause__, PreparationFailureError)
+        self.assertIs(error.__cause__.__cause__, selection_error)
+        self.assertEqual(str(error), "selection failed")
+        self.assertEqual(h.runner.calls, [])
+
+    def test_execute_model_translates_neutral_preparation_failure(self):
+        h = _Harness()
+        neutral_error = PreparationFailureError(
+            "selection failed", compatibility_warnings=("compatibility warning",)
+        )
+        with mock.patch.object(
+            em, "prepare_execution", side_effect=neutral_error
+        ):
+            error = h.run_error()
+
+        self.assertIsInstance(error, em.ExecutePreparationError)
+        self.assertEqual(str(error), "selection failed")
+        self.assertEqual(error.warnings, ("compatibility warning",))
+        self.assertIs(error.__cause__, neutral_error)
+        self.assertEqual(h.runner.calls, [])
+
+    def test_execution_function_has_no_duplicate_preparation_sequence(self):
+        tree = ast.parse(SOURCE)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "execute_model"
+        )
+        names = {
+            node.id
+            for node in ast.walk(function)
+            if isinstance(node, ast.Name)
+        }
+        self.assertIn("prepare_execution", names)
+        for duplicate_step in (
+            "detect_hardware",
+            "detect_backends",
+            "assess_model",
+            "ArtifactExecutionPreflight",
+            "RuntimeBackendSelector",
+        ):
+            self.assertNotIn(duplicate_step, names)
+
+
 class PreflightTests(unittest.TestCase):
     def test_preflight_validates_the_freshly_resolved_artifact(self):
         h = _Harness()
@@ -609,11 +804,16 @@ class RequestAndRunnerTests(unittest.TestCase):
                 self.assertIsInstance(raised, em.ExecutePreparationError)
                 self.assertEqual(h.runner.calls, [])
 
-    def test_missing_runner_is_a_preparation_failure(self):
+    def test_missing_runner_is_constructed_for_selected_target(self):
         h = _Harness(deps_overrides={"runner": None})
-        raised = h.run_error()
-        self.assertIsInstance(raised, em.ExecutePreparationError)
-        self.assertIn("ModelRunner", str(raised))
+        with mock.patch.object(em, "create_runner", return_value=h.runner) as factory:
+            result = h.run()
+        self.assertTrue(result.success)
+        factory.assert_called_once_with(
+            h.capability,
+            h.selector.target,
+            configured_runner=None,
+        )
 
     def test_runner_must_be_a_model_runner(self):
         h = _Harness(deps_overrides={"runner": mock.Mock()})
@@ -859,7 +1059,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_runner_dependency_is_the_abstraction(self):
         field = em.ExecuteModelDependencies.__dataclass_fields__["runner"]
-        self.assertEqual(field.type, "ModelRunner | None")
+        self.assertEqual(field.type, "ExecutionRunner | None")
 
 
 if __name__ == "__main__":

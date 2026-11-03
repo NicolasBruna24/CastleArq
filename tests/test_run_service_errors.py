@@ -18,6 +18,7 @@ from castlearq.execution import (
     ExecutionErrorInfo,
     ExecutionErrorCode,
     ExecutionResult,
+    ExecutionTarget,
 )
 from castlearq.run_service import (
     PreparationError,
@@ -26,6 +27,7 @@ from castlearq.run_service import (
     RunPreparationFailedError,
     run_once,
 )
+from castlearq.runner import ModelRunner
 
 
 def _failed_result(code: ExecutionErrorCode, message: str) -> ExecutionResult:
@@ -36,6 +38,14 @@ def _failed_result(code: ExecutionErrorCode, message: str) -> ExecutionResult:
         stderr="",
         error=ExecutionErrorInfo(code, message),
     )
+
+
+class _ResultRunner(ModelRunner):
+    def __init__(self, result: ExecutionResult) -> None:
+        self.result = result
+
+    def run(self, executable_artifact, target, request):
+        return self.result
 
 
 class RunServiceErrorSemanticsTests(unittest.TestCase):
@@ -56,13 +66,15 @@ class RunServiceErrorSemanticsTests(unittest.TestCase):
             else:
                 prepare_mock.return_value = SimpleNamespace(
                     executable_artifact=object(),
-                    target=object(),
+                    target=ExecutionTarget("llama.cpp CLI", "CPU"),
                     compatibility_warnings=(),
                     selection_warnings=(),
                 )
-            deps = RunDependencies(runner=runner_result and mock.Mock())
-            if runner_result is not None:
-                deps.runner.run.return_value = runner_result
+            deps = RunDependencies(
+                runner=_ResultRunner(runner_result)
+                if runner_result is not None
+                else None
+            )
             with self.assertRaises(BaseException) as ctx:
                 run_once(
                     "m",

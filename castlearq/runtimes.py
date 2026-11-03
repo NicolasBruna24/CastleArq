@@ -382,6 +382,8 @@ def detect_sycl_llama_capability(
             capture_output=True,
             text=True,
             timeout=5,
+            env=environment,
+            check=False,
         )
         devices_available = result.returncode == 0 and result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
@@ -407,25 +409,13 @@ def detect_sycl_llama_capability(
         version="0.7.0-dev (build 11776, commit ead9f3205)",
         supported_formats=("GGUF",),
         supported_backends=("SYCL",),
-        prompt_input_modes=(),
+        prompt_input_modes=(PromptInputMode.ARGUMENT,),
         supports_one_shot=True,
         available=True,
         reason=None,
+        compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
+        backend_arguments=(("SYCL", "SYCL0"),),
     )
-    llama_installed = any(
-        which(binary) for binary in ("llama", "llama-cli", "llama-server", "llama.app")
-    )
-    ollama_path = which("ollama")
-    ollama_available = False
-    if ollama_path:
-        ollama_available = _command_succeeds((ollama_path, "list"))
-    return [
-        RuntimeStatus(
-            "llama.cpp / llama.app", llama_installed, llama_installed, False,
-            ("Vulkan", "CPU"),
-        ),
-        RuntimeStatus("Ollama", bool(ollama_path), ollama_available, False, ()),
-    ]
 
 
 def detect_backends(

@@ -158,7 +158,12 @@ class ImportedExecutionFlowTests(unittest.TestCase):
         capability = self._capability()
         admission = EvaluationAdmission(status="evaluated", verdict="compatible")
 
-        runner = mock.Mock(spec=ModelRunner)
+        class TestRunner(ModelRunner):
+            def run(self, executable_artifact, target, request):
+                raise NotImplementedError
+
+        runner = TestRunner()
+        runner.run = mock.Mock()
         runner.run.return_value = ExecutionResult(
             success=True,
             exit_code=0,
@@ -174,7 +179,9 @@ class ImportedExecutionFlowTests(unittest.TestCase):
 
         selector = mock.Mock()
         selection = mock.Mock()
-        selection.target = ExecutionTarget(runtime="llama.cpp", backend="CPU")
+        selection.target = ExecutionTarget(
+            runtime=capability.name, backend="CPU"
+        )
         selection.warnings = ()
         selector.select.return_value = selection
 
@@ -201,7 +208,8 @@ class ImportedExecutionFlowTests(unittest.TestCase):
         self.assertEqual(len(call_args.args), 3)
         _artifact_arg, target_arg, request_arg = call_args.args
         self.assertEqual(
-            target_arg, ExecutionTarget(runtime="llama.cpp", backend="CPU")
+            target_arg,
+            ExecutionTarget(runtime=capability.name, backend="CPU"),
         )
         self.assertEqual(request_arg.prompt, "Hello, world!")
 

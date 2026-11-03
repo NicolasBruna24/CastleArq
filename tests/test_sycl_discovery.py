@@ -12,132 +12,157 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Discovery tests for the SYCL capability entry point (A2.6.5.4, section 5).
+"""SYCL capability-detection tests with environment and device probes mocked."""
 
-These tests exercise the SYCL discovery integration without running inference
-or subprocess probes: they monkeypatch the probe layer and assert the
-availability states and diagnostics that :func:`castlearq.runtimes
-.detect_sycl_llama_capability` and :func:`discover_sycl_llama_runtime` expose.
-"""
-
+import os
 import unittest
-import castlearq
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.execution import ExecutableArtifact
+from castlearq.models import ArtifactSpec, ModelSpec
+from castlearq.runner_factory import create_runner
 from castlearq.runtimes import (
-    LlamaRuntimeIdentity,
     PromptInputMode,
-    RuntimeAvailability,
     RuntimeCapability,
-    ResolvedLlamaRuntime,
     detect_llama_capability,
     detect_sycl_llama_capability,
 )
-
-DISCOVER = "castlearq.runtimes.discover_sycl_llama_runtime"
-
-
-SYCL_CAPABILITY = RuntimeCapability(
-    name="llama.cpp SYCL",
-    executable_path="/opt/llama-sycl",
-    version="0.4.0-dev",
-    supported_formats=("GGUF",),
-    supported_backends=("SYCL",),
-    prompt_input_modes=(PromptInputMode.ARGUMENT,),
-    supports_one_shot=True,
-    available=True,
-    reason=None,
-    compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
-    backend_arguments=(("SYCL", "SYCL0"),),
-)
-
-
-def _available_sycl_resolved() -> ResolvedLlamaRuntime:
-    identity = LlamaRuntimeIdentity(
-        "llama.cpp",
-        "/opt/llama-sycl",
-        "llama-sycl",
-        "0.4.0-dev",
-        "12345",
-        RuntimeAvailability.AVAILABLE,
-        None,
-    )
-    return ResolvedLlamaRuntime(identity, SYCL_CAPABILITY)
+from castlearq.selection import RuntimeBackendSelector
+from castlearq.sycl_environment import SyclEnvironmentError, SyclEnvironmentProvider
+from castlearq.sycl_runner import SyclLlamaRunner
 
 
 class SyclDiscoveryTests(unittest.TestCase):
-        def test_sycl_disponible(self):
-            with patch(
-                "castlearq.runtimes.discover_sycl_llama_runtime",
-                return_value=_available_sycl_resolved(),
-            ):
-                capability = detect_sycl_llama_capability()
-            self.assertTrue(capability.available)
-            self.assertEqual(capability.name, "llama.cpp SYCL")
-            self.assertEqual(capability.executable_path, "/opt/llama-sycl")
-            self.assertEqual(capability.supported_formats, ("GGUF",))
-            self.assertEqual(capability.supported_backends, ("SYCL",))
-            self.assertEqual(capability.backend_arguments, (("SYCL", "SYCL0"),))
-            self.assertTrue(capability.supports_runtime_name("llama.cpp / llama.app"))
-            self.assertTrue(capability.supports_runtime_name("llama.cpp"))
-            self.assertIsNone(capability.reason)
+    def setUp(self):
+        self.environment = {
+            "PATH": "/oneapi/bin",
+            "LD_LIBRARY_PATH": "/oneapi/lib",
+            "ONEAPI_ROOT": "/oneapi",
+        }
 
-        def test_sycl_no_configurado(self):
-            with patch(
-                "castlearq.runtimes.discover_sycl_llama_runtime",
-                return_value=ResolvedLlamaRuntime(
-                    LlamaRuntimeIdentity(
-                        "llama.cpp", None, None, None, None,
-                        RuntimeAvailability.NOT_FOUND,
-                        "SYCL runtime path is not configured",
-                    ),
-                    None,
-                ),
-            ):
-                capability = detect_sycl_llama_capability()
-            self.assertFalse(capability.available)
-            self.assertIsNone(capability.executable_path)
-            self.assertEqual(capability.supported_backends, ())
-            self.assertIn("not configured", capability.reason)
+    def test_sycl_disponible(self):
+        with patch.object(
+            SyclEnvironmentProvider, "load", return_value=self.environment
+        ), patch(
+            "castlearq.runtimes.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout="SYCL device"),
+        ) as probe:
+            capability = detect_sycl_llama_capability(
+                "/opt/llama-sycl", "/oneapi/setvars.sh"
+            )
+        self.assertTrue(capability.invocable)
+        self.assertEqual(capability.supported_backends, ("SYCL",))
+        self.assertEqual(
+            capability.prompt_input_modes, (PromptInputMode.ARGUMENT,)
+        )
+        self.assertTrue(
+            capability.supports_runtime_name("llama.cpp / llama.app")
+        )
+        self.assertEqual(capability.backend_argument("SYCL"), "SYCL0")
+        probe.assert_called_once_with(
+            ["sycl-ls"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=self.environment,
+            check=False,
+        )
+        compatibility = CompatibilityResult(
+            model=ModelSpec(
+                name="SYCL model",
+                supported_runtimes=("llama.cpp / llama.app",),
+                supported_backends=("SYCL",),
+            ),
+            status=CompatibilityStatus.COMPATIBLE,
+            score=100,
+            reasons=(),
+            warnings=(),
+            estimated_memory_bytes=None,
+            memory_is_estimate=False,
+            recommended_quantization=None,
+            recommended_runtime="llama.cpp / llama.app",
+            recommended_backend="SYCL",
+        )
+        artifact = ArtifactSpec(
+            model_id="sycl-model",
+            source="test",
+            repository="test/repo",
+            filename="model.gguf",
+            format="GGUF",
+        )
+        executable = ExecutableArtifact(
+            artifact=artifact,
+            path="/models/model.gguf",
+            size_verified=False,
+            checksum_verified=False,
+        )
+        target = RuntimeBackendSelector().select(
+            compatibility, capability, executable
+        ).target
+        runner = SyclLlamaRunner(
+            "/opt/llama-sycl", "/oneapi/setvars.sh"
+        )
+        self.assertEqual(target.backend, "SYCL")
+        self.assertIs(
+            create_runner(capability, target, configured_runner=runner),
+            runner,
+        )
 
-        def test_runtime_no_disponible(self):
-            with patch(
-                "castlearq.runtimes.discover_sycl_llama_runtime",
-                return_value=ResolvedLlamaRuntime(
-                    LlamaRuntimeIdentity(
-                        "llama.cpp", "/opt/llama-sycl", "llama-sycl", None, None,
-                        RuntimeAvailability.NOT_FOUND, "SYCL runtime does not exist",
-                    ),
-                    None,
-                ),
-            ):
-                result = castlearq.runtimes.discover_sycl_llama_runtime(executable_path="/opt/llama-sycl")
-            self.assertEqual(result.identity.availability, RuntimeAvailability.NOT_FOUND)
-            self.assertIsNone(result.capability)
+    def test_sycl_no_configurado(self):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(
+            ValueError, "CASTLEARQ_SYCL_RUNTIME"
+        ):
+            detect_sycl_llama_capability()
 
-        def test_sycl0_ausente(self):
-            with patch(
-                "castlearq.runtimes.discover_sycl_llama_runtime",
-                return_value=ResolvedLlamaRuntime(
-                    LlamaRuntimeIdentity(
-                        "llama.cpp", "/opt/llama-sycl", "llama-sycl", None, None,
-                        RuntimeAvailability.FOUND_UNUSABLE,
-                        "SYCL0 device is not available",
-                    ),
-                    None,
-                ),
-            ):
-                result = castlearq.runtimes.discover_sycl_llama_runtime(executable_path="/opt/llama-sycl")
-            self.assertEqual(result.identity.availability, RuntimeAvailability.FOUND_UNUSABLE)
-            self.assertIsNone(result.capability)
-            self.assertIn("SYCL0 device is not available", result.identity.reason)
+    def test_runtime_environment_unavailable(self):
+        with patch.object(
+            SyclEnvironmentProvider,
+            "load",
+            side_effect=SyclEnvironmentError("setvars.sh is missing"),
+        ):
+            capability = detect_sycl_llama_capability(
+                "/opt/llama-sycl", "/oneapi/setvars.sh"
+            )
+        self.assertFalse(capability.invocable)
+        self.assertEqual(capability.supported_backends, ())
+        self.assertIn("setvars.sh is missing", capability.reason)
 
-        def test_cpu_vulkan_preserved(self):
-            # The SYCL entry point must not disturb CPU/Vulkan discovery.
-            capability = detect_llama_capability()
-            self.assertEqual(capability.name, "llama.cpp CLI")
-            self.assertIn("CPU", capability.supported_backends)
-            self.assertIn("Vulkan", capability.supported_backends)
+    def test_sycl0_ausente(self):
+        with patch.object(
+            SyclEnvironmentProvider, "load", return_value=self.environment
+        ), patch(
+            "castlearq.runtimes.subprocess.run",
+            return_value=SimpleNamespace(returncode=1, stdout=""),
+        ):
+            capability = detect_sycl_llama_capability(
+                "/opt/llama-sycl", "/oneapi/setvars.sh"
+            )
+        self.assertFalse(capability.invocable)
+        self.assertEqual(capability.supported_backends, ())
+        self.assertIn("SYCL device not detected", capability.reason)
+
+    def test_cpu_vulkan_capability_is_unchanged(self):
+        capability = RuntimeCapability(
+            name="llama.cpp CLI",
+            executable_path="/opt/llama",
+            version="test",
+            supported_formats=("GGUF",),
+            supported_backends=("CPU", "Vulkan"),
+            prompt_input_modes=(PromptInputMode.ARGUMENT,),
+            supports_one_shot=True,
+            available=True,
+            compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
+            backend_arguments=(("CPU", "none"), ("Vulkan", "Vulkan0")),
+        )
+        with patch(
+            "castlearq.runtimes._detect_llama_capability",
+            return_value=capability,
+        ):
+            detected = detect_llama_capability(which=lambda _: "/opt/llama")
+        self.assertIs(detected, capability)
+        self.assertEqual(detected.supported_backends, ("CPU", "Vulkan"))
 
 
 if __name__ == "__main__":

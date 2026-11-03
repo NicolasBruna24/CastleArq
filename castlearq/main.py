@@ -130,6 +130,7 @@ from .catalog_query_service import (
     CatalogQueryErrorCategory,
 )
 from .discovery import DiscoveryError, ModelDiscovery
+from .admission import EvaluationAdmission
 from .execute_model import (
     ExecuteAdmissionDeniedError,
     ExecutePreparationError,

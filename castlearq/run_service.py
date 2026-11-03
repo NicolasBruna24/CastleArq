@@ -31,23 +31,43 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .compatibility import CompatibilityConfig, assess_model
+from .admission import EvaluationAdmission
+from .compatibility import (
+    CompatibilityConfig,
+    CompatibilityResult,
+    assess_model,
+)
+from .execute_model import ExecuteAdmissionDeniedError
 from .execution import (
     ArtifactExecutionPreflight,
     ArtifactPreflightError,
+    ExecutableArtifact,
     ExecutionErrorCode,
     ExecutionRequest,
-    ExecutableArtifact,
     ExecutionTarget,
 )
-from .execute_model import EvaluationAdmission, ExecuteAdmissionDeniedError
-from .hardware import detect_hardware
+from .execution_preparation import (
+    AdmissionDeniedError,
+    ExecutionPreparation,
+    ExecutionPreparationDependencies,
+    PreparationFailureError,
+    detect_runtime_statuses,
+    prepare_execution,
+    require_evaluation_admission,
+)
+from .hardware import HardwareSnapshot, detect_hardware
 from .model_catalog import get_catalog
 from .model_store import ModelStore
 from .models import ArtifactSpec, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
-from .runner import LlamaCppRunner
+from .runner import ExecutionRunnerLike, LlamaCppRunner
+from .runner_factory import (
+    RunnerFactoryDependencies,
+    RunnerFactoryError,
+    create_runner,
+)
 from .runtimes import (
+    BackendStatus,
     RuntimeCapability,
     RuntimeStatus,
     detect_backends,
@@ -69,20 +89,6 @@ __all__ = [
     "prepare",
     "run_once",
 ]
-
-
-@dataclass(frozen=True)
-class ExecutionPreparation:
-    """Inputs shared by one-shot run and interactive chat.
-
-    Minimal and immutable: only what both execution paths need AFTER
-    resolution but BEFORE any runtime process is launched.
-    """
-
-    executable_artifact: ExecutableArtifact
-    target: ExecutionTarget
-    compatibility_warnings: tuple[str, ...]
-    selection_warnings: tuple[str, ...]
 
 
 class PreparationError(Exception):
@@ -161,7 +167,7 @@ class RunDependencies:
     model_store: ModelStore | None = None
     models: tuple[ModelSpec, ...] | None = None
     capability: RuntimeCapability | None = None
-    runner: LlamaCppRunner | None = None
+    runner: ExecutionRunnerLike | None = None
 
 
 @dataclass(frozen=True)
@@ -178,71 +184,25 @@ class RunOutcome:
     stderr: str = ""
 
 
-def detect_runtime_statuses(
-    capability: RuntimeCapability,
-) -> list[RuntimeStatus]:
-    """Build the runtime list that both run and chat construct inline."""
-    return [
-        RuntimeStatus(
-            "llama.cpp / llama.app",
-            installed=capability.executable_path is not None,
-            available=capability.available,
-            gpu_backend_detected=False,
-            supported_backends=capability.supported_backends,
-        )
-    ]
-
-
 def _select_runner(
     capability: RuntimeCapability,
     target: ExecutionTarget,
-    configured_runner: Any = None,
-) -> Any:
-    """Select and return the appropriate runner for the given execution target.
-
-    Selection logic:
-    - If a runner is explicitly configured, return it (after basic SYCL compatibility check).
-    - For SYCL backend targets, build/return a ``SyclLlamaRunner``.
-    - For CPU/Vulkan backends, return a ``LlamaCppRunner``.
-    - Raise ``RunPreparationFailedError`` for unsupported or mismatched backends.
-
-    Args:
-        capability: The detected ``RuntimeCapability`` providing executable path and version.
-        target: The ``ExecutionTarget`` describing the desired runtime and backend.
-        configured_runner: An optional runner instance to use directly.
-
-    Returns:
-        An instance of ``LlamaCppRunner`` or ``SyclLlamaRunner`` suitable for the target.
-
-    Raises:
-        ``RunPreparationFailedError``: If the backend is unsupported or a mismatched runner is injected.
-    """
-    if configured_runner is not None:
-        # If a runner was injected, validate it matches the target backend
-        backend = getattr(target, "backend", None)
-        if backend == "SYCL":
-            from castlearq.sycl_runner import SyclLlamaRunner as _SyllRunner
-            if not isinstance(configured_runner, _SyllRunner):
-                raise RunPreparationFailedError(
-                    f"Injected runner is not a SyclLlamaRunner; cannot satisfy SYCL target with {type(configured_runner).__name__}"
+    configured_runner: ExecutionRunnerLike | None = None,
+) -> ExecutionRunnerLike:
+    """Compatibility wrapper around the shared runner factory."""
+    try:
+        return create_runner(
+            capability,
+            target,
+            configured_runner=configured_runner,
+            dependencies=RunnerFactoryDependencies(
+                llama_cpp_factory=lambda selected_capability: LlamaCppRunner(
+                    selected_capability
                 )
-        # For CPU/Vulkan, accept any runner injection (backward compatible)
-        return configured_runner
-
-    # No injected runner: select based on target backend
-    backend = getattr(target, "backend", None)
-    if backend == "SYCL":
-        # Build SyclLlamaRunner using the existing factory function
-        # Provide executable_path from capability if available, otherwise rely on env vars
-        from .sycl_runner import build_sycl_runner as _build_sycl_runner
-        runner = _build_sycl_runner(capability=capability)
-        return runner
-    elif backend in ("CPU", "Vulkan"):
-        return LlamaCppRunner(capability)
-    else:
-        raise RunPreparationFailedError(
-            f"Unsupported backend: {backend!r}. Supported backends are: CPU, Vulkan, SYCL"
+            ),
         )
+    except RunnerFactoryError as error:
+        raise RunPreparationFailedError(str(error)) from error
 
 
 def _require_admission(admission: EvaluationAdmission | None) -> None:
@@ -253,25 +213,26 @@ def _require_admission(admission: EvaluationAdmission | None) -> None:
     status, and any verdict outside the admitting set all deny; only
     ``compatible`` and ``compatible_with_conditions`` admit.
     """
-    if admission is None:
-        raise ExecuteAdmissionDeniedError(
-            "Execution denied: no evaluation admission was supplied; "
-            "deny-by-default applies"
-        )
-    status = str(getattr(admission, "status", "")).strip().lower()
-    if status != "evaluated":
-        raise ExecuteAdmissionDeniedError(
-            "Execution denied: evaluation did not produce an evaluated "
-            f"outcome (status={status!r})"
-        )
-    verdict = getattr(admission, "verdict", None)
-    value = getattr(verdict, "value", verdict)
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    if normalized in {"compatible", "compatible_with_conditions"}:
-        return
-    raise ExecuteAdmissionDeniedError(
-        "Execution denied by evaluation admission; deny-by-default applies "
-        f"(verdict={normalized or 'missing'!r})"
+    try:
+        require_evaluation_admission(admission)
+    except AdmissionDeniedError as error:
+        raise ExecuteAdmissionDeniedError(error.message) from error
+
+
+def _preparation_backend_provider(
+    detected_gpu_backends: set[str],
+) -> list[BackendStatus]:
+    return detect_backends(detected_gpu_backends=detected_gpu_backends)
+
+
+def _preparation_compatibility_provider(
+    hardware: HardwareSnapshot,
+    runtimes: list[RuntimeStatus],
+    backends: list[BackendStatus],
+    model: ModelSpec,
+) -> CompatibilityResult:
+    return assess_model(
+        hardware, runtimes, backends, model, config=CompatibilityConfig()
     )
 
 
@@ -300,45 +261,31 @@ def prepare(
     recommendation data (``recommended_runtime`` / ``recommended_backend``),
     per B9.78 decision D1-A. It can no longer refuse execution.
     """
-    _require_admission(admission)
-
-    hardware = detect_hardware()
-    runtimes = detect_runtime_statuses(capability)
-    detected_gpu_backends = {
-        backend for gpu in hardware.gpus for backend in gpu.backends
-    }
-    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
-
-    # Selection recommendation data only (B9.78 D1-A): the legacy verdict is
-    # not an admission gate on this path any more.
-    compatibility = assess_model(
-        hardware, runtimes, backends, model, config=CompatibilityConfig()
-    )
-
     try:
-        executable_artifact = ArtifactExecutionPreflight(
-            model_store
-        ).validate(artifact)
-    except ArtifactPreflightError as error:
-        raise PreparationError(
-            error.message, compatibility_warnings=compatibility.warnings
-        ) from error
-
-    try:
-        selection = RuntimeBackendSelector().select(
-            compatibility, capability, executable_artifact, requested_backend=requested_backend
+        return prepare_execution(
+            model,
+            artifact,
+            capability,
+            model_store,
+            admission=admission,
+            requested_backend=requested_backend,
+            dependencies=ExecutionPreparationDependencies(
+                hardware_provider=detect_hardware,
+                runtime_status_provider=detect_runtime_statuses,
+                backend_provider=_preparation_backend_provider,
+                compatibility_provider=_preparation_compatibility_provider,
+                preflight_factory=ArtifactExecutionPreflight,
+                selector_factory=RuntimeBackendSelector,
+            ),
         )
-    except RuntimeSelectionError as error:
+    except AdmissionDeniedError as error:
+        raise ExecuteAdmissionDeniedError(error.message) from error
+    except PreparationFailureError as error:
         raise PreparationError(
-            error.message, compatibility_warnings=compatibility.warnings
+            error.message,
+            compatibility_warnings=error.compatibility_warnings,
+            selection_warnings=error.selection_warnings,
         ) from error
-
-    return ExecutionPreparation(
-        executable_artifact=executable_artifact,
-        target=selection.target,
-        compatibility_warnings=compatibility.warnings,
-        selection_warnings=selection.warnings,
-    )
 
 
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
@@ -357,8 +304,8 @@ def run_once(
 ) -> RunOutcome:
     """Execute one prompt through the shared pipeline.
 
-    Same sequence CLI ``run`` uses (resolver -> ``prepare`` ->
-    ``LlamaCppRunner``). Raises :class:`ModelNotFoundError` for unknown
+    Same sequence CLI ``run`` uses (resolver -> ``prepare`` -> runner factory).
+    Raises :class:`ModelNotFoundError` for unknown
     model ids, :class:`RunPreparationFailedError` when admission, selection or
     preflight rejects the run, and :class:`RunExecutionFailedError` on runtime
     failure. Never prints, never touches the CLI.
@@ -529,6 +476,10 @@ def open_chat_session(
 
     backend = executable_artifact.artifact.backend
     if backend == "gguf":
+        if preparation is None:
+            raise RunPreparationFailedError(
+                "GGUF chat preparation did not produce an execution target"
+            )
         factory = deps.session_factory or start_chat_session
         try:
             session = factory(

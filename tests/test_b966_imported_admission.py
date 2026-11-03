@@ -243,11 +243,23 @@ class LegacyGateDiscriminatorTests(unittest.TestCase):
             self.assertIsNotNone(spec.id, spec.model_id)
 
     def test_execute_model_passes_flag_from_id_is_none(self):
-        import inspect
-        from castlearq import execute_model as em
-        source = inspect.getsource(em._legacy_compatibility)
-        self.assertIn("allow_unknown_memory=model.id is None", source)
-        self.assertIn("B9.66", source)
+        from unittest.mock import patch
+
+        from castlearq.execute_model import _assess_compatibility
+
+        with patch("castlearq.execute_model.assess_model") as assess:
+            _assess_compatibility(object(), [], [], IMPORTED)
+        self.assertIs(
+            assess.call_args.kwargs["allow_unknown_memory"],
+            True,
+        )
+
+        with patch("castlearq.execute_model.assess_model") as assess:
+            _assess_compatibility(object(), [], [], CATALOG)
+        self.assertIs(
+            assess.call_args.kwargs["allow_unknown_memory"],
+            False,
+        )
 
 
 if __name__ == "__main__":

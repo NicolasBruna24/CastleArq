@@ -23,7 +23,7 @@ from pathlib import Path
 import stat
 import subprocess
 import time
-from typing import Callable
+from typing import Callable, Protocol
 
 from .execution import (
     ExecutableArtifact,
@@ -44,7 +44,18 @@ from .runtimes import RuntimeCapability
 RunProcess = Callable[..., subprocess.CompletedProcess[str]]
 
 
-class ModelRunner(ABC):
+class ExecutionRunnerLike(Protocol):
+    """Structural execution contract accepted by RunService injections."""
+
+    def run(
+        self,
+        executable_artifact: ExecutableArtifact,
+        target: ExecutionTarget,
+        request: ExecutionRequest,
+    ) -> ExecutionResult: ...
+
+
+class ExecutionRunner(ABC):
     @abstractmethod
     def run(
         self,
@@ -54,6 +65,10 @@ class ModelRunner(ABC):
     ) -> ExecutionResult:
         """Run one validated artifact with one selected execution target."""
         raise NotImplementedError
+
+
+class ModelRunner(ExecutionRunner):
+    """Base class for the llama.cpp CPU/Vulkan runner family."""
 
 
 class LlamaCppRunner(ModelRunner):

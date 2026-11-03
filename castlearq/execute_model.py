@@ -17,9 +17,9 @@ legacy admission cutover"):
 The use case owns ordering and error mapping only: it implements no domain
 rule, runs no subprocess, imports no CLI/HTTP or evaluation machinery, and
 never builds an execution target itself (selection stays with
-``RuntimeBackendSelector``). The runner is a ``ModelRunner`` abstraction
-injected at the composition root; the concrete implementation is never named
-here. Nothing is cached between invocations: every call re-resolves and
+``RuntimeBackendSelector``). The runner is a ``ModelRunner`` abstraction,
+injected at the composition root or created by the shared runner factory.
+Nothing is cached between invocations: every call re-resolves and
 re-validates, so an earlier evaluation is never trusted as an execution
 authority. Admission is mandatory and deny-only (B9.78); an absent or
 non-evaluated signal is a denial, never authorization (B9.19 section 7 was
@@ -31,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .admission import EvaluationAdmission
 from .compatibility import (
     CompatibilityConfig,
     CompatibilityResult,
@@ -39,23 +40,37 @@ from .compatibility import (
 from .execution import (
     ArtifactExecutionPreflight,
     ArtifactPreflightError,
+    ExecutableArtifact,
     ExecutionRequest,
     ExecutionResult,
     validate_execution_request,
 )
-from .hardware import detect_hardware
+from .execution_preparation import (
+    AdmissionDeniedError,
+    ExecutionPreparation,
+    ExecutionPreparationDependencies,
+    PreparationFailureError,
+    prepare_execution,
+    require_evaluation_admission,
+)
+from .hardware import HardwareSnapshot, detect_hardware
 from .model_catalog import get_catalog
 from .model_store import ModelStore
 from .models import ArtifactSpec, ModelSpec
 from .resolver import ModelArtifactResolutionError, ModelArtifactResolver
-from .runner import ModelRunner
+from .runner_factory import (
+    ExecutionRunner,
+    RunnerFactoryError,
+    create_runner,
+)
 from .runtimes import (
+    BackendStatus,
     RuntimeCapability,
     RuntimeStatus,
     detect_backends,
     detect_llama_capability,
 )
-from .selection import RuntimeBackendSelector, RuntimeSelectionError
+from .selection import RuntimeBackendSelector
 
 __all__ = [
     "DEFAULT_EXECUTION_TIMEOUT_SECONDS",
@@ -69,25 +84,8 @@ __all__ = [
 #: Default one-shot timeout, mirroring the legacy ``run_once`` default.
 DEFAULT_EXECUTION_TIMEOUT_SECONDS = 600.0
 
-#: Strict verdicts that allow an evaluated admission to proceed. Everything
-#: else (incompatible, insufficient_evidence, missing) denies by default.
-_ADMITTING_VERDICTS = frozenset({"compatible", "compatible_with_conditions"})
-
 # B9.78 removed ``_REJECTING_COMPATIBILITY``: the legacy INCOMPATIBLE/UNKNOWN
 # outcomes no longer stop a run. Strict admission is the only admission gate.
-
-
-@dataclass(frozen=True)
-class EvaluationAdmission:
-    """Advisory evaluation signal: a summary copy, never the result object.
-
-    ``status`` is the B9.15/B9.16 outcome (``"evaluated"`` or ``"blocked"``)
-    and ``verdict`` the strict verdict name. Admission can deny execution; it
-    can never authorize it on its own (B9.19 section 7).
-    """
-
-    status: str
-    verdict: str | None = None
 
 
 class ExecutePreparationError(Exception):
@@ -107,8 +105,8 @@ class ExecuteAdmissionDeniedError(ExecutePreparationError):
 class ExecuteModelDependencies:
     """Explicit injectable collaborators for the use case.
 
-    Every field is optional and defaults to an existing contract; the runner
-    has no production default because it is chosen at the composition root.
+    Every field is optional and defaults to an existing contract. A runner can
+    be injected by the composition root or constructed for the selected target.
     """
 
     model_store: ModelStore | None = None
@@ -119,7 +117,7 @@ class ExecuteModelDependencies:
     ) = None
     preflight_factory: Callable[[ModelStore], Any] | None = None
     selector: Any | None = None
-    runner: ModelRunner | None = None
+    runner: ExecutionRunner | None = None
 
 
 def _runtime_status(capability: RuntimeCapability) -> RuntimeStatus:
@@ -137,49 +135,6 @@ def _runtime_status(capability: RuntimeCapability) -> RuntimeStatus:
     )
 
 
-def _legacy_compatibility(
-    model: ModelSpec, capability: RuntimeCapability
-) -> CompatibilityResult:
-    """Transitional legacy compatibility gate (B9.19 sections 7 and 13).
-
-    Composes existing domain/infrastructure contracts exactly like the legacy
-    prepare sequence (hardware -> runtime status -> backend statuses ->
-    ``assess_model``); it adds no rule of its own and is injectable so tests
-    never probe the machine.
-    """
-    hardware = detect_hardware()
-    detected_gpu_backends = {
-        backend for gpu in hardware.gpus for backend in gpu.backends
-    }
-    backends = detect_backends(detected_gpu_backends=detected_gpu_backends)
-    return assess_model(
-        hardware,
-        [_runtime_status(capability)],
-        backends,
-        model,
-        config=CompatibilityConfig(),
-        # B9.66: an absent memory estimate is tolerated only for a locally
-        # imported artifact, and only as MARGINAL. The discriminator is
-        # ``model.id is None``, which the B9.66 contract makes equivalent to
-        # "imported": a catalog model always carries an explicit id, while an
-        # imported one deliberately keeps logical identity UNKNOWN and so
-        # leaves ``ModelSpec.id`` as None. Every catalog model therefore keeps
-        # the previous, blocking behaviour. Admission policy uses the explicit
-        # ``ResolvedModelArtifact.imported`` flag instead; the two express the
-        # same fact about the artifact. A known capacity overflow is still
-        # INCOMPATIBLE and still blocks here.
-        allow_unknown_memory=model.id is None,
-    )
-
-
-def _normalized_verdict(admission: Any) -> str:
-    verdict = getattr(admission, "verdict", None)
-    if verdict is None:
-        return ""
-    value = getattr(verdict, "value", verdict)
-    return str(value).strip().lower().replace("-", "_")
-
-
 def _check_admission(admission: EvaluationAdmission | None) -> None:
     """Mandatory admission gate (B9.78 — legacy admission cutover).
 
@@ -194,24 +149,10 @@ def _check_admission(admission: EvaluationAdmission | None) -> None:
     authorizes, and ``insufficient_evidence`` (or anything unknown) denies by
     default.
     """
-    if admission is None:
-        raise ExecuteAdmissionDeniedError(
-            "Execution denied: no evaluation admission was supplied; "
-            "deny-by-default applies"
-        )
-    status = str(getattr(admission, "status", "")).strip().lower()
-    if status != "evaluated":
-        raise ExecuteAdmissionDeniedError(
-            "Execution denied: evaluation did not produce an evaluated "
-            f"outcome (status={status!r})"
-        )
-    verdict = _normalized_verdict(admission)
-    if verdict in _ADMITTING_VERDICTS:
-        return
-    raise ExecuteAdmissionDeniedError(
-        "Execution denied by evaluation admission; deny-by-default applies "
-        f"(verdict={verdict or 'missing'!r})"
-    )
+    try:
+        require_evaluation_admission(admission)
+    except AdmissionDeniedError as error:
+        raise ExecuteAdmissionDeniedError(error.message) from error
 
 
 def _fresh_capability(deps: ExecuteModelDependencies) -> RuntimeCapability:
@@ -232,15 +173,6 @@ def _invocable_capability(capability: RuntimeCapability) -> RuntimeCapability:
     return capability
 
 
-def _compatibility(
-    deps: ExecuteModelDependencies,
-    model: ModelSpec,
-    capability: RuntimeCapability,
-) -> CompatibilityResult:
-    provider = deps.compatibility_provider or _legacy_compatibility
-    return provider(model, capability)
-
-
 def _preflight(deps: ExecuteModelDependencies, store: ModelStore) -> Any:
     factory = deps.preflight_factory or ArtifactExecutionPreflight
     return factory(store)
@@ -250,12 +182,64 @@ def _selector(deps: ExecuteModelDependencies) -> Any:
     return deps.selector if deps.selector is not None else RuntimeBackendSelector()
 
 
-def _require_runner(deps: ExecuteModelDependencies) -> ModelRunner:
-    runner = deps.runner
-    if runner is None:
-        raise ExecutePreparationError("A ModelRunner is required to execute")
-    if not isinstance(runner, ModelRunner):
-        raise ExecutePreparationError("runner must be a ModelRunner implementation")
+def _detect_backends(detected_gpu_backends: set[str]) -> list[BackendStatus]:
+    return detect_backends(detected_gpu_backends=detected_gpu_backends)
+
+
+def _assess_compatibility(
+    hardware: HardwareSnapshot,
+    runtimes: list[RuntimeStatus],
+    backends: list[BackendStatus],
+    model: ModelSpec,
+) -> CompatibilityResult:
+    return assess_model(
+        hardware,
+        runtimes,
+        backends,
+        model,
+        config=CompatibilityConfig(),
+        # B9.66: imported artifacts with unknown model size proceed as MARGINAL;
+        # catalog artifacts keep the existing blocking behavior.
+        allow_unknown_memory=model.id is None,
+    )
+
+
+def _preparation_dependencies(
+    deps: ExecuteModelDependencies,
+) -> ExecutionPreparationDependencies:
+    compatibility_provider = deps.compatibility_provider
+    return ExecutionPreparationDependencies(
+        hardware_provider=detect_hardware,
+        runtime_status_provider=lambda capability: [_runtime_status(capability)],
+        backend_provider=_detect_backends,
+        compatibility_provider=_assess_compatibility,
+        compatibility_result_provider=(
+            (lambda model, capability: compatibility_provider(model, capability))
+            if compatibility_provider
+            else None
+        ),
+        preflight_factory=lambda store: _preflight(deps, store),
+        selector_factory=lambda: _selector(deps),
+    )
+
+
+def _require_runner(
+    deps: ExecuteModelDependencies,
+    capability: RuntimeCapability,
+    preparation: ExecutionPreparation,
+) -> ExecutionRunner:
+    try:
+        runner = create_runner(
+            capability,
+            preparation.target,
+            configured_runner=deps.runner,
+        )
+    except RunnerFactoryError as error:
+        raise ExecutePreparationError(str(error)) from error
+    if not isinstance(runner, ExecutionRunner):
+        raise ExecutePreparationError(
+            "ExecuteModel requires an ExecutionRunner implementation"
+        )
     return runner
 
 
@@ -320,38 +304,32 @@ def execute_model(
     # 2. Fresh capability, detected per invocation (never cached).
     capability = _invocable_capability(_fresh_capability(deps))
 
-    # 3. Admission: MANDATORY. Strict admission is the sole authority for
-    #    whether execution may proceed (B9.78). Denied before any validation
-    #    work, so no subprocess can be launched for a refused model.
-    _check_admission(admission)
-
-    # 4. Selection recommendation data. B9.78 (decision D1-A) keeps the legacy
-    #    compatibility result here ONLY as the source of
-    #    ``recommended_runtime`` / ``recommended_backend`` for the selector. Its
-    #    INCOMPATIBLE/UNKNOWN status is NOT an admission gate any more: the
-    #    legacy verdict can no longer refuse execution. It is still always
-    #    recomputed here, never cached, so a previous evaluation is never an
-    #    execution authority (B9.19 sections 11, 12, 13).
-    compatibility = _compatibility(deps, model, capability)
-    compatibility_warnings = tuple(compatibility.warnings)
-
-    preflight = _preflight(deps, store)
     try:
-        executable_artifact = preflight.validate(artifact)
-    except ArtifactPreflightError as error:
+        preparation = prepare_execution(
+            model,
+            artifact,
+            capability,
+            store,
+            admission=admission,
+            dependencies=_preparation_dependencies(deps),
+        )
+    except AdmissionDeniedError as error:
+        raise ExecuteAdmissionDeniedError(error.message) from error
+    except PreparationFailureError as error:
         raise ExecutePreparationError(
-            error.message, warnings=compatibility_warnings
+            error.message,
+            warnings=(
+                *error.compatibility_warnings,
+                *error.selection_warnings,
+            ),
         ) from error
 
-    selector = _selector(deps)
-    try:
-        selection = selector.select(compatibility, capability, executable_artifact)
-    except RuntimeSelectionError as error:
-        raise ExecutePreparationError(
-            error.message, warnings=compatibility_warnings
-        ) from error
-    target = selection.target
-    warnings = (*compatibility_warnings, *selection.warnings)
+    executable_artifact = preparation.executable_artifact
+    target = preparation.target
+    warnings = (
+        *preparation.compatibility_warnings,
+        *preparation.selection_warnings,
+    )
 
     # 5. Caller preference: a wish about the selector's outcome, never a
     #    target of our own and never a silent override of the selection.
@@ -373,7 +351,7 @@ def execute_model(
     except Exception as error:
         raise ExecutePreparationError(str(error), warnings=warnings) from error
 
-    runner = _require_runner(deps)
+    runner = _require_runner(deps, capability, preparation)
     result = runner.run(executable_artifact, target, request)
     if not warnings:
         return result

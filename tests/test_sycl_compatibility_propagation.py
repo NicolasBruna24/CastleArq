@@ -12,28 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Propagation tests for an explicit SYCL backend request (A2.6.5.4, section 5).
-
-These tests exercise :func:`castlearq.compatibility.assess_model` directly with
-hand-built ``RuntimeCapability`` / ``RuntimeStatus`` / ``HardwareSnapshot`` values
-(mocked). They verify that an explicit backend request is preserved and never
-silently substituted by CPU/Vulkan, while the default (no request) keeps the
-previous behaviour.
-"""
+"""Explicit backend selection tests through RuntimeBackendSelector."""
 
 import unittest
 
-from castlearq.compatibility import (
-    assess_model,
-    CompatibilityResult,
-    CompatibilityStatus,
-)
-from castlearq.execution import ExecutionTarget
-from castlearq.models import ModelSpec
+from castlearq.compatibility import assess_model
+from castlearq.execution import ExecutableArtifact
+from castlearq.models import ArtifactSpec, ModelSpec
 from castlearq.runtimes import (
     PromptInputMode,
     RuntimeCapability,
     RuntimeStatus,
+)
+from castlearq.selection import (
+    RuntimeBackendSelector,
+    RuntimeSelectionError,
+    SelectionErrorCode,
 )
 
 CPU_VULKAN = RuntimeCapability(
@@ -59,7 +53,7 @@ SYCL_CAPABILITY = RuntimeCapability(
     supports_one_shot=True,
     available=True,
     reason=None,
-    compatibility_names=("llama.cpp",),
+    compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
     backend_arguments=(("SYCL", "SYCL0"),),
 )
 
@@ -116,53 +110,72 @@ def _backends_for(capability: RuntimeCapability | None = None) -> list:
     ]
 
 
-def _result(requested_backend=None, capability=None):
+_ARTIFACT = ArtifactSpec(
+    model_id="test",
+    source="test",
+    repository="test/repo",
+    filename="model.gguf",
+    format="GGUF",
+)
+_EXECUTABLE = ExecutableArtifact(
+    artifact=_ARTIFACT,
+    path="/models/model.gguf",
+    size_verified=False,
+    checksum_verified=False,
+)
+
+
+def _selection(requested_backend=None, capability=None):
     cap = capability or CPU_VULKAN
     runtimes = _runtimes(cap)
     backends = _backends_for(cap)
-    return assess_model(_hardware(), runtimes, backends, MODEL, requested_backend=requested_backend)
+    compatibility = assess_model(_hardware(), runtimes, backends, MODEL)
+    return RuntimeBackendSelector().select(
+        compatibility,
+        cap,
+        _EXECUTABLE,
+        requested_backend=requested_backend,
+    )
 
 
 class SyclExplicitRequestTests(unittest.TestCase):
     def test_solicitud_explicit_sycl_produce_sycl(self):
         capability = SYCL_CAPABILITY
-        result = _result(requested_backend="SYCL", capability=capability)
-        # Memory may be unknowable in this isolated model, but the request
-        # itself must be honoured and never silently swapped to CPU/Vulkan.
-        self.assertEqual(result.recommended_backend, "SYCL")
-        self.assertEqual(result.recommended_runtime, "llama.cpp / llama.app")
+        selection = _selection(requested_backend="SYCL", capability=capability)
+        self.assertEqual(selection.target.backend, "SYCL")
+        self.assertEqual(selection.target.runtime, "llama.cpp SYCL")
+        self.assertEqual(selection.target.requested_device_argument, "SYCL0")
 
 
     def test_solicitud_cpu(self):
-        result = _result(requested_backend="CPU")
-        self.assertEqual(result.recommended_backend, "CPU")
+        selection = _selection(requested_backend="CPU")
+        self.assertEqual(selection.target.backend, "CPU")
 
     def test_solicitud_vulkan(self):
-        result = _result(requested_backend="Vulkan")
-        self.assertEqual(result.recommended_backend, "Vulkan")
+        selection = _selection(requested_backend="Vulkan")
+        self.assertEqual(selection.target.backend, "Vulkan")
 
     def test_ausencia_de_solicitud_conserva_default(self):
         # No request must keep the existing default behaviour.
-        result = _result()
+        selection = _selection()
         # No request: keep the detection default (Vulkan in this lab),
         # never a SYCL substitution.
-        self.assertEqual(result.recommended_backend, "Vulkan")
-        self.assertNotEqual(result.recommended_backend, "SYCL")
+        self.assertEqual(selection.target.backend, "Vulkan")
+        self.assertNotEqual(selection.target.backend, "SYCL")
 
     def test_sycl_solicitado_pero_no_disponible_diagnostico_explicito(self):
-        # SYCL requested, capability supports CPU+Vulkan only -> INCOMPATIBLE
-        # with an explicit reason, never a silent swap to CPU.
-        result = _result(requested_backend="SYCL", capability=CPU_VULKAN)
-        self.assertEqual(result.status, CompatibilityStatus.INCOMPATIBLE)
-        self.assertEqual(result.recommended_backend, "SYCL")
-        self.assertIn("not supported", str(result.reasons[0]))
+        # A request unsupported by the detected capability fails selection.
+        with self.assertRaises(RuntimeSelectionError) as caught:
+            _selection(requested_backend="SYCL", capability=CPU_VULKAN)
+        self.assertIs(caught.exception.code, SelectionErrorCode.BACKEND_UNSUPPORTED)
+        self.assertIn("not supported", caught.exception.message)
 
     def test_no_fallback_silencioso_a_cpu(self):
         # A SYCL request must not be turned into CPU when SYCL is unavailable.
-        result = _result(requested_backend="SYCL")
-        self.assertEqual(result.status, CompatibilityStatus.INCOMPATIBLE)
-        self.assertEqual(result.recommended_backend, "SYCL")
-        self.assertNotEqual(result.recommended_backend, "CPU")
+        with self.assertRaises(RuntimeSelectionError) as caught:
+            _selection(requested_backend="SYCL")
+        self.assertIs(caught.exception.code, SelectionErrorCode.BACKEND_UNSUPPORTED)
+        self.assertIn("not supported", caught.exception.message)
 
     def test_selector_puro_no_cambia(self):
         # Regression: RuntimeBackendSelector keeps its contract.

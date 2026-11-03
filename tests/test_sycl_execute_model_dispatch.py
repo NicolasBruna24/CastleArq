@@ -68,7 +68,12 @@ def _make_deps(target_backend="SYCL", runner=None, selector_target=None):
     from castlearq.execute_model import ExecuteModelDependencies
 
     if selector_target is None:
-        selector_target = ExecutionTarget(runtime="llama.cpp SYCL", backend=target_backend)
+        runtime = (
+            "llama.cpp SYCL"
+            if target_backend == "SYCL"
+            else "llama.cpp CLI"
+        )
+        selector_target = ExecutionTarget(runtime=runtime, backend=target_backend)
 
     cap = _cap_syctl() if target_backend == "SYCL" else _cap_cpu()
 
@@ -122,59 +127,68 @@ def _make_deps(target_backend="SYCL", runner=None, selector_target=None):
 
 class ExecuteModelRunnerDispatchTests(unittest.TestCase):
     def test_sycl_construye_sycl_runner(self):
-        from unittest.mock import patch, MagicMock
         deps, target = _make_deps("SYCL", runner=None)
         with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
             resolver_cls.return_value.resolve.return_value = MagicMock(model=deps.models[0], artifact=_artifact())
-            with patch("castlearq.execute_model.detect_sycl_llama_capability") as mock_detect:
-                mock_detect.return_value = _cap_syctl()
-                with patch("castlearq.sycl_runner.build_sycl_runner") as builder:
-                    fake_runner = MagicMock(run=lambda ea, t, r: MagicMock(success=True, exit_code=0, stdout="ok", stderr="", warnings=(), error=None))
-                    builder.return_value = fake_runner
-                    result = execute_model("m1", "hello", backend_preference="SYCL",
-                                          admission=MagicMock(status="evaluated", verdict="compatible"),
-                                          dependencies=deps)
-                    builder.assert_called_once()
-                    self.assertTrue(result.success)
+            with patch("castlearq.sycl_runner.build_sycl_runner") as builder:
+                fake_runner = SyclLlamaRunner("/sycl/llama", "/oneapi/setvars.sh")
+                fake_runner.run = MagicMock(
+                    return_value=ExecutionResult(True, 0, "ok", "")
+                )
+                builder.return_value = fake_runner
+                result = execute_model(
+                    "m1",
+                    "hello",
+                    backend_preference="SYCL",
+                    admission=MagicMock(status="evaluated", verdict="compatible"),
+                    dependencies=deps,
+                )
+                builder.assert_called_once_with(capability=deps.capability_provider())
+                fake_runner.run.assert_called_once()
+                self.assertTrue(result.success)
 
     def test_sycl_acepta_sycl_runner_inyectado(self):
-        from unittest.mock import patch, MagicMock
         injected = SyclLlamaRunner(executable_path="/opt/llama-sycl", setvars_path="/opt/setvars.sh", env_provider=MagicMock())
         injected.run = MagicMock(return_value=MagicMock(success=True, exit_code=0, stdout="ok", stderr="", warnings=(), error=None))
         deps, target = _make_deps("SYCL", runner=injected)
         with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
             resolver_cls.return_value.resolve.return_value = MagicMock(model=deps.models[0], artifact=_artifact())
-            with patch("castlearq.execute_model.detect_sycl_llama_capability") as mock_detect:
-                mock_detect.return_value = _cap_syctl()
-                result = execute_model("m1", "hello", backend_preference="SYCL",
-                                      admission=MagicMock(status="evaluated", verdict="compatible"),
-                                      dependencies=deps)
-                self.assertTrue(injected.run.called)
+            result = execute_model(
+                "m1",
+                "hello",
+                backend_preference="SYCL",
+                admission=MagicMock(status="evaluated", verdict="compatible"),
+                dependencies=deps,
+            )
+        self.assertTrue(result.success)
+        injected.run.assert_called_once()
 
     def test_sycl_rechaza_llama_cpp_inyectado(self):
-        from unittest.mock import patch, MagicMock
         injected = LlamaCppRunner(_cap_cpu())
         deps, target = _make_deps("SYCL", runner=injected)
         with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
             resolver_cls.return_value.resolve.return_value = MagicMock(model=deps.models[0], artifact=_artifact())
-            with patch("castlearq.execute_model.detect_sycl_llama_capability") as mock_detect:
-                mock_detect.return_value = _cap_syctl()
-                with self.assertRaises(ExecutePreparationError):
-                    execute_model("m1", "hello", backend_preference="SYCL",
-                                  admission=MagicMock(status="evaluated", verdict="compatible"),
-                                  dependencies=deps)
+            with self.assertRaises(ExecutePreparationError):
+                execute_model(
+                    "m1",
+                    "hello",
+                    backend_preference="SYCL",
+                    admission=MagicMock(status="evaluated", verdict="compatible"),
+                    dependencies=deps,
+                )
 
     def test_sycl_rechaza_runner_incompatible(self):
-        from unittest.mock import patch, MagicMock
         deps, target = _make_deps("SYCL", runner=MagicMock())
         with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
             resolver_cls.return_value.resolve.return_value = MagicMock(model=deps.models[0], artifact=_artifact())
-            with patch("castlearq.execute_model.detect_sycl_llama_capability") as mock_detect:
-                mock_detect.return_value = _cap_syctl()
-                with self.assertRaises(ExecutePreparationError):
-                    execute_model("m1", "hello", backend_preference="SYCL",
-                                  admission=MagicMock(status="evaluated", verdict="compatible"),
-                                  dependencies=deps)
+            with self.assertRaises(ExecutePreparationError):
+                execute_model(
+                    "m1",
+                    "hello",
+                    backend_preference="SYCL",
+                    admission=MagicMock(status="evaluated", verdict="compatible"),
+                    dependencies=deps,
+                )
 
     def test_cpu_vulkan_conservan_inyeccion(self):
         from unittest.mock import patch, MagicMock
@@ -188,19 +202,48 @@ class ExecuteModelRunnerDispatchTests(unittest.TestCase):
             self.assertTrue(len(fake_runner.calls) > 0)
 
     def test_backend_desconocido_error(self):
-        from unittest.mock import patch, MagicMock
         deps, target = _make_deps("SYCL", runner=None)
         deps.selector.select.return_value = type("RS", (), {
             "target": ExecutionTarget(runtime="x", backend="UNKNOWN"), "warnings": ()
         })()
         with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
             resolver_cls.return_value.resolve.return_value = MagicMock(model=deps.models[0], artifact=_artifact())
-            with patch("castlearq.execute_model.detect_sycl_llama_capability") as mock_detect:
-                mock_detect.return_value = _cap_syctl()
-                with self.assertRaises(ExecutePreparationError):
-                    execute_model("m1", "hello", backend_preference="SYCL",
-                                  admission=MagicMock(status="evaluated", verdict="compatible"),
-                                  dependencies=deps)
+            with self.assertRaises(ExecutePreparationError):
+                execute_model(
+                    "m1",
+                    "hello",
+                    backend_preference="SYCL",
+                    admission=MagicMock(status="evaluated", verdict="compatible"),
+                    dependencies=deps,
+                )
+
+    def test_sycl_runner_factory_failure_is_translated_with_cause(self):
+        deps, _ = _make_deps("SYCL", runner=None)
+        construction_error = ValueError("SYCL setup is missing")
+        with patch("castlearq.execute_model.ModelArtifactResolver") as resolver_cls:
+            resolver_cls.return_value.resolve.return_value = MagicMock(
+                model=deps.models[0], artifact=_artifact()
+            )
+            with patch(
+                "castlearq.sycl_runner.build_sycl_runner",
+                side_effect=construction_error,
+            ):
+                with self.assertRaises(ExecutePreparationError) as caught:
+                    execute_model(
+                        "m1",
+                        "hello",
+                        backend_preference="SYCL",
+                        admission=MagicMock(
+                            status="evaluated", verdict="compatible"
+                        ),
+                        dependencies=deps,
+                    )
+        self.assertIsInstance(caught.exception.__cause__, Exception)
+        self.assertIsInstance(
+            caught.exception.__cause__.__cause__,
+            construction_error.__class__,
+        )
+        self.assertIs(caught.exception.__cause__.__cause__, construction_error)
 
 
 if __name__ == "__main__":

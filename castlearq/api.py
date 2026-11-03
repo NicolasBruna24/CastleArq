@@ -129,8 +129,8 @@ from typing import Any
 from .chat import ChatSessionClosedError, ChatSessionError
 from .evaluate_compatibility import evaluate_model_compatibility, to_admission
 from .application_wiring import compose_execute_model_dependencies
+from .admission import EvaluationAdmission
 from .execute_model import (
-    EvaluationAdmission,
     ExecuteAdmissionDeniedError,
     ExecutePreparationError,
     _check_admission,
