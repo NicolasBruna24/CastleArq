@@ -176,13 +176,13 @@ class IdentityTests(_ImportCase):
         result = self.importer.import_artifact(self._write("decl.gguf"))
         self.assertIsNone(result.artifact.sha256)
 
-    def test_unknown_declaration_is_not_reported_as_verified(self):
+    def test_local_content_identity_is_verified_without_external_sha256(self):
         result = self.importer.import_artifact(self._write("unver.gguf"))
         stored = self.store.inspect_manifest(
             self.store.artifact_directory(result.artifact) / "manifest.json"
         )
-        self.assertEqual(stored.state, ArtifactState.DOWNLOADED)
-        self.assertNotEqual(stored.state, ArtifactState.VERIFIED)
+        self.assertEqual(stored.state, ArtifactState.VERIFIED)
+        self.assertIsNone(stored.artifact.sha256)
 
     def test_same_content_different_filename_is_reused(self):
         first = self.importer.import_artifact(self._write("one.gguf"))
@@ -476,6 +476,27 @@ class AtomicityTests(_ImportCase):
         self.assertEqual(result.status, ImportStatus.FAILED)
         self.assertIn("manifest", result.error)
         self.assertEqual(self.store.list_artifacts(), [])
+        self.assertEqual(self._stored_files(), [])
+        self.assertEqual(self._parts(), [])
+        self.assertEqual(self._manifests(), [])
+
+    def test_manifest_failure_does_not_remove_replacement_file(self):
+        replacement = b"concurrent replacement"
+
+        def replace_before_failure(spec):
+            published = self.store.artifact_directory(spec) / spec.filename
+            published.rename(published.with_name(published.name + ".preserved"))
+            published.write_bytes(replacement)
+            raise OSError("manifest write failed")
+
+        with mock.patch.object(
+            ModelStore, "save_manifest", side_effect=replace_before_failure
+        ):
+            result = self.importer.import_artifact(self._write("race.gguf"))
+
+        self.assertEqual(result.status, ImportStatus.FAILED)
+        self.assertIn("replaced and left untouched", result.error)
+        self.assertEqual(result.destination.read_bytes(), replacement)
 
     def test_destination_escape_is_refused(self):
         with mock.patch.object(

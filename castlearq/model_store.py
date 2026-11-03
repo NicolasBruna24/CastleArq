@@ -373,11 +373,102 @@ class ModelStore:
                 return StoredArtifact(
                     artifact, ArtifactState.FAILED, safe_manifest, "File size differs from manifest"
                 )
-            if verify and artifact.sha256:
-                digest = _sha256(file_path)
-                state = ArtifactState.VERIFIED if digest == artifact.sha256.lower() else ArtifactState.FAILED
-                message = None if state == ArtifactState.VERIFIED else "SHA-256 differs from manifest"
-                return StoredArtifact(artifact, state, safe_manifest, message)
+            if verify:
+                # Determine which integrity identifiers are present
+                identifiers_present = []
+                if artifact.content_id is not None:
+                    identifiers_present.append('content_id')
+                if artifact.sha256 is not None:
+                    identifiers_present.append('sha256')
+
+                # content_id is a locally computed content identity, while
+                # sha256 is an independent checksum declaration. Either can
+                # verify the observed bytes. With neither, integrity remains
+                # unknown (DOWNLOADED); execution preflight fails closed.
+                if not identifiers_present:
+                    if not artifact.is_bundle:
+                        # Non-bundle artifact: integrity unknown, keep DOWNLOADED.
+                        return StoredArtifact(artifact, ArtifactState.DOWNLOADED, safe_manifest)
+                    # Bundle artifact: no identifier verification. The filesystem
+                    # bundle checks below still run (missing aux, symlinks,
+                    # checksums...). State is decided there.
+
+                content_id_ok = True
+                sha256_ok = True
+                verification_messages = []
+
+                is_openvino = artifact.backend == "openvino" or (
+                    artifact.format or ""
+                ).strip().lower() in {"openvino", "openvino ir"}
+                if is_openvino:
+                    if "content_id" in identifiers_present:
+                        from .importing import _compute_content_id
+
+                        package_id = _compute_content_id(
+                            safe_manifest.parent,
+                            exclude_paths=frozenset({"manifest.json"}),
+                        )
+                        content_id_ok = package_id.lower() == artifact.content_id.lower()
+                        if not content_id_ok:
+                            verification_messages.append(
+                                f"content_id {artifact.content_id} does not match package identity {package_id}"
+                            )
+                    if "sha256" in identifiers_present:
+                        digest_lower = _sha256(file_path).lower()
+                        sha256_ok = digest_lower == artifact.sha256.lower()
+                        if not sha256_ok:
+                            verification_messages.append(
+                                f"sha256 {artifact.sha256} does not match file SHA-256 {digest_lower}"
+                            )
+                else:
+                    # GGUF and other single-file artifacts retain their
+                    # existing contract: both identifiers refer to file bytes.
+                    digest_lower = _sha256(file_path).lower()
+                    if "content_id" in identifiers_present:
+                        content_id_ok = digest_lower == artifact.content_id.lower()
+                    if "sha256" in identifiers_present:
+                        sha256_ok = digest_lower == artifact.sha256.lower()
+
+                # Verify content_id independently for non-OpenVINO artifacts.
+                if not is_openvino and "content_id" in identifiers_present:
+                    if not content_id_ok:
+                        verification_messages.append(
+                            f"content_id {artifact.content_id} does not match file SHA-256 {digest_lower}"
+                        )
+                if not is_openvino and "sha256" in identifiers_present:
+                    if not sha256_ok:
+                        verification_messages.append(
+                            f"sha256 {artifact.sha256} does not match file SHA-256 {digest_lower}"
+                        )
+
+                # A matching identifier verifies content consistency, not
+                # authenticity or provenance. Bundles without identifiers
+                # remain unverified while their filesystem checks still run.
+                if not identifiers_present and artifact.is_bundle:
+                    # Bundle without identifiers: skip identifier
+                    # verification, go straight to the filesystem bundle
+                    # checks which decide the state.
+                    state = None
+                    message = None
+                elif content_id_ok and sha256_ok:
+                    state = ArtifactState.VERIFIED
+                    message = None
+                else:
+                    state = ArtifactState.FAILED
+                    message = (
+                        "; ".join(verification_messages)
+                        if verification_messages
+                        else "Integrity verification failed"
+                    )
+            else:
+                # verify=False: no integrity verification performed.
+                state = ArtifactState.DOWNLOADED
+                message = None
+
+            # Bundle filesystem checks. These run for bundle artifacts
+            # when verify=True (i.e. when integrity identifiers are checked).
+            # They are skipped when verify=False, matching the previous
+            # behaviour where verify=False omitted these checks entirely.
             if verify and artifact.is_bundle:
                 for aux in artifact.files:
                     try:
@@ -385,16 +476,29 @@ class ModelStore:
                             safe_manifest.parent / self._safe_filename(aux)
                         )
                     except (UnsafePathError, ValueError):
-                        return StoredArtifact(artifact, ArtifactState.FAILED, safe_manifest, "Unsafe auxiliary file path")
+                        return StoredArtifact(
+                            artifact, ArtifactState.FAILED, safe_manifest,
+                            "Unsafe auxiliary file path"
+                        )
                     if aux_path.is_symlink():
                         raise UnsafePathError("Auxiliary file is a symlink")
                     if not aux_path.exists():
-                        return StoredArtifact(artifact, ArtifactState.NOT_DOWNLOADED, safe_manifest)
+                        if state is not ArtifactState.FAILED:
+                            state = ArtifactState.NOT_DOWNLOADED
+                            message = "Auxiliary file is missing"
+                        break
                     expected = artifact.file_checksums.get(aux)
                     if expected is not None:
                         if _sha256(aux_path) != expected.lower():
-                            return StoredArtifact(artifact, ArtifactState.FAILED, safe_manifest, "SHA-256 differs from manifest")
-            return StoredArtifact(artifact, ArtifactState.DOWNLOADED, safe_manifest)
+                            state = ArtifactState.FAILED
+                            message = "SHA-256 differs from manifest"
+                            break
+
+            if state is None:
+                # Bundle without identifiers (and verify=False): state is DOWNLOADED.
+                state = ArtifactState.DOWNLOADED
+                message = None
+            return StoredArtifact(artifact, state, safe_manifest, message)
         except (OSError, ValueError, KeyError, TypeError, UnsafePathError) as error:
             return StoredArtifact(None, ArtifactState.FAILED, manifest_path, str(error))
 

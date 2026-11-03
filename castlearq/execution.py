@@ -17,6 +17,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+import errno
 import hashlib
 import hmac
 import math
@@ -56,6 +57,162 @@ class ArtifactPreflightError(ExecutionError):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def _verify_openvino_auxiliary_files(
+    artifact: ArtifactSpec, artifact_fd: int
+) -> None:
+    """Verify declared OpenVINO auxiliary files relative to the open package."""
+    expected_checksums = artifact.file_checksums
+    filenames = set(artifact.files) | set(expected_checksums)
+    if any(not isinstance(path, str) for path in filenames):
+        raise ArtifactPreflightError(
+            PreflightErrorCode.UNSAFE_ARTIFACT,
+            "OpenVINO auxiliary file path is invalid",
+        )
+
+    for relative_path in sorted(filenames):
+        if (
+            not relative_path
+            or "\x00" in relative_path
+        ):
+            raise ArtifactPreflightError(
+                PreflightErrorCode.UNSAFE_ARTIFACT,
+                "OpenVINO auxiliary file path is invalid",
+            )
+        components = relative_path.split("/")
+        if any(component in {"", ".", ".."} for component in components):
+            raise ArtifactPreflightError(
+                PreflightErrorCode.UNSAFE_ARTIFACT,
+                f"Unsafe OpenVINO auxiliary file path: {relative_path}",
+            )
+
+        parent_fd = artifact_fd
+        opened_directories: list[int] = []
+        try:
+            for component in components[:-1]:
+                directory_fd = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=parent_fd,
+                )
+                opened_directories.append(directory_fd)
+                parent_fd = directory_fd
+
+            filename = components[-1]
+            try:
+                path_info = os.stat(
+                    filename, dir_fd=parent_fd, follow_symlinks=False
+                )
+            except FileNotFoundError as error:
+                raise ArtifactPreflightError(
+                    PreflightErrorCode.MISSING_ARTIFACT,
+                    f"OpenVINO auxiliary file is missing: {relative_path}",
+                ) from error
+            if not stat.S_ISREG(path_info.st_mode):
+                raise ArtifactPreflightError(
+                    PreflightErrorCode.UNSAFE_ARTIFACT,
+                    f"OpenVINO auxiliary file is not regular: {relative_path}",
+                )
+            try:
+                file_fd = os.open(
+                    filename,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=parent_fd,
+                )
+            except OSError as error:
+                if error.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise ArtifactPreflightError(
+                        PreflightErrorCode.UNSAFE_ARTIFACT,
+                        f"OpenVINO auxiliary path is unsafe: {relative_path}",
+                    ) from error
+                raise
+
+            try:
+                before = os.fstat(file_fd)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or (before.st_dev, before.st_ino)
+                    != (path_info.st_dev, path_info.st_ino)
+                ):
+                    raise ArtifactPreflightError(
+                        PreflightErrorCode.UNSAFE_ARTIFACT,
+                        f"OpenVINO auxiliary file changed while opening: {relative_path}",
+                    )
+
+                if relative_path in expected_checksums:
+                    expected = expected_checksums[relative_path]
+                    if not isinstance(expected, str):
+                        raise ArtifactPreflightError(
+                            PreflightErrorCode.INVALID_ARTIFACT,
+                            f"OpenVINO auxiliary checksum is invalid: {relative_path}",
+                        )
+                    digest = hashlib.sha256()
+                    bytes_read = 0
+                    with os.fdopen(file_fd, "rb", closefd=False) as stream:
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                            bytes_read += len(chunk)
+                            digest.update(chunk)
+                    after = os.fstat(file_fd)
+                    if (
+                        (
+                            before.st_dev,
+                            before.st_ino,
+                            before.st_mode,
+                            before.st_nlink,
+                            before.st_size,
+                            before.st_mtime_ns,
+                            before.st_ctime_ns,
+                        )
+                        != (
+                            after.st_dev,
+                            after.st_ino,
+                            after.st_mode,
+                            after.st_nlink,
+                            after.st_size,
+                            after.st_mtime_ns,
+                            after.st_ctime_ns,
+                        )
+                        or bytes_read != before.st_size
+                    ):
+                        raise ArtifactPreflightError(
+                            PreflightErrorCode.CHECKSUM_MISMATCH,
+                            f"OpenVINO auxiliary file changed during verification: {relative_path}",
+                        )
+                    if not hmac.compare_digest(
+                        digest.hexdigest().lower(), expected.lower()
+                    ):
+                        raise ArtifactPreflightError(
+                            PreflightErrorCode.CHECKSUM_MISMATCH,
+                            f"OpenVINO auxiliary file SHA-256 differs: {relative_path}",
+                        )
+            finally:
+                os.close(file_fd)
+        except ArtifactPreflightError:
+            raise
+        except FileNotFoundError as error:
+            raise ArtifactPreflightError(
+                PreflightErrorCode.MISSING_ARTIFACT,
+                f"OpenVINO auxiliary directory is missing: {relative_path}",
+            ) from error
+        except OSError as error:
+            if error.errno in {errno.ELOOP, errno.ENOTDIR}:
+                raise ArtifactPreflightError(
+                    PreflightErrorCode.UNSAFE_ARTIFACT,
+                    f"OpenVINO auxiliary path is unsafe: {relative_path}",
+                ) from error
+            raise ArtifactPreflightError(
+                PreflightErrorCode.UNSAFE_ARTIFACT,
+                f"OpenVINO auxiliary file could not be verified: {relative_path}",
+            ) from error
+        except ValueError as error:
+            raise ArtifactPreflightError(
+                PreflightErrorCode.UNSAFE_ARTIFACT,
+                f"OpenVINO auxiliary path is invalid: {relative_path}",
+            ) from error
+        finally:
+            for directory_fd in reversed(opened_directories):
+                os.close(directory_fd)
 
 
 class ExecutionErrorCode(str, Enum):
@@ -290,28 +447,131 @@ class ArtifactExecutionPreflight:
             final_fd = os.open(
                 filename, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=artifact_fd
             )
-            actual_size = os.fstat(final_fd).st_size
+            file_info = os.fstat(final_fd)
+            actual_size = file_info.st_size
             size_verified = artifact.size_bytes is not None
             if size_verified and actual_size != artifact.size_bytes:
                 raise ArtifactPreflightError(
                     PreflightErrorCode.SIZE_MISMATCH,
                     "Final artifact size differs from ArtifactSpec",
                 )
-            checksum_verified = False
+            # content_id is the local content identity; sha256 is an
+            # independent declaration. Either can verify the observed bytes.
+            identifiers_present = []
+            if artifact.content_id is not None:
+                identifiers_present.append('content_id')
             if artifact.sha256 is not None:
-                digest = hashlib.sha256()
-                with os.fdopen(final_fd, "rb") as stream:
-                    final_fd = None
-                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                        digest.update(chunk)
-                if not hmac.compare_digest(
-                    digest.hexdigest().lower(), artifact.sha256.lower()
-                ):
+                identifiers_present.append('sha256')
+
+            # Fail-closed: if no verifiable identifiers, reject
+            if not identifiers_present:
+                raise ArtifactPreflightError(
+                    PreflightErrorCode.INVALID_ARTIFACT,
+                    "No integrity identifiers (content_id nor sha256) present in artifact; "
+                    "cannot verify integrity for execution",
+                )
+
+            # Compute SHA-256 of the file once
+            digest = hashlib.sha256()
+            bytes_read = 0
+            with os.fdopen(final_fd, "rb") as stream:
+                final_fd = None
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    bytes_read += len(chunk)
+                    digest.update(chunk)
+                after_read = os.fstat(stream.fileno())
+            if (
+                (file_info.st_dev, file_info.st_ino, file_info.st_mode,
+                 file_info.st_nlink, file_info.st_size, file_info.st_mtime_ns,
+                 file_info.st_ctime_ns)
+                !=
+                (after_read.st_dev, after_read.st_ino, after_read.st_mode,
+                 after_read.st_nlink, after_read.st_size, after_read.st_mtime_ns,
+                 after_read.st_ctime_ns)
+                or bytes_read != file_info.st_size
+            ):
+                raise ArtifactPreflightError(
+                    PreflightErrorCode.CHECKSUM_MISMATCH,
+                    "Final artifact changed while its integrity was being verified",
+                )
+            digest_lower = digest.hexdigest().lower()
+
+            content_id_ok = True
+            sha256_ok = True
+            error_messages = []
+            is_openvino = artifact.backend == "openvino" or (
+                artifact.format or ""
+            ).strip().lower() in {"openvino", "openvino ir"}
+
+            # Verify content_id if present
+            if 'content_id' in identifiers_present:
+                if is_openvino:
+                    from .importing import _compute_content_id
+
+                    try:
+                        package_id = _compute_content_id(
+                            self.model_store._artifact_directory(artifact),
+                            exclude_paths=frozenset({"manifest.json"}),
+                        )
+                    except (OSError, UnsafePathError, ValueError) as error:
+                        raise ArtifactPreflightError(
+                            PreflightErrorCode.UNSAFE_ARTIFACT,
+                            f"OpenVINO package could not be verified safely: {error}",
+                        ) from error
+                    content_id_ok = package_id.lower() == artifact.content_id.lower()
+                else:
+                    content_id_ok = digest_lower == artifact.content_id.lower()
+                if not content_id_ok:
+                    error_messages.append(
+                        f"content_id {artifact.content_id} does not match "
+                        + (
+                            f"package identity {package_id}"
+                            if is_openvino
+                            else f"file SHA-256 {digest_lower}"
+                        )
+                    )
+
+            # Verify sha256 if present
+            if 'sha256' in identifiers_present:
+                sha256_ok = digest_lower == artifact.sha256.lower()
+                if not sha256_ok:
+                    error_messages.append(
+                        f"sha256 {artifact.sha256} does not match file SHA-256 {digest_lower}"
+                    )
+
+            if is_openvino:
+                _verify_openvino_auxiliary_files(artifact, artifact_fd)
+
+            # Reject if any verification fails
+            if not content_id_ok or not sha256_ok:
+                if not content_id_ok and not sha256_ok:
                     raise ArtifactPreflightError(
                         PreflightErrorCode.CHECKSUM_MISMATCH,
-                        "Final artifact SHA-256 differs from ArtifactSpec",
+                        (
+                            "Integrity verification failed: content_id mismatched "
+                            "OpenVINO package and sha256 mismatched primary file"
+                            if is_openvino
+                            else "Integrity verification failed: both content_id and sha256 mismatched file"
+                        ),
                     )
-                checksum_verified = True
+                elif not content_id_ok:
+                    raise ArtifactPreflightError(
+                        PreflightErrorCode.CHECKSUM_MISMATCH,
+                        (
+                            "Integrity verification failed: content_id mismatched "
+                            "OpenVINO package identity"
+                            if is_openvino
+                            else "Integrity verification failed: content_id mismatched file "
+                            "(SHA-256 computed from content differs)"
+                        ),
+                    )
+                else:
+                    raise ArtifactPreflightError(
+                        PreflightErrorCode.CHECKSUM_MISMATCH,
+                        f"Integrity verification failed: sha256 mismatched file (computed SHA-256 differs)",
+                    )
+
+            checksum_verified = True
             return ExecutableArtifact(
                 artifact=artifact,
                 path=self.model_store._artifact_directory(artifact) / filename,

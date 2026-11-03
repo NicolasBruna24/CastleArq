@@ -15,11 +15,14 @@
 """Pruebas unitarias para OpenVINOImportService.import_directory()."""
 
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from castlearq.conversion import OpenVINOImportService, ImportResult
+from castlearq.importing import _compute_content_id
 from castlearq.model_store import ModelStore
 from castlearq.models import ArtifactState
 
@@ -65,7 +68,11 @@ class OpenVINOImportServiceTests(unittest.TestCase):
     def test_manifest_fields(self):
         src = _make_bundle(self.root / "src")
         svc = OpenVINOImportService(self.store)
-        result = svc.import_directory(src, "qwen3-8b-int4")
+        with patch(
+            "castlearq.conversion._compute_content_id",
+            wraps=_compute_content_id,
+        ) as compute:
+            result = svc.import_directory(src, "qwen3-8b-int4")
         self.assertTrue(result.success)
         artifact = result.artifact
         self.assertIsNotNone(artifact)
@@ -76,6 +83,46 @@ class OpenVINOImportServiceTests(unittest.TestCase):
         self.assertEqual(artifact.backend, "openvino")
         self.assertEqual(artifact.quantization, "INT4")
         self.assertIsNone(artifact.sha256)
+        self.assertEqual(artifact.content_id, _compute_content_id(src))
+        self.assertEqual(compute.call_count, 2)
+
+    def test_import_identity_matches_composed_package_bytes(self):
+        src = _make_bundle(self.root / "src")
+        result = OpenVINOImportService(self.store).import_directory(src, "model")
+        self.assertTrue(result.success, result.message)
+
+        expected = hashlib.sha256()
+        for path in sorted(
+            (item for item in src.rglob("*") if item.is_file()),
+            key=lambda item: item.relative_to(src).as_posix(),
+        ):
+            relative = path.relative_to(src).as_posix()
+            expected.update(relative.encode("utf-8"))
+            expected.update(b"\0")
+            expected.update(path.read_bytes())
+            expected.update(b"\0")
+        self.assertEqual(result.artifact.content_id, expected.hexdigest())
+
+    def test_inspection_fails_when_any_package_file_changes(self):
+        mutations = (
+            ("xml", lambda package, artifact: (package / artifact.filename).write_bytes(b"<changed/>")),
+            ("bin", lambda package, artifact: (package / "openvino_model.bin").write_bytes(b"changed")),
+            ("auxiliary", lambda package, artifact: (package / "config.json").write_bytes(b'{"changed":true}')),
+            ("added", lambda package, artifact: (package / "new.json").write_bytes(b"new")),
+            ("removed", lambda package, artifact: (package / "config.json").unlink()),
+        )
+        for name, mutate in mutations:
+            with self.subTest(file_change=name):
+                source = _make_bundle(self.root / f"source-{name}")
+                imported = OpenVINOImportService(self.store).import_directory(
+                    source, f"model-{name}"
+                )
+                self.assertTrue(imported.success, imported.message)
+                package = self.store.artifact_directory(imported.artifact)
+                mutate(package, imported.artifact)
+                inspected = self.store.inspect_manifest(imported.manifest_path)
+                self.assertEqual(inspected.state, ArtifactState.FAILED)
+                self.assertTrue(inspected.message)
 
     def test_aux_files_and_checksums_copied(self):
         src = _make_bundle(self.root / "src")
@@ -103,7 +150,7 @@ class OpenVINOImportServiceTests(unittest.TestCase):
             self.assertIsNotNone(expected, f"no checksum for {aux}")
             self.assertEqual(_sha256(aux_path), expected)
 
-    def test_state_is_downloaded_not_verified(self):
+    def test_state_is_verified_from_package_content_identity(self):
         src = _make_bundle(self.root / "src")
         svc = OpenVINOImportService(self.store)
         result = svc.import_directory(src, "qwen3-8b-int4")
@@ -111,8 +158,7 @@ class OpenVINOImportServiceTests(unittest.TestCase):
         artifact = result.artifact
         self.assertIsNotNone(artifact)
         inspected = self.store.inspect_manifest(result.manifest_path)
-        self.assertEqual(inspected.state, ArtifactState.DOWNLOADED)
-        self.assertNotEqual(inspected.state, ArtifactState.VERIFIED)
+        self.assertEqual(inspected.state, ArtifactState.VERIFIED)
 
     def test_source_directory_not_found(self):
         svc = OpenVINOImportService(self.store)
@@ -164,6 +210,45 @@ class OpenVINOImportServiceTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Symlink not allowed", result.message)
 
+    def test_symlinked_directory_is_rejected_without_importing_target(self):
+        src = self.root / "src-symlink-directory"
+        src.mkdir()
+        (src / "openvino_model.xml").write_text("<model/>")
+        (src / "openvino_model.bin").write_bytes(b"weights")
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "extra.bin").write_bytes(b"outside")
+        (src / "linked").symlink_to(outside, target_is_directory=True)
+
+        result = OpenVINOImportService(self.store).import_directory(src, "model")
+
+        self.assertFalse(result.success)
+        self.assertIn("Symlink", result.message)
+
+    def test_import_rejects_file_modified_during_content_hash(self):
+        src = self.root / "src-changing"
+        src.mkdir()
+        (src / "openvino_model.xml").write_bytes(b"<model/>")
+        binary = src / "openvino_model.bin"
+        binary.write_bytes(b"weights" * 20000)
+
+        real_read = os.read
+        changed = False
+
+        def read_then_modify(fd, size):
+            nonlocal changed
+            data = real_read(fd, size)
+            if not changed:
+                binary.write_bytes(b"changed" * 20000)
+                changed = True
+            return data
+
+        with patch("castlearq.importing.os.read", side_effect=read_then_modify):
+            result = OpenVINOImportService(self.store).import_directory(src, "model")
+
+        self.assertFalse(result.success)
+        self.assertIn("changed while reading", result.message)
+
     def test_collision_not_overwritten(self):
         src = _make_bundle(self.root / "src")
         svc = OpenVINOImportService(self.store)
@@ -173,7 +258,7 @@ class OpenVINOImportServiceTests(unittest.TestCase):
         self.assertFalse(r2.success)
         self.assertIn("already exists", r2.message)
         manifest = self.store.inspect_manifest(r1.manifest_path)
-        self.assertEqual(manifest.state, ArtifactState.DOWNLOADED)
+        self.assertEqual(manifest.state, ArtifactState.VERIFIED)
         self.assertEqual(manifest.artifact.model_id, "qwen3-8b-int4")
 
     def test_collision_different_model_id_allowed(self):

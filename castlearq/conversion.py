@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from castlearq.model_store import ModelStore, UnsafePathError
 from castlearq.models import ArtifactSpec, ArtifactState
+from castlearq.importing import _compute_content_id
 
 VALID_PRECISIONS = ("fp16", "int8", "int4")
 
@@ -189,16 +190,8 @@ class OpenVINOImportService:
                 checksums[rel] = _sha256(p)
             aux_tuple = tuple(sorted(set(aux)))
             checksum_map = {k: checksums[k] for k in aux_tuple}
-            content_hasher = __import__("hashlib").sha256()
-            for _p in sorted(all_files, key=lambda x: x.relative_to(source).as_posix()):
-                _rel = _p.relative_to(source).as_posix()
-                content_hasher.update(_rel.encode('utf-8'))
-                content_hasher.update(b'\0')
-                with _p.open('rb') as _f:
-                    for _c in iter(lambda: _f.read(65536), b''):
-                        content_hasher.update(_c)
-                content_hasher.update(b'\0')
-            content_id = content_hasher.hexdigest()
+
+            content_id = _compute_content_id(source)
 
             spec = ArtifactSpec(
                 model_id=model_id,
@@ -211,6 +204,9 @@ class OpenVINOImportService:
                 revision=revision,
                 files=aux_tuple,
                 file_checksums=checksum_map,
+                # The package identity is local; sha256 remains an
+                # independent checksum declaration.
+                sha256=None,
                 content_id=content_id,
             )
             managed = self.store.artifact_directory(spec)
@@ -239,6 +235,8 @@ class OpenVINOImportService:
                 target = managed / p.relative_to(source)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(p, target)
+            if _compute_content_id(managed) != content_id:
+                raise ValueError("OpenVINO package changed while it was being imported")
             manifest = self.store.save_manifest(spec)
             inspected = self.store.inspect_manifest(manifest, verify=True)
             if inspected.state not in (ArtifactState.DOWNLOADED, ArtifactState.VERIFIED):

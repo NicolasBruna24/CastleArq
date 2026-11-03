@@ -422,8 +422,13 @@ class Sha256RecomputationTests(unittest.TestCase):
             second = store.inspect_manifest(manifest)
             self.assertEqual(first.state, ArtifactState.FAILED)
             self.assertEqual(second.state, ArtifactState.FAILED)
-            self.assertEqual(first.message, "SHA-256 differs from manifest")
-            self.assertEqual(second.message, "SHA-256 differs from manifest")
+            # B9.67: mensaje actual identifica el campo sha256 discrepante;
+            # ya no es "SHA-256 differs from manifest" sino que incluye el sha256
+            # calculado y el content_id (que es None en este caso).
+            self.assertIn("sha256", first.message.lower())
+            self.assertIn("match", first.message.lower())
+            self.assertIn("sha256", second.message.lower())
+            self.assertIn("match", second.message.lower())
 
     def test_artifact_without_checksum_stays_downloaded(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -486,6 +491,92 @@ class Sha256RecomputationTests(unittest.TestCase):
     def test_artifact_spec_rejects_invalid_backend(self):
         with self.assertRaises(ValueError):
             ArtifactSpec(model_id="m", source="s", repository="r", filename="f.gguf", backend="foo")
+
+
+class OpenVINOManifestIntegrityTests(unittest.TestCase):
+    def _inspect_identifiers(self, content_id, sha256):
+        from castlearq.importing import _compute_content_id
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "openvino_model.xml").write_bytes(b"<model/>")
+            (source / "config.json").write_bytes(b'{"model":true}')
+            correct_content_id = _compute_content_id(source)
+            correct_sha256 = hashlib.sha256(b"<model/>").hexdigest()
+
+            spec = ArtifactSpec(
+                model_id="openvino/model",
+                source="openvino-import",
+                repository=None,
+                filename="openvino_model.xml",
+                format="OpenVINO IR",
+                backend="openvino",
+                content_id=content_id(correct_content_id),
+                sha256=sha256(correct_sha256),
+            )
+            store = ModelStore(root / "store")
+            manifest = store.save_manifest(spec)
+            for source_file in source.iterdir():
+                (manifest.parent / source_file.name).write_bytes(source_file.read_bytes())
+            return store.inspect_manifest(manifest)
+
+    def test_openvino_inspection_identifier_scenarios(self):
+        scenarios = (
+            ("neither", lambda value: None, lambda value: None, ArtifactState.DOWNLOADED),
+            ("content_id only", lambda value: value, lambda value: None, ArtifactState.VERIFIED),
+            ("sha256 only", lambda value: None, lambda value: value, ArtifactState.VERIFIED),
+            ("both correct", lambda value: value, lambda value: value, ArtifactState.VERIFIED),
+            ("content_id wrong", lambda value: "0" * 64, lambda value: None, ArtifactState.FAILED),
+            ("sha256 wrong", lambda value: None, lambda value: "0" * 64, ArtifactState.FAILED),
+        )
+        for name, content_id, sha256, expected_state in scenarios:
+            with self.subTest(identifiers=name):
+                inspected = self._inspect_identifiers(content_id, sha256)
+                self.assertEqual(inspected.state, expected_state)
+
+    def test_openvino_checks_content_identity_and_file_sha_independently(self):
+        from castlearq.importing import _compute_content_id
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "openvino_model.xml").write_bytes(b"<model/>")
+            (source / "config.json").write_bytes(b'{"model":true}')
+            content_id = _compute_content_id(source)
+            sha256 = hashlib.sha256(b"<model/>").hexdigest()
+            spec = ArtifactSpec(
+                model_id="openvino/model",
+                source="openvino-import",
+                repository=None,
+                filename="openvino_model.xml",
+                format="OpenVINO IR",
+                backend="openvino",
+                content_id=content_id,
+                sha256=sha256,
+            )
+            store = ModelStore(root / "store")
+            manifest = store.save_manifest(spec)
+            for source_file in source.iterdir():
+                (manifest.parent / source_file.name).write_bytes(source_file.read_bytes())
+
+            with mock.patch(
+                "castlearq.importing._compute_content_id",
+                wraps=_compute_content_id,
+            ) as package_hash, mock.patch(
+                "castlearq.model_store._sha256",
+                wraps=castlearq.model_store._sha256,
+            ) as file_hash:
+                inspected = store.inspect_manifest(manifest)
+
+            self.assertEqual(inspected.state, ArtifactState.VERIFIED)
+            package_hash.assert_called_once_with(
+                manifest.parent,
+                exclude_paths=frozenset({"manifest.json"}),
+            )
+            file_hash.assert_called_once_with(manifest.parent / spec.filename)
 
 
 if __name__ == "__main__":

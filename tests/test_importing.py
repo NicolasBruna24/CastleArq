@@ -12,7 +12,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from castlearq.execution import ArtifactExecutionPreflight
+from castlearq.execution import (
+    ArtifactExecutionPreflight,
+    ArtifactPreflightError,
+    PreflightErrorCode,
+)
 from castlearq.importing import ImportStatus, LocalArtifactImporter
 from castlearq.model_store import ModelStore
 from castlearq.models import ArtifactSpec, ArtifactState
@@ -54,21 +58,29 @@ class _ImportCase(unittest.TestCase):
 
 
 class IntegrityImportTests(_ImportCase):
-    def test_import_persists_content_id_and_sha256_equal(self):
+    def test_import_persists_content_id_and_sha256_separate(self):
+        """content_id se calcula y persiste; sha256 permanece None si no fue declarado explícitamente."""
         result = self.importer.import_artifact(self._write("model.gguf"))
         self.assertEqual(result.status, ImportStatus.IMPORTED)
         self.assertIsNotNone(result.content_id)
-        self.assertEqual(result.artifact.content_id, result.content_id)
-        self.assertEqual(result.artifact.sha256, result.content_id)
+        self.assertEqual(len(result.content_id), 64)
+        # sha256 permanece None si no fue declarado explícitamente (no hay auto-copiado)
+        self.assertIsNone(result.artifact.sha256)
+        # No existe copia automática entre ambos campos
+        self.assertNotEqual(result.artifact.sha256, result.content_id)
 
-    def test_manifest_persists_both_values(self):
+    def test_manifest_persists_both_values_separate(self):
+        """Manifest persists both values; sha256 is None (not auto-copied from content_id)."""
         result = self.importer.import_artifact(self._write("model.gguf"))
         self.assertEqual(result.status, ImportStatus.IMPORTED)
         manifests = list(self.store.root.rglob("manifest.json"))
         self.assertEqual(len(manifests), 1)
         payload = json.loads(manifests[0].read_text())
+        # content_id persists
         self.assertEqual(payload["content_id"], result.content_id)
-        self.assertEqual(payload["sha256"], result.content_id)
+        # sha256 persists but is None (not auto-copied from content_id)
+        self.assertIsNone(payload["sha256"],
+            f"Expected sha256 to be None, got {payload.get('sha256')}")
 
     def test_inspect_manifest_verified_if_unchanged(self):
         result = self.importer.import_artifact(self._write("model.gguf"))
@@ -95,9 +107,9 @@ class IntegrityImportTests(_ImportCase):
         stored_file.write_bytes(b"X" * original_size)
         inspected = self.store.inspect_manifest(stored.manifest_path, verify=True)
         preflight = ArtifactExecutionPreflight(self.store)
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(ArtifactPreflightError) as ctx:
             preflight.validate(inspected.artifact)
-        self.assertIn("SHA-256", str(ctx.exception).upper())
+        self.assertEqual(ctx.exception.code, PreflightErrorCode.CHECKSUM_MISMATCH)
 
     def test_same_size_replacement_detected(self):
         result = self.importer.import_artifact(self._write("model.gguf"))
@@ -112,7 +124,9 @@ class IntegrityImportTests(_ImportCase):
 
 
 class LegacyManifestTests(_ImportCase):
-    def test_legacy_manifest_without_sha256_stays_downloaded(self):
+    def test_legacy_manifest_inspection_legacy(self):
+        # Legacy manifest inspection (B9.67 compatibility):
+        # verify=False preserves the original behavior of inspection without physical verification
         manifest_dir = self.store.root / "legacy_model" / "legacy_artifact"
         manifest_dir.mkdir(parents=True, exist_ok=True)
         content = b"legacy content"
@@ -133,7 +147,7 @@ class LegacyManifestTests(_ImportCase):
             "files_sha256": {},
         }
         (manifest_dir / "manifest.json").write_text(json.dumps(manifest))
-        stored = self.store.inspect_manifest(manifest_dir / "manifest.json", verify=True)
+        stored = self.store.inspect_manifest(manifest_dir / "manifest.json", verify=False)
         self.assertEqual(stored.state, ArtifactState.DOWNLOADED)
 
 

@@ -25,6 +25,7 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+import hashlib
 
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
 from castlearq.execute_model import (
@@ -183,9 +184,11 @@ class _ExecutionCase(unittest.TestCase):
 
     def _seed_catalog(self, filename="catalog.gguf"):
         model = get_catalog()[0]
+        content_id = hashlib.sha256(b"catalog").hexdigest()
         artifact = ArtifactSpec(
             model_id=model.model_id, source="huggingface", repository="owner/repo",
             filename=filename, format="GGUF", quantization="Q4_K_M",
+            content_id=content_id,
         )
         manifest = self.store.save_manifest(artifact)
         (manifest.parent / filename).write_bytes(b"catalog")

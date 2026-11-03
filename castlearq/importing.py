@@ -7,14 +7,13 @@ and registers a manifest.
 
 Three separations are deliberate and load-bearing:
 
-* **Content identity is not an integrity declaration.** The computed
-  SHA-256 is stored as ``ArtifactSpec.content_id`` and is what
+* **Content identity is not an external integrity declaration.** The
+  computed SHA-256 is stored as ``ArtifactSpec.content_id`` and is what
   ``artifact_id`` returns. It is deliberately *not* copied into
-  ``ArtifactSpec.sha256``: that field is a declaration to be checked against
-  the file, and filling it with the digest we just computed would make
-  ``inspect_manifest`` compare a value against itself and report VERIFIED
-  -- a verification that never happened. An imported artifact therefore has
-  a content identity and an UNKNOWN integrity declaration.
+  ``ArtifactSpec.sha256``: that field is an independent checksum declaration.
+  Inspection verifies the current bytes against ``content_id`` and, when
+  present, against ``sha256``. ``VERIFIED`` means those bytes match the
+  recorded identifiers; it does not establish authenticity or provenance.
 
 * **Nothing is derived that was not observed.** No logical model identity,
   no provenance, no parameter count, no memory estimate, no quantization. A
@@ -92,8 +91,234 @@ class ImportResult:
         return self.artifact.artifact_id if self.artifact is not None else None
 
 
-def _fail(error: str, **extra: Any) -> ImportResult:
-    return ImportResult(status=ImportStatus.FAILED, error=error, **extra)
+def _fail(
+    error: str,
+    *,
+    content_id: str | None = None,
+    artifact: ArtifactSpec | None = None,
+    model: ModelSpec | None = None,
+    label: str | None = None,
+    sanitized_label: str | None = None,
+    filename: str | None = None,
+    destination: Path | None = None,
+    architecture: str | None = None,
+    warnings: tuple[str, ...] = (),
+) -> ImportResult:
+    return ImportResult(
+        status=ImportStatus.FAILED,
+        content_id=content_id,
+        artifact=artifact,
+        model=model,
+        label=label,
+        sanitized_label=sanitized_label,
+        filename=filename,
+        destination=destination,
+        architecture=architecture,
+        error=error,
+        warnings=warnings,
+    )
+
+
+def _compute_content_id(
+    source: Path, *, exclude_paths: frozenset[str] = frozenset()
+) -> str:
+    """
+    Compute the composed SHA-256 content_id for an OpenVINO IR artifact.
+
+    The content_id is the CastleArq identity: SHA-256 of all regular files in the
+    package, ordered deterministically by relative POSIX path, with each file's
+    relative path (UTF-8 encoded, NUL-byte separated) prepended before its content.
+
+    This conserves exactly the algorithm from the existing import converter:
+
+    - Only regular files (no symlinks, no directories)
+    - Excludes .git directories
+    - Sorted deterministically by relative path (as_posix())
+    - Each entry: relative path, NUL, file content, NUL
+    - Final: SHA-256 hex digest
+
+    :param source: Path to the source directory containing the OpenVINO bundle
+    :return: SHA-256 hex string representing the package identity
+    """
+    source = Path(os.path.abspath(os.fspath(source)))
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+        file_flags |= os.O_CLOEXEC
+
+    def signature(info: os.stat_result) -> tuple[int, ...]:
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_nlink,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    def open_directory(parent_fd: int, name: str) -> int:
+        info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            raise UnsafePathError(f"Package entry is not a directory: {name}")
+        directory_fd = os.open(name, directory_flags, dir_fd=parent_fd)
+        if signature(os.fstat(directory_fd)) != signature(info):
+            os.close(directory_fd)
+            raise UnsafePathError(f"Directory changed while opening: {name}")
+        return directory_fd
+
+    def open_relative_directory(root_fd: int, components: tuple[str, ...]) -> int:
+        current_fd = os.dup(root_fd)
+        try:
+            for component in components:
+                next_fd = open_directory(current_fd, component)
+                os.close(current_fd)
+                current_fd = next_fd
+            return current_fd
+        except Exception:
+            os.close(current_fd)
+            raise
+
+    absolute_parts = Path(source).parts[1:]
+    current_fd = os.open("/", directory_flags)
+    try:
+        for component in absolute_parts:
+            next_fd = open_directory(current_fd, component)
+            os.close(current_fd)
+            current_fd = next_fd
+        root_fd = current_fd
+        current_fd = -1
+    finally:
+        if current_fd >= 0:
+            os.close(current_fd)
+
+    file_entries: list[tuple[str, tuple[str, ...], tuple[int, ...]]] = []
+    directory_entries: list[
+        tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...]]
+    ] = []
+
+    def enumerate_directory(directory_fd: int, components: tuple[str, ...]) -> None:
+        before = os.fstat(directory_fd)
+        names = tuple(sorted(os.listdir(directory_fd)))
+        included_names = tuple(name for name in names if name != ".git")
+        for name in included_names:
+            info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            child_components = components + (name,)
+            if stat.S_ISDIR(info.st_mode):
+                child_fd = open_directory(directory_fd, name)
+                try:
+                    enumerate_directory(child_fd, child_components)
+                finally:
+                    os.close(child_fd)
+            elif stat.S_ISREG(info.st_mode):
+                relative_path = Path(*child_components).as_posix()
+                if relative_path not in exclude_paths:
+                    file_entries.append((relative_path, child_components, signature(info)))
+            else:
+                raise UnsafePathError(
+                    f"Package entry is not a regular file or directory: "
+                    f"{Path(*child_components).as_posix()}"
+                )
+        after = os.fstat(directory_fd)
+        if signature(before) != signature(after):
+            raise UnsafePathError(
+                f"Directory changed during package enumeration: "
+                f"{Path(*components).as_posix() or '.'}"
+            )
+        directory_entries.append((components, signature(before), included_names))
+
+    try:
+        enumerate_directory(root_fd, ())
+        hasher = hashlib.sha256()
+        for relative_path, components, expected_signature in sorted(
+            file_entries, key=lambda entry: entry[0]
+        ):
+            parent_fd = open_relative_directory(root_fd, components[:-1])
+            try:
+                before_open = os.stat(
+                    components[-1], dir_fd=parent_fd, follow_symlinks=False
+                )
+                if signature(before_open) != expected_signature:
+                    raise UnsafePathError(
+                        f"Package file changed before reading: {relative_path}"
+                    )
+                file_fd = os.open(
+                    components[-1], file_flags, dir_fd=parent_fd
+                )
+            finally:
+                os.close(parent_fd)
+
+            try:
+                before_read = os.fstat(file_fd)
+                if not stat.S_ISREG(before_read.st_mode):
+                    raise UnsafePathError(
+                        f"Package entry is not a regular file: {relative_path}"
+                    )
+                if signature(before_read) != expected_signature:
+                    raise UnsafePathError(
+                        f"Package file changed while opening: {relative_path}"
+                    )
+                hasher.update(relative_path.encode("utf-8"))
+                hasher.update(b"\0")
+                bytes_read = 0
+                while True:
+                    chunk = os.read(file_fd, 65536)
+                    if not chunk:
+                        break
+                    bytes_read += len(chunk)
+                    hasher.update(chunk)
+                after_read = os.fstat(file_fd)
+                if (
+                    signature(before_read) != signature(after_read)
+                    or bytes_read != before_read.st_size
+                ):
+                    raise UnsafePathError(
+                        f"Package file changed while reading: {relative_path}"
+                    )
+                hasher.update(b"\0")
+            finally:
+                os.close(file_fd)
+
+        for relative_path, components, expected_signature in file_entries:
+            parent_fd = open_relative_directory(root_fd, components[:-1])
+            try:
+                current = os.stat(
+                    components[-1], dir_fd=parent_fd, follow_symlinks=False
+                )
+                if (
+                    not stat.S_ISREG(current.st_mode)
+                    or signature(current) != expected_signature
+                ):
+                    raise UnsafePathError(
+                        f"Package file changed during hashing: {relative_path}"
+                    )
+            finally:
+                os.close(parent_fd)
+
+        # These checks detect ordinary concurrent changes, but do not provide
+        # an atomic filesystem snapshot; changes that race and restore all
+        # observed metadata can remain undetectable.
+        for components, expected_signature, expected_names in directory_entries:
+            directory_fd = open_relative_directory(root_fd, components)
+            try:
+                current_signature = signature(os.fstat(directory_fd))
+                current_names = tuple(
+                    name for name in sorted(os.listdir(directory_fd)) if name != ".git"
+                )
+                if (
+                    current_signature != expected_signature
+                    or current_names != expected_names
+                ):
+                    raise UnsafePathError(
+                        f"Package directory changed during hashing: "
+                        f"{Path(*components).as_posix() or '.'}"
+                    )
+            finally:
+                os.close(directory_fd)
+        return hasher.hexdigest()
+    finally:
+        os.close(root_fd)
 
 
 def _model_for(sanitized_label: str) -> ModelSpec:
@@ -190,9 +415,8 @@ class LocalArtifactImporter:
             quantization="Unknown",
             download_url=None,
             size_bytes=size_bytes,
-            # The integrity declaration (sha256) is left as None;
-            # it is the caller's responsibility to declare it independently
-            # if they wish to enable inspect_manifest verification.
+            # sha256 remains an independent external declaration. The local
+            # content_id is sufficient for later content-consistency checks.
             sha256=None,
             state=ArtifactState.DOWNLOADED,
             content_id=content_id,
@@ -200,15 +424,25 @@ class LocalArtifactImporter:
         destination = self.store.artifact_directory(artifact) / filename
 
         # 6. Copy through `.part`, publish, and only then register the manifest.
-        failure = self._copy_atomically(source, artifact, content_id, size_bytes)
-        if failure is not None:
-            return failure
+        copy_result = self._copy_atomically(source, artifact, content_id, size_bytes)
+        if isinstance(copy_result, ImportResult):
+            return copy_result
+        published_identity = copy_result
 
         try:
             self.store.save_manifest(artifact)
         except (OSError, UnsafePathError, ValueError) as error:
+            message = f"Published file but could not register its manifest: {error}"
+            try:
+                removed = self._remove_published_artifact(
+                    artifact, published_identity
+                )
+                if not removed:
+                    message += "; published file was replaced and left untouched"
+            except (OSError, UnsafePathError, ValueError) as cleanup_error:
+                message += f"; could not remove published file: {cleanup_error}"
             return _fail(
-                f"Published file but could not register its manifest: {error}",
+                message,
                 content_id=content_id,
                 artifact=artifact,
                 model=_model_for(sanitized_label),
@@ -240,8 +474,8 @@ class LocalArtifactImporter:
         artifact: ArtifactSpec,
         content_id: str,
         size_bytes: int,
-    ) -> ImportResult | None:
-        """Copy to ``<name>.part`` then publish. A failure result or None.
+    ) -> tuple[int, int] | ImportResult:
+        """Copy to ``<name>.part`` then publish, returning its inode identity.
 
         Mirrors the downloader's publication pattern: the bytes land in a
         ``.part`` file, which is never executable, and the final name only
@@ -251,6 +485,7 @@ class LocalArtifactImporter:
         """
         part_name = f"{artifact.filename}.part"
         root_fd = model_fd = artifact_fd = part_fd = None
+        published_identity: tuple[int, int] | None = None
         try:
             root_fd = self.store._open_root(create=True)
             model_fd = self.store._open_directory(
@@ -299,32 +534,40 @@ class LocalArtifactImporter:
             # hashed, or the digest recorded in the manifest would describe
             # bytes that are not the published ones.
             if copied != size_bytes:
+                self._discard(part_name, artifact_fd)
                 return _fail(
                     f"Copied size {copied} differs from source size {size_bytes}.",
                     content_id=content_id,
                 )
             observed = self._partial_digest(part_name, artifact_fd)
             if not hmac.compare_digest(observed, content_id):
+                self._discard(part_name, artifact_fd)
                 return _fail(
                     "Copied content digest differs from the source content digest.",
                     content_id=content_id,
                 )
 
             # Publish atomically, then fsync the directory entry.
+            partial_info = os.stat(
+                part_name, dir_fd=artifact_fd, follow_symlinks=False
+            )
             os.link(
                 part_name,
                 artifact.filename,
                 src_dir_fd=artifact_fd,
                 dst_dir_fd=artifact_fd,
             )
+            published_identity = (partial_info.st_dev, partial_info.st_ino)
             os.unlink(part_name, dir_fd=artifact_fd)
             os.fsync(artifact_fd)
-            return None
+            return published_identity
         except UnsafePathError as error:
             self._discard(part_name, artifact_fd)
+            self._discard_published(artifact.filename, artifact_fd, published_identity)
             return _fail(str(error), content_id=content_id)
         except (OSError, ValueError) as error:
             self._discard(part_name, artifact_fd)
+            self._discard_published(artifact.filename, artifact_fd, published_identity)
             return _fail(
                 f"Cannot copy artifact into the model store: {error}",
                 content_id=content_id,
@@ -346,6 +589,50 @@ class LocalArtifactImporter:
             os.unlink(name, dir_fd=directory_fd)
         except OSError:
             pass
+
+    @staticmethod
+    def _discard_published(
+        name: str,
+        directory_fd: int | None,
+        identity: tuple[int, int] | None,
+    ) -> None:
+        if directory_fd is None or identity is None:
+            return
+        try:
+            info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if (info.st_dev, info.st_ino) == identity:
+                os.unlink(name, dir_fd=directory_fd)
+        except OSError:
+            pass
+
+    def _remove_published_artifact(
+        self, artifact: ArtifactSpec, identity: tuple[int, int]
+    ) -> bool:
+        root_fd = model_fd = artifact_fd = None
+        try:
+            root_fd = self.store._open_root(create=False)
+            model_fd = self.store._open_directory(
+                root_fd,
+                self.store._safe_model_id(artifact.model_id),
+                create=False,
+            )
+            artifact_fd = self.store._open_directory(
+                model_fd, artifact.artifact_id, create=False
+            )
+            filename = self.store._safe_filename(artifact.filename)
+            try:
+                info = os.stat(filename, dir_fd=artifact_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return True
+            if (info.st_dev, info.st_ino) != identity:
+                return False
+            os.unlink(filename, dir_fd=artifact_fd)
+            os.fsync(artifact_fd)
+            return True
+        finally:
+            for fd in (artifact_fd, model_fd, root_fd):
+                if fd is not None:
+                    os.close(fd)
 
     @staticmethod
     def _partial_digest(name: str, directory_fd: int) -> str:
