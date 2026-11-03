@@ -28,6 +28,19 @@ from castlearq.run_service import (
     run_once,
 )
 from castlearq.runner import ModelRunner
+from castlearq.runtimes import PromptInputMode, RuntimeCapability
+
+
+_TEST_CAPABILITY = RuntimeCapability(
+    name="llama.cpp CLI",
+    executable_path="/usr/bin/llama",
+    version="test",
+    supported_formats=("GGUF",),
+    supported_backends=("CPU",),
+    prompt_input_modes=(PromptInputMode.ARGUMENT,),
+    supports_one_shot=True,
+    available=True,
+)
 
 
 def _failed_result(code: ExecutionErrorCode, message: str) -> ExecutionResult:
@@ -71,6 +84,7 @@ class RunServiceErrorSemanticsTests(unittest.TestCase):
                     selection_warnings=(),
                 )
             deps = RunDependencies(
+                capability=_TEST_CAPABILITY,
                 runner=_ResultRunner(runner_result)
                 if runner_result is not None
                 else None
