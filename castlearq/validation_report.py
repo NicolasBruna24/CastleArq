@@ -29,14 +29,15 @@ The three rendered dimensions are the ones the P1.2 contract defines:
   artifact as reachable, complete and safe to open;
 * **size**    -- does the artifact match ``ArtifactSpec.size_bytes`` when one
   is declared;
-* **integrity** -- does the artifact match ``ArtifactSpec.sha256`` when one is
-  declared.
+* **integrity** -- does the artifact match an available ``content_id`` or
+  ``ArtifactSpec.sha256`` declaration.
 
 ``UNKNOWN`` means *insufficient evidence to decide* and is rendered as
 ``UNKNOWN``. It is never promoted to ``PASSED`` and never demoted to
 ``FAILED`` -- the same rule the repository already applies to compatibility
-checks. In particular an artifact with no declared SHA-256 is reported as
-``UNKNOWN``, and this module never claims its contents were verified.
+checks. In particular an artifact with neither ``content_id`` nor ``sha256`` is
+reported as ``UNKNOWN``, and this module never claims its contents were
+verified.
 
 It is deliberately NOT a service, manager, registry or store: it has no
 state, no lifecycle and no collaborator.

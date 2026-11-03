@@ -450,14 +450,14 @@ class ValidateJsonTests(unittest.TestCase):
         )
         self.assertEqual(human[0], 0)
         self.assertEqual(json_run[0], human[0])
-        self.assertIn("integrity: UNKNOWN", human[1])
+        self.assertIn("integrity: PASSED", human[1])
         self.assertIn("size: UNKNOWN", human[1])
         document = one_json_document(json_run[1])
         assert_envelope(self, document, command="validate", exit_code=0)
         payload = document["payload"]
         self.assertEqual(payload["checks"]["safety"], "passed")
         self.assertEqual(payload["checks"]["size"], "unknown")
-        self.assertEqual(payload["checks"]["integrity"], "unknown")
+        self.assertEqual(payload["checks"]["integrity"], "passed")
         self.assertEqual(
             payload["declared_sha256"],
             {"value": None, "status": "unknown", "reason": "no_checksum_declared"},
@@ -506,10 +506,10 @@ class ValidateJsonTests(unittest.TestCase):
         self.assertTrue(out.startswith(f"{LABEL} / {LABEL}.gguf\n"))
         self.assertIn("  safety: PASSED", out)
         self.assertIn("  size: UNKNOWN", out)
-        self.assertIn("  integrity: UNKNOWN", out)
-        self.assertIn("    no SHA-256 is declared in the manifest;", out)
+        self.assertIn("  integrity: PASSED", out)
         self.assertIn("    no size is declared in the manifest;", out)
-        self.assertIn("    no content comparison was performed", out)
+        self.assertNotIn("    no content comparison was performed", out)
+        self.assertNotIn("    no SHA-256 is declared in the manifest;", out)
         self.assertIn("Artifact state:", out)
 
 

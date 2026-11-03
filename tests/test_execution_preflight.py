@@ -249,7 +249,10 @@ class ArtifactExecutionPreflightTests(unittest.TestCase):
         spec = artifact()  # default: content_id=None, sha256=None
         with self.assertRaises(ArtifactPreflightError) as ctx:
             self.preflight.validate(spec)
-        self.assertEqual(ctx.exception.code, PreflightErrorCode.INVALID_ARTIFACT)
+        self.assertEqual(
+            ctx.exception.code,
+            PreflightErrorCode.MISSING_INTEGRITY_IDENTIFIERS,
+        )
         self.assertIn(
             "No integrity identifiers",
             ctx.exception.message,
@@ -305,7 +308,10 @@ class ArtifactExecutionPreflightTests(unittest.TestCase):
         spec = self._openvino_artifact(content_id=None, sha256=None)
         with self.assertRaises(ArtifactPreflightError) as context:
             self.preflight.validate(spec)
-        self.assertEqual(context.exception.code, PreflightErrorCode.INVALID_ARTIFACT)
+        self.assertEqual(
+            context.exception.code,
+            PreflightErrorCode.MISSING_INTEGRITY_IDENTIFIERS,
+        )
 
     def test_openvino_preflight_rejects_symlinked_package_entry(self):
         from castlearq.importing import _compute_content_id

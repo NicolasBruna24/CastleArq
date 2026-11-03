@@ -46,6 +46,7 @@ class PreflightErrorCode(str, Enum):
     INCONSISTENT_ARTIFACT = "inconsistent_artifact"
     UNSAFE_ARTIFACT = "unsafe_artifact"
     INVALID_ARTIFACT = "invalid_artifact"
+    MISSING_INTEGRITY_IDENTIFIERS = "missing_integrity_identifiers"
     SIZE_MISMATCH = "size_mismatch"
     CHECKSUM_MISMATCH = "checksum_mismatch"
 
@@ -466,7 +467,7 @@ class ArtifactExecutionPreflight:
             # Fail-closed: if no verifiable identifiers, reject
             if not identifiers_present:
                 raise ArtifactPreflightError(
-                    PreflightErrorCode.INVALID_ARTIFACT,
+                    PreflightErrorCode.MISSING_INTEGRITY_IDENTIFIERS,
                     "No integrity identifiers (content_id nor sha256) present in artifact; "
                     "cannot verify integrity for execution",
                 )

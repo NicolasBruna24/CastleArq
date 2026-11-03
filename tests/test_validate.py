@@ -18,26 +18,31 @@ These tests freeze the P1.2 contract as implemented:
 
 * SHA-256 present + matching  -> ``integrity: PASSED``, exit 0
 * SHA-256 present + differing -> ``integrity: FAILED``, exit 1
-* SHA-256 absent             -> ``integrity: UNKNOWN``, exit 0
+* neither integrity identifier -> ``integrity: UNKNOWN``, exit 0
 * ``size_bytes`` absent       -> ``size: UNKNOWN``, exit 0
 * preflight refusal          -> ``safety: FAILED``, exit 1
 * missing model-id           -> exit 2
 
-The decisive assertions are negative ones: an artifact without a declared
-SHA-256 must never be reported as ``PASSED`` on integrity, must never claim
-its checksum was verified, and must still exit 0.
+The decisive assertions distinguish a missing integrity identifier from a
+failed integrity or safety check; only the former remains ``UNKNOWN`` and
+exits 0.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from castlearq import main as cli
-from castlearq.execution import ArtifactExecutionPreflight
+from castlearq.execution import (
+    ArtifactExecutionPreflight,
+    ArtifactPreflightError,
+    PreflightErrorCode,
+)
 from castlearq.model_store import ModelStore
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
 from castlearq.resolver import ModelArtifactResolver
@@ -103,6 +108,26 @@ class ValidateCommandTests(unittest.TestCase):
         self.assertIn("safety: PASSED", out)
         self.assertIn("integrity: PASSED", out)
         self.assertIn("Artifact state: VERIFIED", out)
+
+    def test_matching_content_id_reports_integrity_passed(self):
+        store = ModelStore(Path(self.tempdir.name) / "content-id-models")
+        spec = artifact(content_id=hashlib.sha256(CONTENT).hexdigest())
+        manifest = store.save_manifest(spec)
+        (manifest.parent / FILENAME).write_bytes(CONTENT)
+        resolver = ModelArtifactResolver(store, (self.model,))
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.validate_command(
+            MODEL_ID,
+            out=out,
+            err=err,
+            resolver=resolver,
+            preflight=ArtifactExecutionPreflight(store),
+            store=store,
+            quantization="Q4_K_M",
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("integrity: PASSED", out.getvalue())
+        self.assertIn("Artifact state: VERIFIED", out.getvalue())
 
     # --- Case B: SHA-256 present and wrong ------------------------------
 
@@ -232,6 +257,31 @@ class ValidateCommandTests(unittest.TestCase):
         # Integrity was never established, so it is never claimed.
         self.assertNotIn("integrity: PASSED", out.getvalue())
 
+    def test_non_regular_artifact_is_not_treated_as_missing_integrity(self):
+        self.final.write_bytes(CONTENT)
+
+        class _NonRegularPreflight(ArtifactExecutionPreflight):
+            def validate(self, artifact):
+                path = self.model_store._artifact_directory(artifact) / artifact.filename
+                path.unlink()
+                os.mkfifo(path)
+                return super().validate(artifact)
+
+        resolver = ModelArtifactResolver(self.store, (self.model,))
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.validate_command(
+            MODEL_ID,
+            out=out,
+            err=err,
+            resolver=resolver,
+            preflight=_NonRegularPreflight(self.store),
+            store=self.store,
+            quantization="Q4_K_M",
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("safety: FAILED", out.getvalue())
+        self.assertIn("invalid_artifact", out.getvalue())
+
     # --- Declared size ---------------------------------------------------
 
     def test_declared_matching_size_reports_passed(self):
@@ -240,12 +290,14 @@ class ValidateCommandTests(unittest.TestCase):
         code, out, _ = self.run_validate(quantization="Q4_K_M")
         self.assertEqual(code, 0)
         self.assertIn("size: PASSED", out)
+        self.assertIn("integrity: UNKNOWN", out)
 
     def test_absent_size_reports_unknown_without_failing(self):
         self.final.write_bytes(CONTENT)
         code, out, _ = self.run_validate(quantization="Q4_K_M")
         self.assertEqual(code, 0)
         self.assertIn("size: UNKNOWN", out)
+        self.assertIn("integrity: UNKNOWN", out)
         self.assertNotIn("size: PASSED", out)
         self.assertNotIn("size: FAILED", out)
 
@@ -296,13 +348,30 @@ class ValidateCommandTests(unittest.TestCase):
 
     # --- Execution of a checksum-less artifact is unaffected -------------
 
-    def test_absent_sha256_does_not_break_executability(self):
-        """`validate` must not turn UNKNOWN into FAILED: the same artifact
-        must still pass the existing preflight afterwards."""
+    def test_absent_sha256_reports_unknown_and_preflight_rejects(self):
+        """`validate` reports integrity UNKNOWN and exits 0 for an artifact
+        without identifiers; the same artifact is rejected by preflight
+        (fail-closed) because it cannot be verified for execution.
+        """
         self.final.write_bytes(CONTENT)
-        self.run_validate(quantization="Q4_K_M")
-        executable = ArtifactExecutionPreflight(self.store).validate(self.spec)
-        self.assertFalse(executable.checksum_verified)
+        code, out, _ = self.run_validate(quantization="Q4_K_M")
+        self.assertEqual(code, 0)
+        self.assertIn("safety: PASSED", out)
+        self.assertIn("integrity: UNKNOWN", out)
+        self.assertNotIn("integrity: PASSED", out)
+        self.assertNotIn("verified", out.lower())
+        self.assertIn("no SHA-256 is declared in the manifest;", out)
+        self.assertIn("no content comparison was performed", out)
+        self.assertIn("Artifact state: DOWNLOADED", out)
+
+        # Preflight must reject: no integrity identifiers means fail-closed.
+        with self.assertRaises(ArtifactPreflightError) as ctx:
+            ArtifactExecutionPreflight(self.store).validate(self.spec)
+        self.assertEqual(
+            ctx.exception.code,
+            PreflightErrorCode.MISSING_INTEGRITY_IDENTIFIERS,
+        )
+
         self.assertEqual(
             self.store.inspect_manifest(self.manifest).state,
             ArtifactState.DOWNLOADED,

@@ -2824,47 +2824,13 @@ def validate_command(
         state = None
 
     safety = size = integrity = CheckStatus.UNKNOWN
+    executable = None
+    preflight_error = None
 
     try:
         executable = preflight.validate(artifact)
     except ArtifactPreflightError as error:
-        safety = CheckStatus.PASSED
-        failed = _PREFLIGHT_DIMENSION.get(error.code, "safety")
-        if failed == "size":
-            size = CheckStatus.FAILED
-        elif failed == "integrity":
-            integrity = CheckStatus.FAILED
-        else:
-            safety = CheckStatus.FAILED
-        if as_json:
-            # A failed check is the validation result, not an operational
-            # error: it stays in the payload with the existing problem text.
-            return _emit_json_envelope(
-                "validate",
-                1,
-                _json_validation_payload(
-                    artifact=artifact,
-                    safety=safety,
-                    size=size,
-                    integrity=integrity,
-                    state=state,
-                    problem=f"{error.code.value}: {error.message}",
-                ),
-                out=out,
-            )
-        print(
-            format_validation_report(
-                model_id=artifact.model_id,
-                filename=artifact.filename,
-                safety=safety,
-                size=size,
-                integrity=integrity,
-                state=state,
-                failure=f"{error.code.value}: {error.message}",
-            ),
-            file=out,
-        )
-        return 1
+        preflight_error = error
     except UnsafePathError as error:
         # The inspector raises this for an unsafe path before the codes above
         # apply. It is a filesystem-safety refusal, not a checksum decision.
@@ -2896,16 +2862,74 @@ def validate_command(
         )
         return 1
 
-    # Preflight returned an ExecutableArtifact. Both flags are `bool`, so a
-    # `False` is disambiguated with the declaration itself: `size_verified` /
-    # `checksum_verified` are False both when nothing was declared and when a
-    # check did not run. A declared-and-wrong value never reaches here -- it
-    # raised above.
-    safety = CheckStatus.PASSED
-    size = CheckStatus.PASSED if executable.size_verified else CheckStatus.UNKNOWN
-    integrity = (
-        CheckStatus.PASSED if executable.checksum_verified else CheckStatus.UNKNOWN
-    )
+    if preflight_error is not None:
+        error = preflight_error
+        if error.code == PreflightErrorCode.MISSING_INTEGRITY_IDENTIFIERS:
+            # No integrity identifiers (content_id nor sha256): not a
+            # validation failure. Report what can be proven without them.
+            safety = CheckStatus.PASSED
+            integrity = CheckStatus.UNKNOWN
+            size = (
+                CheckStatus.PASSED
+                if artifact.size_bytes is not None
+                else CheckStatus.UNKNOWN
+            )
+        else:
+            failed = _PREFLIGHT_DIMENSION.get(error.code, "safety")
+            if failed == "size":
+                size = CheckStatus.FAILED
+                safety = CheckStatus.PASSED
+                integrity = CheckStatus.UNKNOWN
+            elif failed == "integrity":
+                integrity = CheckStatus.FAILED
+                safety = CheckStatus.PASSED
+                size = (
+                    CheckStatus.PASSED
+                    if artifact.size_bytes is not None
+                    else CheckStatus.UNKNOWN
+                )
+            else:
+                safety = CheckStatus.FAILED
+            if as_json:
+                return _emit_json_envelope(
+                    "validate",
+                    1,
+                    _json_validation_payload(
+                        artifact=artifact,
+                        safety=safety,
+                        size=size,
+                        integrity=integrity,
+                        state=state,
+                        problem=f"{error.code.value}: {error.message}",
+                    ),
+                    out=out,
+                )
+            print(
+                format_validation_report(
+                    model_id=artifact.model_id,
+                    filename=artifact.filename,
+                    safety=safety,
+                    size=size,
+                    integrity=integrity,
+                    state=state,
+                    failure=f"{error.code.value}: {error.message}",
+                ),
+                file=out,
+            )
+            return 1
+
+    if executable is not None:
+        safety = CheckStatus.PASSED
+        size = (
+            CheckStatus.PASSED
+            if executable.size_verified
+            else CheckStatus.UNKNOWN
+        )
+        integrity = (
+            CheckStatus.PASSED
+            if executable.checksum_verified
+            else CheckStatus.UNKNOWN
+        )
 
     if as_json:
         # `UNKNOWN` is not a failure: exit 0, and the payload carries the

@@ -1059,10 +1059,11 @@ class BackendDtoContractTests(unittest.TestCase):
         self.assertIsNone(dto.backend)
         self.assertIsNone(dto.to_dict()["backend"])
 
-    def test_artifact_dto_backend_gguf_derives_from_format(self):
-        dto = _artifact_dto(self._entry(artifact()))
-        self.assertEqual(dto.backend, "gguf")
-        self.assertEqual(dto.to_dict()["backend"], "gguf")
+    def test_artifact_dto_backend_gguf_is_not_inferred(self):
+        """B9.41: backend is never auto-derived from format; it must be explicit."""
+        dto = _artifact_dto(self._entry(artifact(format="GGUF")))
+        self.assertIsNone(dto.backend)
+        self.assertIsNone(dto.to_dict()["backend"])
 
     def test_artifact_dto_backend_openvino_requires_openvino_format(self):
         with self.assertRaises(ValueError):
