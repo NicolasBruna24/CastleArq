@@ -140,5 +140,83 @@ class TestOpenVINOHTTP(unittest.TestCase):
             status, _, _ = self.h.post("/v1/openvino/infer", {"model_id":"ov-model","prompt":"Hi"})
         self.assertEqual(status, 500)
 
+    def test_pipeline_reused_across_consecutive_requests(self):
+        """Two consecutive requests with same model/device reuse the same service."""
+        fake_result = SimpleNamespace(
+            text="hello", initialization_status="ok",
+            effective_device="unknown", physical_telemetry={"before": None, "after": None},
+        )
+        with mock.patch("castlearq.openvino_inference.OpenVINOInferenceService") as cls:
+            cls.return_value.generate.return_value = fake_result
+            # First request
+            status1, _, _ = self.h.post("/v1/openvino/infer", {
+                "model_id": "ov-model", "prompt": "Hi", "device": "GPU", "max_tokens": 4,
+            })
+            # Second request with same model/device
+            status2, _, _ = self.h.post("/v1/openvino/infer", {
+                "model_id": "ov-model", "prompt": "Hi again", "device": "GPU", "max_tokens": 4,
+            })
+        self.assertEqual(status1, 200)
+        self.assertEqual(status2, 200)
+        # Constructor called only once (lazy creation + caching)
+        self.assertEqual(cls.call_count, 1)
+        # generate called twice on the same service instance
+        self.assertEqual(cls.return_value.generate.call_count, 2)
+
+    def test_concurrent_requests_share_service(self):
+        """Two concurrent requests both succeed and share the same service."""
+        fake_result = SimpleNamespace(
+            text="hello", initialization_status="ok",
+            effective_device="unknown", physical_telemetry={"before": None, "after": None},
+        )
+        results = []
+        errors = []
+
+        with mock.patch("castlearq.openvino_inference.OpenVINOInferenceService") as cls:
+            cls.return_value.generate.return_value = fake_result
+
+            def make_request():
+                try:
+                    status, _, _ = self.h.post("/v1/openvino/infer", {
+                        "model_id": "ov-model", "prompt": "Hi", "device": "CPU", "max_tokens": 4,
+                    })
+                    results.append(status)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+            t1 = threading.Thread(target=make_request)
+            t2 = threading.Thread(target=make_request)
+            t1.start()
+            t2.start()
+            t1.join(timeout=10)
+            t2.join(timeout=10)
+
+        self.assertEqual(len(errors), 0)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(s == 200 for s in results))
+        # Constructor called only once despite concurrent access
+        self.assertEqual(cls.call_count, 1)
+        # generate called twice on the same service instance
+        self.assertEqual(cls.return_value.generate.call_count, 2)
+
+    def test_service_closed_on_shutdown(self):
+        """The shared OpenVINO service is closed when the server shuts down."""
+        fake_result = SimpleNamespace(
+            text="hello", initialization_status="ok",
+            effective_device="unknown", physical_telemetry={"before": None, "after": None},
+        )
+        with mock.patch("castlearq.openvino_inference.OpenVINOInferenceService") as cls:
+            cls.return_value.generate.return_value = fake_result
+            self.h.post("/v1/openvino/infer", {
+                "model_id": "ov-model", "prompt": "Hi", "device": "CPU", "max_tokens": 4,
+            })
+            # Service was created
+            self.assertEqual(cls.call_count, 1)
+            service_instance = cls.return_value
+            # Shut down the server
+            self.h.close()
+            # Service.close() was invoked
+            service_instance.close.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()
