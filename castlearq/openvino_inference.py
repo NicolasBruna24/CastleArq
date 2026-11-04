@@ -42,6 +42,42 @@ def _extract_generated_text(result) -> str:
     raise GenerationError("OpenVINO generation returned no text")
 
 
+def _extract_finish_reason(result) -> str | None:
+    """Extract the generation finish reason from an OpenVINO GenAI result.
+
+    Handles the two shapes observed at runtime:
+
+    * A plain ``str`` (single-prompt generation) carries no finish reason;
+      returns ``None``.
+    * A ``DecodedResults``-like object exposes ``finish_reasons`` as a
+      non-empty list of ``GenerationFinishReason`` enums; the first element's
+      ``name`` is normalised to a string (e.g. ``"LENGTH"``).
+    * As backward compatibility, a singular ``finish_reason`` attribute is
+      also accepted when present.
+
+    ``status`` is deliberately not used as a substitute for ``finish_reason``.
+    """
+    if isinstance(result, str):
+        return None
+
+    finish_reasons = getattr(result, "finish_reasons", None)
+    if isinstance(finish_reasons, (list, tuple)) and len(finish_reasons) > 0:
+        first = finish_reasons[0]
+        name = getattr(first, "name", None)
+        if name is not None:
+            return str(name)
+        return str(first)
+
+    singular = getattr(result, "finish_reason", None)
+    if singular is not None:
+        name = getattr(singular, "name", None)
+        if name is not None:
+            return str(name)
+        return str(singular)
+
+    return None
+
+
 
 @dataclass(frozen=True)
 class OpenVINOGenerationResult:
@@ -237,6 +273,10 @@ class OpenVINOInferenceService:
         if not prompt or not prompt.strip():
             raise ValueError("prompt must be non-empty")
         with self._pipeline_lock:
+            # The service is closed: reject any new operation, including calls
+            # that were already waiting for the pipeline lock.
+            if self._service_closed:
+                raise GenerationError("OpenVINO InferenceService is closed")
             artifact = self._resolve_artifact(manifest_path)
             model_dir = manifest_path.parent
             spec = getattr(artifact, "artifact", artifact)
@@ -258,7 +298,7 @@ class OpenVINOInferenceService:
             try:
                 result = pipeline.generate(prompt, max_new_tokens=max_new_tokens)
                 text = _extract_generated_text(result)
-                finish_reason = None if isinstance(result, str) else getattr(result, "finish_reason", None) or getattr(result, "status", None)
+                finish_reason = _extract_finish_reason(result)
             except Exception as exc:
                 raise GenerationError(str(exc)) from exc
             before = sample_xe_telemetry()

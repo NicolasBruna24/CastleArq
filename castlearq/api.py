@@ -1590,9 +1590,15 @@ def _make_handler(
             if manifest_path is None:
                 self._send_json(404, {"error": "model not found"})
                 return
-            svc = OpenVINOInferenceService(store)
+            service = self.server._openvino_service
+            if service is None:
+                with self.server._openvino_lock:
+                    service = self.server._openvino_service
+                    if service is None:
+                        service = OpenVINOInferenceService(store)
+                        self.server._openvino_service = service
             try:
-                result = svc.generate(manifest_path, prompt, device=device, max_new_tokens=max_tokens)
+                result = service.generate(manifest_path, prompt, device=device, max_new_tokens=max_tokens)
             except MissingDependencyError as exc:
                 self._send_json(503, {"error": str(exc)})
                 return
@@ -1659,27 +1665,46 @@ def _make_handler(
 
 
 class _APIServer(ThreadingHTTPServer):
-    daemon_threads = True
+    daemon_threads = False
     allow_reuse_address = True
 
-    def __init__(self, *args: Any, chat_registry: _ChatSessionRegistry | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        chat_registry: _ChatSessionRegistry | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._chat_registry = chat_registry
+        #: Shared OpenVINO inference service, created lazily on first request.
+        #: Reusing a single instance allows the LLMPipeline cache to survive
+        #: across HTTP requests, avoiding repeated (~5s) model initializations.
+        self._openvino_service: Any = None
+        self._openvino_lock = threading.Lock()
 
     def server_close(self) -> None:
-        # Orderly shutdown: close every live chat session (each close is the
-        # existing idempotent session.close(); one bad session never blocks
-        # the others) before releasing the listening socket.
+        # Strict shutdown order:
+        #   1. Close the listening socket and wait for every in-flight handler
+        #      (ThreadingMixIn.server_close with block_on_close=True).
+        #   2. Close the shared OpenVINO service (releases LLMPipeline +
+        #      GPU resources).
+        #   3. Close live chat sessions.
+        # A failure anywhere below must never prevent the remaining steps.
+        super().server_close()
+        service = self._openvino_service
+        if service is not None:
+            try:
+                service.close()
+            except Exception as error:  # noqa: BLE001
+                _LOG.warning(
+                    "server_close: OpenVINO service cleanup failed: %r", error)
         registry = self._chat_registry
         if registry is not None:
             try:
                 registry.close_all()
-            except Exception as error:
-                # Shutdown must never crash on registry cleanup, but a failed
-                # cleanup can leave orphaned sessions/runtimes: log it.
+            except Exception as error:  # noqa: BLE001
                 _LOG.warning(
                     "server_close: chat registry cleanup failed: %r", error)
-        super().server_close()
 
 
 def _validate_loopback_host(host: str) -> str:
