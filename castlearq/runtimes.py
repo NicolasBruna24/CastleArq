@@ -20,10 +20,10 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-import subprocess
-from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -355,7 +355,7 @@ def detect_sycl_llama_capability(
         )
 
     # Load environment using the existing SyclEnvironmentProvider
-    from .sycl_environment import SyclEnvironmentProvider, SyclEnvironmentError
+    from .sycl_environment import SyclEnvironmentError, SyclEnvironmentProvider
 
     provider = SyclEnvironmentProvider(setvars_path=setvars_path)
     try:
@@ -375,7 +375,6 @@ def detect_sycl_llama_capability(
 
     # Detect SYCL device capability
     # sycl-ls lists available SYCL devices; we check if it produces output
-    import subprocess
     try:
         result = subprocess.run(
             ["sycl-ls"],
@@ -470,4 +469,3 @@ def detect_runtimes(which: Which = shutil.which) -> list[RuntimeStatus]:
         ),
         RuntimeStatus("Ollama", bool(ollama_path), ollama_available, False, ()),
     ]
-
