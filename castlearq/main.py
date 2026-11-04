@@ -985,6 +985,7 @@ def list_command(
                 {
                     "model_id": model_id,
                     "filename": artifact.filename,
+                    "format": artifact.format,
                     "backend": artifact.backend,
                     "quantization": _json_quantization(artifact.quantization),
                     "size_bytes": artifact.size_bytes,

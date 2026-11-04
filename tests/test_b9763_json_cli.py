@@ -140,6 +140,7 @@ def build_fixture(
     size_bytes: int | None = len(CONTENT),
     quantization: str = "Unknown",
     filename: str | None = None,
+    artifact_format: str = "GGUF",
 ) -> ArtifactSpec:
     """Register one imported-artifact manifest and write its file.
 
@@ -154,7 +155,7 @@ def build_fixture(
         source=None,
         repository=None,
         filename=filename if filename is not None else f"{label}.gguf",
-        format="GGUF",
+        format=artifact_format,
         quantization=quantization,
         size_bytes=size_bytes,
         sha256=sha256,
@@ -305,6 +306,7 @@ class ListJsonTests(unittest.TestCase):
             self.store_root,
             label="b9763-alpha",
             filename="b9763-alpha-Q8_0.gguf",
+            artifact_format="gguf",
         )
 
     def test_subprocess_json_is_one_document_and_exit_code_matches(self):
@@ -324,6 +326,88 @@ class ListJsonTests(unittest.TestCase):
         )
         self.assertEqual(payload["invalid_artifacts"], [])
         self.assertNotIn("CastleArq - Local models", proc.stdout)
+
+    def test_artifacts_expose_the_stored_format_and_preserve_existing_fields(self):
+        build_fixture(
+            self.store_root,
+            label="b9763-openvino",
+            filename="b9763-openvino.xml",
+            artifact_format="OpenVINO IR",
+        )
+        _, json_out, _ = run_cli(
+            "list", "--json", "--model-store", str(self.store_root)
+        )
+
+        document = one_json_document(json_out)
+        assert_envelope(self, document, command="list", exit_code=0)
+        artifacts = {
+            entry["model_id"]: entry
+            for entry in document["payload"]["artifacts"]
+        }
+        self.assertEqual(
+            set(artifacts["b9763-alpha"]),
+            {
+                "model_id",
+                "filename",
+                "format",
+                "backend",
+                "quantization",
+                "size_bytes",
+                "status",
+                "problem",
+            },
+        )
+        self.assertEqual(artifacts["b9763-alpha"]["format"], "gguf")
+        self.assertEqual(artifacts["b9763-openvino"]["format"], "OpenVINO IR")
+        self.assertEqual(artifacts["b9763-alpha"]["filename"], "b9763-alpha-Q8_0.gguf")
+        self.assertIsNone(artifacts["b9763-alpha"]["backend"])
+        self.assertEqual(
+            artifacts["b9763-alpha"]["quantization"],
+            {"value": None, "status": "unknown", "reason": "not_observed"},
+        )
+        self.assertEqual(artifacts["b9763-alpha"]["size_bytes"], len(CONTENT))
+        self.assertEqual(artifacts["b9763-alpha"]["status"], "downloaded")
+        self.assertIsNone(artifacts["b9763-alpha"]["problem"])
+        self.assertEqual(document["schema_version"], 1)
+
+    def test_unknown_format_is_not_classified_and_invalid_artifact_stays_invalid(self):
+        build_fixture(
+            self.store_root,
+            label="b9763-unknown",
+            filename="b9763-unknown.bin",
+            artifact_format="experimental-format",
+        )
+        store = ModelStore(self.store_root)
+        invalid_manifest = store.save_manifest(
+            ArtifactSpec(
+                model_id="b9763-invalid",
+                source=None,
+                repository=None,
+                filename="b9763-invalid.gguf",
+                format="GGUF",
+            )
+        )
+        invalid_payload = json.loads(invalid_manifest.read_text(encoding="utf-8"))
+        invalid_payload["model_id"] = ""
+        invalid_manifest.write_text(json.dumps(invalid_payload), encoding="utf-8")
+
+        _, json_out, _ = run_cli(
+            "list", "--json", "--model-store", str(self.store_root)
+        )
+        document = one_json_document(json_out)
+        artifacts = document["payload"]["artifacts"]
+        unknown = next(item for item in artifacts if item["model_id"] == "b9763-unknown")
+        self.assertEqual(unknown["format"], "experimental-format")
+        self.assertIsNone(unknown["backend"])
+        self.assertEqual(
+            [item["model_id"] for item in artifacts],
+            ["b9763-alpha", "b9763-unknown", "b9763-zeta"],
+        )
+        self.assertEqual(len(document["payload"]["invalid_artifacts"]), 1)
+        self.assertIn(
+            "invalid manifest",
+            document["payload"]["invalid_artifacts"][0]["problem"].lower(),
+        )
 
     def test_human_and_json_exit_codes_and_selection_are_identical(self):
         human_code, human_out, _ = run_cli(
