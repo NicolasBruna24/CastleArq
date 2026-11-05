@@ -140,7 +140,7 @@ class RuntimeBackendSelectorSyclIsolationTests(unittest.TestCase):
             compatibility_names=("llama.cpp / llama.app", "llama.cpp"),
             backend_arguments=capability.backend_arguments,
         )
-        result = SELECTOR.select(
+        target = SELECTOR.select(
             _compatibility(
                 status=CompatibilityStatus.COMPATIBLE,
                 runtime="llama.cpp / llama.app",
@@ -149,8 +149,8 @@ class RuntimeBackendSelectorSyclIsolationTests(unittest.TestCase):
             capability,
             _executable(),
         )
-        self.assertEqual(result.target.backend, "SYCL")
-        self.assertEqual(result.target.requested_device_argument, "SYCL0")
+        self.assertEqual(target.target.backend, "SYCL")
+        self.assertEqual(target.target.requested_device_argument, "SYCL0")
 
     def test_sycl_explicit_y_no_disponible_no_debe_fallar_a_cpu(self):
         with self.assertRaises(RuntimeSelectionError) as ctx:
@@ -199,7 +199,9 @@ class RuntimeBackendSelectorSyclIsolationTests(unittest.TestCase):
         # Garantiza que la disponibilidad de SYCL no modifica ningún default:
         # un target CPU explícito sigue siendo CPU.
         capability = _capability(backends=("CPU", "SYCL"), backend_arguments=(("CPU", "none"), ("SYCL", "SYCL0"),))
-        target = SELECTOR.select(_compatibility(backend="CPU"), capability, _executable()).target
+        target = SELECTOR.select(
+            _compatibility(backend="CPU"), capability, _executable()
+        ).target
         self.assertEqual(target.backend, "CPU")
         self.assertEqual(target.requested_device_argument, "none")
 

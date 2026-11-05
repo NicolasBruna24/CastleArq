@@ -18,12 +18,16 @@ from castlearq.compatibility import (
     assess_model,
 )
 from castlearq.compatibility_domain import CheckStatus, CompatibilityCheck
-from castlearq.compatibility_domain import CompatibilityResult as StrictCompatibilityResult
-from castlearq.compatibility_domain import CompatibilityStatus as StrictCompatibilityStatus
+from castlearq.compatibility_domain import (
+    CompatibilityResult as StrictCompatibilityResult,
+)
+from castlearq.compatibility_domain import (
+    CompatibilityStatus as StrictCompatibilityStatus,
+)
 from castlearq.evaluate_compatibility import (
     _NON_BLOCKING_E2E_UNKNOWNS,
-    _non_blocking_unknowns,
     EvaluateModelCompatibilityResult,
+    _non_blocking_unknowns,
     to_admission,
 )
 from castlearq.hardware import CPUInfo, GPUInfo, HardwareSnapshot, MemoryInfo
