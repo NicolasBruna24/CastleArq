@@ -27,7 +27,7 @@ name: release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
   # Reconciliation trigger (B9.43-A).
   #
   # The tag v0.1.0 (2ebbeb4) predates this workflow file (b81f9ce), so the
@@ -108,6 +108,17 @@ jobs:
           ref: refs/tags/${{ steps.identify.outputs.tag }}
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Verify version consistency
+        run: |
+          set -euo pipefail
+          TAG_VERSION=${{ steps.identify.outputs.version }}
+          PYPI_VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/^version = "([^"]+)".*/\1/')
+          if [ "$PYPI_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: pyproject.toml=$PYPI_VERSION, tag=$TAG_VERSION"
+            exit 1
+          fi
+          echo "Versions match: $TAG_VERSION"
 
       - name: Assert the tag is annotated and resolve it
         env:

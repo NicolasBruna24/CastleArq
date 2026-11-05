@@ -19,6 +19,7 @@ htmlcov/
 
 # Packaging artifacts
 dist/
+build/
 *.egg-info/
 
 # OS

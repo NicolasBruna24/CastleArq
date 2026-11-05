@@ -1,0 +1,7 @@
+prune build
+prune dist
+prune scripts
+prune docs
+global-exclude *.bak
+global-exclude *.py[cod]
+global-exclude __pycache__
