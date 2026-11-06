@@ -127,15 +127,23 @@ class PublicClaimTests(unittest.TestCase):
         """Identify the declared version as either the current RC or published.
 
         The package version alone does not prove publication. While preparing a
-        release, the README identifies that version as an untagged candidate;
-        after publication, it identifies the same declared version as published.
+        release, the README identifies that version as a candidate with exact
+        publication status (distinguishing local tag, GitHub tag publication,
+        and PyPI publication); after publication, it identifies the same declared
+        version as published.
         """
         note = _version_note()
         version = _project_version()
-        published = f"The published release is `{version}`" in note
+        published = (
+            f"The published release is `{version}`" in note
+            and f"(tag `v{version}`)" in note
+            and "available on PyPI" in note
+        )
         candidate = (
             f"The current release candidate is `{version}`" in note
-            and "not yet been tagged or published" in note
+            and f"The annotated tag `v{version}` exists locally" in note
+            and "it has not yet been published to GitHub" in note
+            and "the package is not yet published on PyPI" in note
         )
 
         self.assertIn("**Version note.**", note)

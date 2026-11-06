@@ -29,7 +29,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_distribution_metadata(self):
         project = self.pyproject["project"]
         self.assertEqual(project["name"], "castlearq")
-        self.assertEqual(project["version"], "0.6.1")
+        self.assertTrue(project["version"])
         self.assertEqual(project["requires-python"], ">=3.11")
         self.assertTrue(project["description"])
         self.assertEqual(project["license"], "Apache-2.0")
@@ -84,12 +84,20 @@ class ConsoleScriptTargetTests(unittest.TestCase):
 
 
 class VersionResolutionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.declared_version = tomllib.loads(
+            Path(__file__).resolve().parents[1].joinpath("pyproject.toml").read_text(
+                encoding="utf-8"
+            )
+        )["project"]["version"]
+
     def test_declared_version_is_resolved(self):
-        self.assertEqual(get_version(), "0.6.1")
+        self.assertEqual(get_version(), self.declared_version)
 
     def test_metadata_unavailable_uses_source_fallback(self):
         with mock.patch("castlearq.version.importlib.metadata.version", side_effect=PackageNotFoundError):
-            self.assertEqual(get_version(), "0.6.1")
+            self.assertEqual(get_version(), self.declared_version)
 
 
 class UserPathResolutionTests(unittest.TestCase):
