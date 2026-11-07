@@ -25,26 +25,14 @@ name: release
 # release contract: renaming either silently breaks the publisher.
 
 on:
-  push:
-    tags:
-      - 'v[0-9]*.[0-9]*.[0-9]*'
-  # Reconciliation trigger (B9.43-A).
-  #
-  # The tag v0.1.0 (2ebbeb4) predates this workflow file (b81f9ce), so the
-  # historical `push: tags` event can never fire for it again without moving
-  # the tag. `workflow_dispatch` gives v0.1.0 a valid, auditable execution path
-  # without rewriting history, and it does not add a second automatic trigger
-  # (unlike `release: published`, which would fire a second run for every
-  # future release and double-trigger alongside the tag push).
-  #
-  # The input is only a SELECTOR, never an authority: `verify` re-derives the
-  # release identity from the tag itself (annotated tag -> semver -> manifest
-  # committed in the tagged tree -> GitHub Release assets -> SHA-256 gate).
-  # A wrong or forged input cannot reach `publish`; it fails in `verify`.
+  # Primer despliegue de v0.6.2: exclusivamente workflow_dispatch desde main.
+  # No se usa `push: tags` para evitar que un push de tag active accidentalmente
+  # este workflow durante el bootstrap. El checkout explícito del tag se hace
+  # dentro del job `verify`.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing annotated semver tag to publish, e.g. v0.1.0'
+        description: 'Existing annotated semver tag to publish, e.g. v0.6.2'
         required: true
         type: string
 
@@ -64,7 +52,7 @@ jobs:
     name: verify release artifacts
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       version: ${{ steps.identify.outputs.version }}
       tag: ${{ steps.identify.outputs.tag }}
@@ -121,6 +109,7 @@ jobs:
           echo "Versions match: $TAG_VERSION"
 
       - name: Assert the tag is annotated and resolve it
+        id: resolve-tag
         env:
           TAG: ${{ steps.identify.outputs.tag }}
         run: |
@@ -130,7 +119,9 @@ jobs:
             echo "Tag $TAG is a $type, expected an annotated tag." >&2
             exit 1
           fi
-          echo "Annotated tag $TAG resolves to $(git rev-parse "refs/tags/$TAG^{commit}")"
+          COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}")
+          echo "Annotated tag $TAG resolves to $COMMIT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Assert the GitHub Release matches the tag
         env:
@@ -154,66 +145,42 @@ jobs:
           fi
           echo "GitHub Release $TAG is published and bound to tag $target."
 
-      - name: Read expected SHA-256 from release manifest
+      - name: Download the release manifest asset from GitHub Release
         if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
         env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.identify.outputs.tag }}
           VERSION: ${{ steps.identify.outputs.version }}
         run: |
           set -euo pipefail
-          manifest="docs/release/v${VERSION}-manifest.md"
-          if [ ! -f "$manifest" ]; then
-            echo "Release manifest not found: $manifest" >&2
+          manifest_asset="v${VERSION}-manifest.md"
+          mkdir -p manifest-source
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$manifest_asset" \
+            --dir manifest-source
+          if [ ! -f "manifest-source/$manifest_asset" ]; then
+            echo "Release $TAG is missing manifest asset $manifest_asset" >&2
             exit 1
           fi
-          echo "Reading expected hashes from $manifest"
-          python3 - "$manifest" "$VERSION" > expected.sha256 <<'PY'
-          import re
-          import sys
+          echo "Release manifest asset downloaded: manifest-source/$manifest_asset"
 
-          path, version = sys.argv[1], sys.argv[2]
-          text = open(path, encoding="utf-8").read()
-
-          candidate_heading = "### New candidate artifacts (this preparation)"
-          occurrences = text.count(candidate_heading)
-          if occurrences == 0:
-              sys.exit(
-                  f"FAIL: candidate artifacts section not found in {path};"
-                  f" expected heading '{candidate_heading}'"
-              )
-          if occurrences > 1:
-              sys.exit(
-                  f"FAIL: candidate artifacts section is ambiguous in {path};"
-                  f" expected exactly one heading '{candidate_heading}'"
-              )
-          idx = text.find(candidate_heading)
-          section = text[idx:]
-          m = re.search(r"\n#{2,3}\s", section[1:])
-          if m:
-              section = section[: m.start() + 1]
-
-          wheel = f"castlearq-{version}-py3-none-any.whl"
-          sdist = f"castlearq-{version}.tar.gz"
-          for name in (wheel, sdist):
-              pattern = re.compile(
-                  re.escape(name)
-                  + r"[ \t]*\n[ \t]*SHA-256:[ \t]*([0-9a-fA-F]{64})",
-              )
-              matches = pattern.findall(section)
-              if len(matches) == 0:
-                  sys.exit(
-                      f"FAIL: no SHA-256 recorded for {name} in the"
-                      f" candidate section of {path}"
-                  )
-              if len(matches) > 1:
-                  sys.exit(
-                      f"FAIL: multiple SHA-256 values found for {name} in"
-                      f" the candidate section of {path} — ambiguous manifest"
-                  )
-              digest = matches[0].lower()
-              print(f"{digest}  dist/{name}")
-          PY
-          cat expected.sha256
-
+      - name: Read and validate identity from downloaded release manifest
+        if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
+        env:
+          VERSION: ${{ steps.identify.outputs.version }}
+          TAG: ${{ steps.identify.outputs.tag }}
+          COMMIT: ${{ steps.resolve-tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p manifest
+          manifest="manifest-source/v${VERSION}-manifest.md"
+          python3 scripts/release_manifest.py parse-markdown \
+            --manifest "$manifest" \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --commit "$COMMIT" > manifest/SHA256SUMS
+          cat manifest/SHA256SUMS
       - name: Download the audited artifacts from the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -264,9 +231,9 @@ jobs:
         if: ${{ steps.identify.outputs.tag != 'v0.6.1' }}
         run: |
           set -euo pipefail
-          echo "Expected:"; cat expected.sha256
+          echo "Expected:"; cat manifest/SHA256SUMS
           echo "Actual:";  (cd dist && sha256sum *.whl *.tar.gz)
-          if ! sha256sum --check expected.sha256 --strict; then
+          if ! (cd dist && sha256sum --check ../manifest/SHA256SUMS --strict); then
             echo "SHA-256 MISMATCH — refusing to continue to publication." >&2
             exit 1
           fi
@@ -290,18 +257,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/release_manifest.py validate \
-            --manifest manifest/release-manifest.json \
             --artifacts-dir dist \
             --sums-path manifest/SHA256SUMS
           echo "Release manifests are valid."
-
-      - name: Attach manifests to the GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.identify.outputs.tag }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" manifest/release-manifest.json manifest/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Hand the verified artifacts to the publish job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -335,22 +293,24 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Refuse to publish a version that already exists
+      - name: Check PyPI publication status
+        id: pypi-status
         env:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
           code=$(curl -sS -o /dev/null -w '%{http_code}' \
             "https://pypi.org/pypi/castlearq/${VERSION}/json")
-          if [ "$code" = "200" ]; then
-            echo "castlearq ${VERSION} is already published on PyPI; aborting." >&2
-            exit 1
-          fi
-          if [ "$code" != "404" ]; then
+          if [ "$code" = "404" ]; then
+            echo "castlearq ${VERSION} is not published yet."
+            echo "pypi_status=not_published" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = "200" ]; then
+            echo "castlearq ${VERSION} is already on PyPI; will verify exact match."
+            echo "pypi_status=published" >> "$GITHUB_OUTPUT"
+          else
             echo "Unexpected PyPI response ($code); refusing to publish." >&2
             exit 1
           fi
-          echo "castlearq ${VERSION} is not published yet."
 
       - name: Download the verified distributions
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -367,9 +327,349 @@ jobs:
             --sums-path manifest/SHA256SUMS
           echo "Distributions verified before publish."
 
+      - name: Verify PyPI exact match (idempotency)
+        id: verify_pypi_exact_match
+        if: steps.pypi-status.outputs.pypi_status == 'published'
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          script_dir = Path.cwd()
+          sys.path.insert(0, str(script_dir / "scripts"))
+          from release_manifest import check_pypi_status
+
+          version = os.environ["VERSION"]
+          sums_path = Path("manifest/SHA256SUMS")
+
+          expected_files = {
+              f"castlearq-{version}-py3-none-any.whl",
+              f"castlearq-{version}.tar.gz",
+          }
+
+          # Check PyPI status using the shared function. It reads and validates
+          # SHA256SUMS itself and never substitutes expected_files silently.
+          result = check_pypi_status(version, expected_files, sums_path)
+
+          def set_output(name, value):
+              gh_output = os.environ.get("GITHUB_OUTPUT")
+              if gh_output:
+                  with open(gh_output, "a", encoding="utf-8") as fh:
+                      fh.write(f"{name}={value}\n")
+
+          if result["status"] == "already_published":
+              set_output("idempotency", "already_published")
+              print(
+                  f"castlearq {version} already published on PyPI with exact match; "
+                  f"skipping publication.",
+                  file=sys.stderr,
+              )
+              sys.exit(0)
+          elif result["status"] == "not_published":
+              set_output("idempotency", "not_published")
+              print("castlearq not yet published on PyPI (404); proceeding to publish.", file=sys.stderr)
+              sys.exit(0)
+          elif result["status"] == "needs_publish":
+              # Version already on PyPI with different hashes/unexpected files -> ABORT
+              print(f"castlearq {version} already published on PyPI with different configuration; aborting.", file=sys.stderr)
+              sys.exit(1)
+          else:
+              # error status
+              print(f"PyPI status check error: {result.get('error', 'unknown')}", file=sys.stderr)
+              sys.exit(1)
+          PY
+      # Conditional: skip publish if already published with exact match
+      - name: Skip publish if already published
+        if: steps.verify_pypi_exact_match.outputs.idempotency == 'already_published'
+        run: echo "castlearq already published on PyPI; skipping publication"
+      # Conditional: proceed to publish if not yet published or no exact match
+      - name: Proceed to PyPI publication
+        if: steps.verify_pypi_exact_match.outputs.idempotency == 'not_published'
+        run: echo "Publishing castlearq to PyPI"
+
       # No credential, token or password is configured anywhere. The OIDC
       # exchange below mints a short-lived PyPI token scoped to this run.
       # PyPI is append-only: an upload of an existing version fails, and the
       # workflow performs no delete, replace or retry-on-version logic.
       - name: Publish to PyPI via Trusted Publishing
+        id: pypi-publish
+        continue-on-error: true
+        if: ${{ steps.pypi-status.outputs.pypi_status == 'not_published' }}
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+      - name: Reconcile PyPI publication if upload failed
+        if: ${{ !cancelled() && steps.pypi-publish.outcome == 'failure' && steps.pypi-status.outputs.pypi_status == 'not_published' }}
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.request
+          import urllib.error
+          from pathlib import Path
+
+          script_dir = Path.cwd()
+          sys.path.insert(0, str(script_dir / "scripts"))
+          from release_manifest import load_sha256_sums
+
+          version = os.environ["VERSION"]
+          url = f"https://pypi.org/pypi/castlearq/{version}/json"
+          sums_path = Path("manifest/SHA256SUMS")
+
+          expected, sums_error = load_sha256_sums(sums_path)
+          if sums_error is not None:
+              print(f"SHA256SUMS invalid: {sums_error}", file=sys.stderr)
+              sys.exit(1)
+
+          expected_files = {
+              f"castlearq-{version}-py3-none-any.whl",
+              f"castlearq-{version}.tar.gz",
+          }
+
+          if set(expected.keys()) != expected_files:
+              print("SHA256SUMS does not contain exactly the two expected artifacts.", file=sys.stderr)
+              sys.exit(1)
+
+          # Query PyPI to check if upload succeeded despite the action failure.
+          for attempt in range(5):
+              try:
+                  with urllib.request.urlopen(url) as resp:
+                      data = json.loads(resp.read().decode())
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      print("Version not found on PyPI after upload failure.", file=sys.stderr)
+                      sys.exit(1)
+                  print(f"PyPI HTTP error {exc.code}; retrying.", file=sys.stderr)
+                  time.sleep(3)
+                  continue
+              except Exception as exc:
+                  print(f"PyPI query failed: {exc}; retrying.", file=sys.stderr)
+                  time.sleep(3)
+                  continue
+
+              if not isinstance(data, dict) or not isinstance(data.get("urls"), list):
+                  print("Invalid PyPI response structure.", file=sys.stderr)
+                  sys.exit(1)
+
+              published = {}
+              seen = []
+              structural_ok = True
+              for entry in data["urls"]:
+                  if not isinstance(entry, dict):
+                      structural_ok = False
+                      break
+                  fname = entry.get("filename")
+                  digests = entry.get("digests")
+                  if not isinstance(fname, str) or fname == "" or not isinstance(digests, dict):
+                      structural_ok = False
+                      break
+                  sha256 = digests.get("sha256")
+                  if not isinstance(sha256, str):
+                      structural_ok = False
+                      break
+                  if fname in seen:
+                      structural_ok = False
+                      break
+                  seen.append(fname)
+                  published[fname] = sha256.lower()
+
+              if not structural_ok:
+                  print("Invalid PyPI entry structure.", file=sys.stderr)
+                  sys.exit(1)
+
+              if set(published.keys()) != expected_files:
+                  print("PyPI files do not match expected artifacts.", file=sys.stderr)
+                  sys.exit(1)
+
+              mismatches = []
+              for f in expected_files:
+                  if published.get(f) != expected.get(f):
+                      mismatches.append(f"{f}: PyPI={published.get(f)}, expected={expected.get(f)}")
+              if mismatches:
+                  print("PyPI hashes do not match SHA256SUMS.", file=sys.stderr)
+                  sys.exit(1)
+
+              # Upload succeeded despite action failure; accept the race.
+              print("castlearq already published on PyPI with exact match; accepting race.", file=sys.stderr)
+              gh_output = os.environ.get("GITHUB_OUTPUT")
+              if gh_output:
+                  with open(gh_output, "a", encoding="utf-8") as fh:
+                      fh.write("reconciled=true\n")
+              sys.exit(0)
+
+          print("PyPI query failed after retries.", file=sys.stderr)
+          sys.exit(1)
+          PY
+
+      - name: Verify PyPI publication (post-publish, retries)
+        if: ${{ steps.pypi-status.outputs.pypi_status == 'not_published' && (steps.pypi-publish.outcome == 'success' || steps.reconcile_pypi.outputs.reconciled == 'true') }}
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+          import time
+          import urllib.request
+          import urllib.error
+          import json
+          from pathlib import Path
+
+          script_dir = Path.cwd()
+          sys.path.insert(0, str(script_dir / "scripts"))
+          from release_manifest import (
+              check_pypi_status,
+              load_sha256_sums,
+              verify_artifact_hashes,
+          )
+
+          version = os.environ["VERSION"]
+          url = f"https://pypi.org/pypi/castlearq/{version}/json"
+          sums_path = Path("manifest/SHA256SUMS")
+          expected_files = {
+              f"castlearq-{version}-py3-none-any.whl",
+              f"castlearq-{version}.tar.gz",
+          }
+
+          # 1. Validar el manifiesto de sumas local con la validación compartida.
+          #    No hay parsing de SHA256SUMS duplicado ni permisivo en este paso.
+          expected, sums_error = load_sha256_sums(sums_path)
+          if sums_error is not None:
+              print(
+                  f"SHA256SUMS inválido (error estructural del manifiesto): {sums_error}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          # 2. El manifiesto debe contener exactamente los dos artefactos esperados
+          #    para la versión. Cualquier nombre inesperado o faltante es una
+          #    discrepancia definitiva: abortar sin reintentar.
+          if set(expected.keys()) != expected_files:
+              print(
+                  f"SHA256SUMS no contiene exactamente los dos artefactos esperados: "
+                  f"esperado {sorted(expected_files)}, encontrado {sorted(expected.keys())}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          # 3. Ejecutar realmente verify_artifact_hashes() sobre cada artefacto
+          #    local frente al hash de SHA256SUMS. Hash local incorrecto =>
+          #    discrepancia definitiva: no se valida la publicación en PyPI.
+          dist = Path("dist")
+          for fname in sorted(expected_files):
+              artifact = dist / fname
+              if not artifact.is_file():
+                  print(f"Artefacto local ausente: {artifact}", file=sys.stderr)
+                  sys.exit(1)
+              if not verify_artifact_hashes(artifact, expected[fname]):
+                  print(f"Hash local incorrecto para {fname}: no coincide con SHA256SUMS", file=sys.stderr)
+                  sys.exit(1)
+          print("Artefactos locales verificados contra SHA256SUMS mediante verify_artifact_hashes().")
+
+          # 4. Reconciliar con PyPI. Distingue:
+          #    - ausencia temporal de publicación (HTTP 404): se reintenta.
+          #    - errores de red transitorios: se reintentan.
+          #    - errores estructurales de la respuesta de PyPI (estructura
+          #      inválida): abortan sin reintentar.
+          #    - discrepancias definitivas (archivos distintos o hash distinto):
+          #      abortan sin reintentar.
+          for attempt in range(10):
+              try:
+                  with urllib.request.urlopen(url) as resp:
+                      data = json.loads(resp.read().decode())
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      # Ausencia temporal de publicación: todavía no está indexado.
+                      print(f"Attempt {attempt + 1}: castlearq {version} not yet on PyPI (404); retrying.")
+                  elif 500 <= exc.code < 600:
+                      # Error de servidor PyPI: reintentar de forma acotada.
+                      print(f"Attempt {attempt + 1}: PyPI HTTP error {exc.code}: {exc.reason}; retrying.")
+                  else:
+                      # 4xx distintos de 404: error permanente, abortar.
+                      print(f"Attempt {attempt + 1}: PyPI HTTP error {exc.code}: {exc.reason}; aborting.", file=sys.stderr)
+                      sys.exit(1)
+                  time.sleep(5)
+                  continue
+              except Exception as exc:
+                  # Errores de red transitorios: reintentar.
+                  print(f"Attempt {attempt + 1}: PyPI query failed: {exc}; retrying.")
+                  time.sleep(5)
+                  continue
+
+              # Errores estructurales de la respuesta: abortan (no son transitorios).
+              if not isinstance(data.get("urls"), list):
+                  print(
+                      f"castlearq {version}: PyPI response has no 'urls' list (structural error).",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              published = {}
+              structural_error = False
+              seen = []
+              for entry in data["urls"]:
+                  if not isinstance(entry, dict):
+                      print(f"castlearq {version}: invalid PyPI URL entry (not dict).", file=sys.stderr)
+                      structural_error = True
+                      break
+                  fname = entry.get("filename")
+                  digests = entry.get("digests")
+                  if not isinstance(fname, str) or not isinstance(digests, dict):
+                      print(f"castlearq {version}: invalid PyPI entry structure.", file=sys.stderr)
+                      structural_error = True
+                      break
+                  sha256 = digests.get("sha256")
+                  if not isinstance(sha256, str):
+                      print(
+                          f"castlearq {version}: missing/invalid sha256 digest for {fname!r}.",
+                          file=sys.stderr,
+                      )
+                      structural_error = True
+                      break
+                  if fname in seen:
+                      print(
+                          f"castlearq {version}: duplicate filename {fname!r} in PyPI response.",
+                          file=sys.stderr,
+                      )
+                      structural_error = True
+                      break
+                  seen.append(fname)
+                  published[fname] = sha256.lower()
+
+              if structural_error:
+                  sys.exit(1)
+
+              # Discrepancia definitiva: los nombres publicados no coinciden exactamente.
+              if set(published.keys()) != expected_files:
+                  print(
+                      f"castlearq {version}: PyPI files mismatch (definitive discrepancy): "
+                      f"expected {sorted(expected_files)}, got {sorted(published.keys())}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              # Discrepancia definitiva: hash distinto para algún artefacto.
+              mismatches = []
+              for f in expected_files:
+                  if published.get(f) != expected.get(f):
+                      mismatches.append(f"{f}: PyPI={published.get(f)}, expected={expected.get(f)}")
+              if mismatches:
+                  print(
+                      f"castlearq {version}: hash mismatch (definitive discrepancy): {'; '.join(mismatches)}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              # Todo coincide.
+              print(f"castlearq {version} verified on PyPI after {attempt + 1} attempt(s).")
+              sys.exit(0)
+
+          print(f"castlearq {version} not verified on PyPI after retries.", file=sys.stderr)
+          sys.exit(1)
+          PY
