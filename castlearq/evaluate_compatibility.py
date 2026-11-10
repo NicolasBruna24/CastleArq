@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .admission import EvaluationAdmission
+from .admission import EvaluationAdmission, _STRICT_EVALUATION_TOKEN
 from .application_wiring import compose_and_integrate
 from .compatibility_knowledge import KnowledgeRegistry, KnowledgeScope
 from .compatibility_domain import CheckStatus, CompatibilityStatus
@@ -128,7 +128,9 @@ def to_admission(
     execution.
     """
     if result is None:
-        return EvaluationAdmission(status="blocked")
+        return EvaluationAdmission(
+            status="blocked", _admission_provenance=_STRICT_EVALUATION_TOKEN
+        )
     verdict = None
     evaluation = getattr(result, "evaluation", None)
     strict_result = getattr(evaluation, "result", None)
@@ -157,6 +159,7 @@ def to_admission(
     return EvaluationAdmission(
         status=getattr(result, "status", "blocked"),
         verdict=verdict if isinstance(verdict, str) else None,
+        _admission_provenance=_STRICT_EVALUATION_TOKEN,
     )
 
 

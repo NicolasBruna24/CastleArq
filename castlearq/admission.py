@@ -19,7 +19,15 @@ validation: it is a pure data container.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+#: Internal provenance token assigned exclusively by ``to_admission()``.
+#: The gate in ``require_evaluation_admission`` verifies identity (``is``)
+#: against this token to reject admissions built directly outside the
+#: authorized evaluation flow.  This is NOT a cryptographic boundary against
+#: arbitrary Python code; it protects against accidental constructions and
+#: programming errors.
+_STRICT_EVALUATION_TOKEN: object = object()
 
 
 @dataclass(frozen=True)
@@ -29,7 +37,13 @@ class EvaluationAdmission:
     ``status`` is the B9.15/B9.16 outcome (``"evaluated"`` or ``"blocked"``)
     and ``verdict`` the strict verdict name. Admission can deny execution; it
     can never authorize it on its own (B9.19 section 7).
+
+    ``_admission_provenance`` is an internal provenance mark set exclusively
+    by ``to_admission()``. It takes no part in equality, ordering, or
+    representation, so copies and replacements preserve it transparently and
+    external callers never observe it.
     """
 
     status: str
     verdict: str | None = None
+    _admission_provenance: object = field(default=None, repr=False, compare=False)

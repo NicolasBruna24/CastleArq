@@ -411,20 +411,37 @@ class ServerLifecycleTests(unittest.TestCase):
 
 
 def _evaluation(
-    model_id, *, status="evaluated", verdict="compatible",
-    blocking_outcome=None,
+    model_id, *, status="evaluated", verdict="compatible", has_conditions=False, blocking_outcome=None,
 ):
     """A stand-in ``EvaluateModelCompatibilityResult``.
 
     B9.52 controls the *policy input* only. The admission projection
     (``to_admission``) and the gate (``_check_admission``) are the real ones,
     so these tests exercise the production decision, not a re-implementation.
+
+    The stub includes ``projection`` and a ``result`` structure compatible
+    with the ``decide()`` contract (``projection.conflicts``, ``result.checks``,
+    ``result.conditions``, ``result.status``), allowing the full policy
+    evaluation flow to run without mocking side-effects.
     """
-    evaluation = (
-        SimpleNamespace(result=SimpleNamespace(status=verdict))
-        if verdict is not None
-        else None
+    from castlearq.compatibility_domain import CheckStatus, CompatibilityStatus
+
+    result_checks = (
+        mock.Mock(name="artifact-model identity", status=CheckStatus.PASSED, evidence=())
+        if verdict != "blocked"
+        else ()
     )
+    result_conditions = () if not has_conditions else (mock.Mock(name="condition"),)
+
+    evaluation = SimpleNamespace(
+        projection=SimpleNamespace(conflicts=()),
+        result=SimpleNamespace(
+            status=verdict,
+            checks=result_checks,
+            conditions=result_conditions,
+        ),
+    ) if verdict is not None else None
+
     return SimpleNamespace(
         model_id=model_id,
         artifact=None,

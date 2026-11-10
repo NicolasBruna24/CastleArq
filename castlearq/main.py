@@ -141,6 +141,7 @@ from .evaluate_compatibility import (
     evaluate_model_compatibility,
     to_admission,
 )
+from .evaluation_admission import apply_policy_to_admission
 from .compatibility_report import (
     evaluation_report,
     format_evaluation_report,
@@ -206,6 +207,7 @@ def _json_detect_payload(hardware, runtimes, backends, runtime, backend) -> dict
                 "vendor": _json_observed_text(gpu.vendor),
                 "pci_id": _json_observed(gpu.pci_id),
                 "device_id": _json_observed(gpu.device_id),
+                "pci_address": _json_observed(gpu.pci_address),
                 "driver": _json_observed_text(gpu.driver),
                 "vram_bytes": _json_observed(gpu.vram_bytes),
                 "vram_available_bytes": _json_observed(
@@ -270,6 +272,7 @@ def print_detection(*, as_json: bool = False) -> None:
             print(f"  {gpu.name}")
             print(f"  Vendor: {gpu.vendor}")
             print(f"  PCI ID: {gpu.pci_id or 'Unknown'}")
+            print(f"  PCI Address: {gpu.pci_address or 'Unknown'}")
             print(f"  Driver: {gpu.driver}")
             print(f"  VRAM: {_format_mib(gpu.vram_gib)}")
             print(f"  VRAM available: {_format_mib(gpu.vram_available_gib)}")
@@ -2072,7 +2075,7 @@ def _admit_for_preparation(
             file=sys.stderr,
         )
         return None
-    return to_admission(result)
+    return apply_policy_to_admission(result).admission
 
 
 def run_model(
@@ -2471,9 +2474,9 @@ def execute_command(
             file=err,
         )
         evaluation_result = None
-        admission = to_admission(None)
+        admission = apply_policy_to_admission(None).admission
     else:
-        admission = to_admission(evaluation_result)
+        admission = apply_policy_to_admission(evaluation_result).admission
 
     try:
         result = execute_model(

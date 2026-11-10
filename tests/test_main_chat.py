@@ -32,7 +32,44 @@ from castlearq.chat import ChatProcessError
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
 from castlearq.execution import ExecutableArtifact
 from castlearq.execute_model import EvaluationAdmission
+from castlearq.compatibility_domain import CheckStatus, CompatibilityStatus
 from castlearq.main import chat_model
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
+from castlearq.evaluation_admission import apply_policy_to_admission
+
+
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(
+        status=CompatibilityStatus.COMPATIBLE,
+        checks=(
+            mock.Mock(
+                name="artifact-model identity",
+                status=CheckStatus.PASSED,
+                expected="val",
+                observed="val",
+                evidence=(),
+            ),
+        ),
+        conditions=(),
+    )
+    evaluation = mock.Mock(
+        projection=mock.Mock(conflicts=()),
+        result=strict_result,
+    )
+    return EvaluateModelCompatibilityResult(
+        model_id="test-model",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec, Quantization
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
 from castlearq.selection import RuntimeSelectionError, SelectionErrorCode
@@ -189,12 +226,12 @@ def pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(
         main_module,
         "evaluate_model_compatibility",
-        lambda *args, **kwargs: SimpleNamespace(evaluation=SimpleNamespace(result=None)),
+        lambda *args, **kwargs: _admitting_evaluation(),
     )
     monkeypatch.setattr(
         main_module,
         "to_admission",
-        lambda result: EvaluationAdmission(status="evaluated", verdict="compatible"),
+        lambda result: to_admission(_admitting_evaluation()),
     )
     return SimpleNamespace(
         capability=capability,
@@ -465,7 +502,7 @@ def test_chat_delegates_session_opening_to_the_application_boundary(
 
 def test_chat_forwards_the_cli_admission_unchanged(pipeline, monkeypatch):
     """The admission the CLI mints is the exact object handed to the boundary."""
-    minted = EvaluationAdmission(status="evaluated", verdict="compatible")
+    minted = to_admission(_admitting_evaluation())
     captured = {}
     real_open = main_module.open_chat_session
 
@@ -494,16 +531,16 @@ def test_chat_evaluates_compatibility_exactly_once(pipeline, monkeypatch):
 
     def counting_evaluate(*args, **kwargs):
         evaluations.append(1)
-        return SimpleNamespace(evaluation=SimpleNamespace(result=None))
+        return _admitting_evaluation()
 
     def counting_to_admission(result):
         admissions.append(1)
-        return EvaluationAdmission(status="evaluated", verdict="compatible")
+        return apply_policy_to_admission(result)
 
     monkeypatch.setattr(
         main_module, "evaluate_model_compatibility", counting_evaluate
     )
-    monkeypatch.setattr(main_module, "to_admission", counting_to_admission)
+    monkeypatch.setattr(main_module, "apply_policy_to_admission", counting_to_admission)
 
     code, _ = run_chat(pipeline, ["hello", "/exit"])
 

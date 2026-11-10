@@ -59,6 +59,7 @@ class GPUInfo:
     sources: dict[str, str] = field(default_factory=dict)
     backends: list[str] = field(default_factory=list)
     driver: str = "Unknown"
+    pci_address: str | None = None
 
     @property
     def vram_gib(self) -> float | None:
@@ -115,12 +116,53 @@ def parse_meminfo(text: str) -> MemoryInfo:
     return MemoryInfo(total_bytes=int(match.group(1)) * 1024 if match else None)
 
 
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+def _normalize_pci_address(address: str | None) -> str | None:
+    """Normalize a PCI address to the ``0000:00:02.0`` form with explicit domain.
+
+    Accepts both ``0000:00:02.0`` (explicit domain) and ``00:02.0`` (domain
+    omitted by ``lspci``). Returns ``None`` when the text is not a usable PCI
+    address.
+    """
+    if not address:
+        return None
+    address = address.strip().lower()
+    parts = address.split(":")
+    if len(parts) == 3:
+        domain, bus, slot_func = parts
+    elif len(parts) == 2:
+        domain, bus, slot_func = "0000", parts[0], parts[1]
+    else:
+        return None
+    slot, separator, func = slot_func.partition(".")
+    if not separator or not (len(domain) == 4 and len(bus) == 2 and len(slot) == 2 and len(func) == 1):
+        return None
+    if not all(character in _HEX_DIGITS for character in domain + bus + slot + func):
+        return None
+    domain_value = int(domain, 16)
+    bus_value = int(bus, 16)
+    device_value = int(slot, 16)
+    function_value = int(func, 16)
+    if not (0 <= domain_value <= 0xFFFF):
+        return None
+    if not (0 <= bus_value <= 0xFF):
+        return None
+    if not (0 <= device_value <= 0x1F):
+        return None
+    if not (0 <= function_value <= 0x7):
+        return None
+    return f"{domain}:{bus}:{slot}.{func}"
+
+
 def parse_lspci(text: str) -> list[GPUInfo]:
     """Parse display/3D controllers from lspci -mm output or normal lspci output."""
     gpus: list[GPUInfo] = []
     for line in text.splitlines():
         if not re.search(r"(VGA compatible controller|3D controller|Display controller)", line, re.I):
             continue
+        pci_address = _normalize_pci_address(line.split(None, 1)[0] if line.split() else None)
         pci_match = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
         pci_id = pci_match.group(1).lower() if pci_match else None
         device_id = pci_id.split(":", 1)[1] if pci_id else None
@@ -128,8 +170,14 @@ def parse_lspci(text: str) -> list[GPUInfo]:
             fields = re.findall(r'"([^"]*)"', line)
             name = fields[-1] if fields else line
         else:
-            name = line.split(":", 2)[-1].strip()
-            name = re.sub(r"^(VGA compatible controller|3D controller|Display controller):\s*", "", name, flags=re.I)
+            remainder = line.split(None, 1)[1] if line.split(None, 1) else line
+            name = remainder.strip()
+            name = re.sub(
+                r"^(VGA compatible controller|3D controller|Display controller)\s*(?:\[\d+\])?:\s*",
+                "",
+                name,
+                flags=re.I,
+            )
         name = re.sub(r"\s*\[[0-9a-fA-F]{4}:[0-9a-fA-F]{4}\]\s*$", "", name).strip()
         lower = name.lower()
         vendor = (
@@ -144,6 +192,7 @@ def parse_lspci(text: str) -> list[GPUInfo]:
                 vendor=vendor,
                 pci_id=pci_id,
                 device_id=device_id,
+                pci_address=pci_address,
                 sources={"gpu": "lspci"},
             )
         )
@@ -193,7 +242,7 @@ class LinuxHardwareDetector:
         architecture = platform.machine() or "Unknown"
         cpu_text = self._read(self._proc_root / "cpuinfo")
         mem_text = self._read(self._proc_root / "meminfo")
-        lspci = self._run(("lspci", "-nn"))
+        lspci = self._run(("lspci", "-D", "-nn"))
         gpus = parse_lspci(lspci or "")
         self._apply_sysfs(gpus)
         self._apply_external_memory(gpus)
@@ -219,22 +268,61 @@ class LinuxHardwareDetector:
             return None
 
     def _apply_sysfs(self, gpus: list[GPUInfo]) -> None:
-        cards = sorted((self._sys_root / "class/drm").glob("card[0-9]*"))
-        for index, card in enumerate(cards):
-            total = self._read_int(card / "device/mem_info_vram_total")
-            used = self._read_int(card / "device/mem_info_vram_used")
-            if total is None and used is None:
+        drm_dir = self._sys_root / "class/drm"
+        if not drm_dir.is_dir():
+            return
+        # Primera pasada: recopilar las tarjetas DRM válidas con su dirección PCI.
+        drm_cards: list[tuple[Path, str]] = []
+        for entry in sorted(drm_dir.iterdir()):
+            # Only real DRM cards participate. Render nodes, control devices and
+            # other connectors do not match ``cardN`` and must be ignored.
+            if not re.match(r"^card\d+$", entry.name):
                 continue
+            device_link = entry / "device"
+            try:
+                resolved = device_link.resolve(strict=True)
+            except (OSError, RuntimeError):
+                # Missing, dangling or invalid symlink: no reliable PCI address,
+                # no VRAM or driver is assigned from it.
+                continue
+            if not resolved.is_dir():
+                # The resolved target is not a directory: not a PCI device.
+                continue
+            address = _normalize_pci_address(resolved.name)
+            if address is None:
+                continue
+            drm_cards.append((resolved, address))
+        # Segunda pasada: agrupar por BDF y procesar únicamente direcciones con
+        # exactamente una tarjeta DRM asociada. Dos o más tarjetas con el mismo
+        # BDF impiden cualquier asignación de sysfs para esa dirección.
+        bdf_counts: dict[str, int] = {}
+        for _, address in drm_cards:
+            bdf_counts[address] = bdf_counts.get(address, 0) + 1
+        for resolved, address in drm_cards:
+            if bdf_counts[address] != 1:
+                # Dos o más tarjetas DRM comparten el mismo BDF: no asignar
+                # información de sysfs a esa GPU (evita asociaciones ambiguas ni
+                # sobrescrituras silenciosas).
+                continue
+            matches = [
+                candidate for candidate in gpus if candidate.pci_address == address
+            ]
+            if len(matches) != 1:
+                # Zero matches: no GPU seen by lspci with this address.
+                # More than one: ambiguous PCI identity, do not invent an
+                # association.
+                continue
+            gpu = matches[0]
+            total = self._read_int(resolved / "mem_info_vram_total")
+            used = self._read_int(resolved / "mem_info_vram_used")
             available = max(total - used, 0) if total is not None and used is not None else None
-            if index >= len(gpus):
-                continue
-            gpu = gpus[index]
+            index = gpus.index(gpu)
             gpus[index] = self._with_gpu(
                 gpu,
                 vram_bytes=total,
                 vram_available_bytes=available,
                 source="sysfs",
-                driver=self._driver_name(card),
+                driver=self._driver_name(resolved),
             )
 
     def _apply_external_memory(self, gpus: list[GPUInfo]) -> None:
@@ -278,9 +366,9 @@ class LinuxHardwareDetector:
                 return gpu
         return gpus[0] if len(gpus) == 1 else None
 
-    def _driver_name(self, card: Path) -> str:
+    def _driver_name(self, device: Path) -> str:
         try:
-            return (card / "device/driver").resolve().name or "Unknown"
+            return (device / "driver").resolve().name or "Unknown"
         except OSError:
             return "Unknown"
 
@@ -305,6 +393,7 @@ class LinuxHardwareDetector:
             vendor=gpu.vendor,
             pci_id=gpu.pci_id,
             device_id=gpu.device_id,
+            pci_address=gpu.pci_address,
             vram_bytes=vram_bytes if vram_bytes is not None else gpu.vram_bytes,
             vram_available_bytes=(
                 vram_available_bytes

@@ -25,16 +25,34 @@ from unittest.mock import Mock, patch
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
 from castlearq.execution import ExecutionResult, ExecutionTarget
 from castlearq.execute_model import EvaluationAdmission, ExecuteAdmissionDeniedError
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
 
 # B9.78: strict admission is the mandatory gate for the shared preparation
 # pipeline, so tests exercising preparation supply an admitting signal.
-ADMITTING = EvaluationAdmission(status="evaluated", verdict="compatible")
-# B9.89: preparation is no longer re-exported by the CLI. The CLI delegates to
-# the application boundary (``run_once``), which owns preparation. These tests
-# exercise the same shared preparation pipeline through its owning module, so
-# the architectural assertions below are unchanged and not weakened.
-from castlearq.run_service import PreparationError, prepare as _prepare
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    return EvaluateModelCompatibilityResult(
+        model_id="test-model",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
+
+# B9.78: strict admission is the mandatory gate for the shared preparation
+# pipeline, so tests exercising preparation supply an admitting signal.
+ADMITTING = to_admission(_admitting_evaluation())
+
 from castlearq.models import ArtifactSpec, ArtifactState, ModelSpec
+from castlearq.run_service import prepare as _prepare
 from castlearq.resolver import ResolvedModelArtifact
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
 

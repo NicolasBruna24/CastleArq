@@ -31,6 +31,7 @@ import unittest
 from unittest import mock
 
 from castlearq import main as cli
+from castlearq.hardware import GPUInfo, HardwareSnapshot, CPUInfo, MemoryInfo
 
 ENVELOPE_KEYS = {
     "schema",
@@ -165,6 +166,52 @@ class DetectJsonTests(_ShouldCase):
         # UNKNOWN structure.
         for value in payload["recommendation"].values():
             self.assertTrue(value is None or isinstance(value, str))
+
+    def test_detect_json_includes_pci_address(self):
+        """``detect --json`` exposes ``pci_address`` under the known/unknown contract."""
+        from contextlib import ExitStack
+
+        hardware = HardwareSnapshot(
+            operating_system="Linux",
+            architecture="x86_64",
+            cpu=CPUInfo(model="Test CPU", architecture="x86_64"),
+            memory=MemoryInfo(total_bytes=8 * 1024**3),
+            gpus=[
+                GPUInfo(
+                    name="Test GPU",
+                    vendor="Intel",
+                    pci_id="8086:e223",
+                    device_id="e223",
+                    pci_address="0000:00:02.0",
+                ),
+                GPUInfo(
+                    name="Unobserved PCI",
+                    vendor="Unknown",
+                    pci_address=None,
+                ),
+            ],
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(sys, "argv", ["castlearq", "detect", "--json"]))
+            stack.enter_context(mock.patch.object(sys, "stdout", new=out))
+            stack.enter_context(mock.patch.object(sys, "stderr", new=err))
+            stack.enter_context(mock.patch("castlearq.main.detect_hardware", return_value=hardware))
+            try:
+                exit_code = cli.main()
+            except SystemExit as exit_error:
+                exit_code = exit_error.code if isinstance(exit_error.code, int) else 0
+        self.assertEqual(exit_code, 0)
+        payload = one_json_document(out.getvalue())["payload"]
+        self.assertEqual(len(payload["gpus"]), 2)
+        self.assertEqual(
+            payload["gpus"][0]["pci_address"],
+            {"value": "0000:00:02.0", "status": "known"},
+        )
+        self.assertEqual(
+            payload["gpus"][1]["pci_address"],
+            UNKNOWN_NOT_OBSERVED,
+        )
 
 
 class RuntimeJsonTests(_ShouldCase):

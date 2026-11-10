@@ -24,6 +24,7 @@ from __future__ import annotations
 import struct
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 import hashlib
 
@@ -34,6 +35,26 @@ from castlearq.execute_model import (
     ExecutePreparationError,
     execute_model,
 )
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
+
+
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    return EvaluateModelCompatibilityResult(
+        model_id="model-1",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
 from castlearq.execution import (
     ArtifactPreflightError,
     ExecutableArtifact,
@@ -136,7 +157,7 @@ class _RecordingSelector:
 # B9.78: strict admission is the mandatory execution gate. Tests that exercise
 # the pipeline below this gate must supply an admitting signal, exactly as the
 # production callers now do.
-ADMITTING = EvaluationAdmission(status="evaluated", verdict="compatible")
+ADMITTING = to_admission(_admitting_evaluation())
 
 
 class _ExecutionCase(unittest.TestCase):
@@ -377,7 +398,8 @@ class AdmissionTests(_ExecutionCase):
 
     def test_admission_denial_blocks_before_the_runner(self):
         self._import()
-        admission = EvaluationAdmission(status="evaluated", verdict="blocked")
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, verdict="blocked")
         with self.assertRaises(ExecutePreparationError):
             execute_model(
                 "Local", "hello", admission=admission, dependencies=self._deps()
@@ -386,7 +408,7 @@ class AdmissionTests(_ExecutionCase):
 
     def test_admitting_verdict_does_not_block(self):
         self._import()
-        admission = EvaluationAdmission(status="evaluated", verdict="compatible")
+        admission = to_admission(_admitting_evaluation())
         result = execute_model(
             "Local", "hello", admission=admission, dependencies=self._deps()
         )

@@ -128,6 +128,7 @@ from typing import Any
 
 from .chat import ChatSessionClosedError, ChatSessionError
 from .evaluate_compatibility import evaluate_model_compatibility, to_admission
+from .evaluation_admission import apply_policy_to_admission
 from .application_wiring import compose_execute_model_dependencies
 from .admission import EvaluationAdmission
 from .execute_model import (
@@ -1129,7 +1130,7 @@ def _make_handler(
                 )
                 self._send_json(500, _evaluation_failed_body())
                 return None
-            admission = to_admission(evaluation)
+            admission = apply_policy_to_admission(evaluation).admission
             # 404 is answered BEFORE the gate (see _MODEL_NOT_FOUND_PREFIX):
             # a model that does not exist is not "incompatible", it is absent.
             if (

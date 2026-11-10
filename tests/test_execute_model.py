@@ -13,11 +13,13 @@ from __future__ import annotations
 import ast
 import inspect
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
 from castlearq import execute_model as em
 from castlearq.compatibility import CompatibilityResult, CompatibilityStatus
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
 from castlearq.execution import (
     ArtifactPreflightError,
     ExecutableArtifact,
@@ -103,6 +105,25 @@ def _executable(artifact):
     )
 
 
+
+
+
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    return EvaluateModelCompatibilityResult(
+        model_id="test-model",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
 
 class _FakePreflight:
     def __init__(self, executable=None, error=None, order=None):
@@ -240,7 +261,7 @@ class _Harness:
         # B9.78: admission is the mandatory gate, so a test exercising
         # anything below it must supply an admitting signal by default.
         call_kwargs.setdefault(
-            "admission", em.EvaluationAdmission(status="evaluated", verdict="compatible")
+            "admission", to_admission(_admitting_evaluation())
         )
         call_kwargs.update(kwargs)
         with mock.patch.object(
@@ -398,82 +419,92 @@ class AdmissionTests(unittest.TestCase):
 
     def test_evaluated_compatible_proceeds(self):
         h = _Harness()
-        result = h.run(
-            admission=em.EvaluationAdmission(status="evaluated", verdict="compatible")
-        )
+        result = h.run(admission=to_admission(_admitting_evaluation()))
         self.assertTrue(result.success)
         self.assertEqual(len(h.runner.calls), 1)
 
     def test_evaluated_with_conditions_proceeds(self):
         h = _Harness()
-        result = h.run(
-            admission=em.EvaluationAdmission(
-                status="evaluated", verdict="compatible_with_conditions"
-            )
-        )
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, verdict="compatible_with_conditions")
+        result = h.run(admission=admission)
         self.assertTrue(result.success)
         self.assertEqual(len(h.runner.calls), 1)
 
     def test_verdict_enum_and_case_are_normalized(self):
+        from unittest import mock
+
         h = _Harness()
-        result = h.run(
-            admission=em.EvaluationAdmission(status="EVALUATED", verdict="Compatible")
+        strict_result = mock.Mock(status="Compatible")
+        evaluation = mock.Mock(result=strict_result)
+        result = EvaluateModelCompatibilityResult(
+            model_id="test-model",
+            artifact=None,
+            runtime="llama.cpp CLI",
+            capability=None,
+            evaluation=evaluation,
+            integration=None,
+            status="EVALUATED",
+            blocking_outcome=None,
         )
+        result = h.run(admission=to_admission(result))
         self.assertTrue(result.success)
 
-    def test_duck_typed_summary_is_accepted(self):
+    def test_duck_typed_summary_is_rejected(self):
         h = _Harness()
         signal = mock.Mock(status="evaluated", verdict="compatible")
-        result = h.run(admission=signal)
-        self.assertTrue(result.success)
+        error = h.run_error(admission=signal)
+        self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
+        # Rechazado por falta de procedencia, antes de tocar compatibilidad/runner.
+        self.assertEqual(h.compatibility_calls, [])
+        self.assertEqual(h.runner.calls, [])
 
     def test_incompatible_denied(self):
         h = _Harness()
-        error = h.run_error(
-            admission=em.EvaluationAdmission(status="evaluated", verdict="incompatible")
-        )
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, verdict="incompatible")
+        error = h.run_error(admission=admission)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
         self.assertIsInstance(error, em.ExecutePreparationError)
+        # Tiene procedencia legítima: se rechaza por el veredicto, no por el token.
         self.assertEqual(h.compatibility_calls, [])
         self.assertEqual(h.runner.calls, [])
 
     def test_insufficient_evidence_denies_by_default(self):
         h = _Harness()
-        error = h.run_error(
-            admission=em.EvaluationAdmission(
-                status="evaluated", verdict="insufficient_evidence"
-            )
-        )
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, verdict="insufficient_evidence")
+        error = h.run_error(admission=admission)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
         self.assertIn("insufficient_evidence", str(error))
         self.assertEqual(h.runner.calls, [])
 
     def test_missing_verdict_denies_by_default(self):
         h = _Harness()
-        error = h.run_error(
-            admission=em.EvaluationAdmission(status="evaluated")
-        )
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, verdict=None)
+        error = h.run_error(admission=admission)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
 
     def test_blocked_never_authorizes(self):
         h = _Harness()
-        error = h.run_error(admission=em.EvaluationAdmission(status="blocked"))
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, status="blocked")
+        error = h.run_error(admission=admission)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
         self.assertEqual(h.compatibility_calls, [])
         self.assertEqual(h.runner.calls, [])
 
     def test_unknown_status_denies(self):
         h = _Harness()
-        error = h.run_error(
-            admission=em.EvaluationAdmission(status="pending", verdict="compatible")
-        )
+        admitting = to_admission(_admitting_evaluation())
+        admission = replace(admitting, status="pending", verdict="compatible")
+        error = h.run_error(admission=admission)
         self.assertIsInstance(error, em.ExecuteAdmissionDeniedError)
 
     def test_admission_never_skips_revalidation(self):
         h = _Harness()
-        h.run(
-            admission=em.EvaluationAdmission(status="evaluated", verdict="compatible")
-        )
+        h.run(admission=to_admission(_admitting_evaluation()))
         self.assertEqual(
             h.order,
             ["resolve", "capability", "compatibility", "preflight", "select", "run"],

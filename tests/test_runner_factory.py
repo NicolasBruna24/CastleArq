@@ -34,6 +34,26 @@ from castlearq.runner_factory import (
 from castlearq.runtimes import PromptInputMode, RuntimeCapability
 from castlearq.sycl_runner import SyclLlamaRunner
 
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
+
+
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    return EvaluateModelCompatibilityResult(
+        model_id="model-1",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
+
 
 def _capability(
     backends: tuple[str, ...] = ("CPU", "Vulkan", "SYCL"),
@@ -365,7 +385,7 @@ class RunnerFactoryIntegrationTests(unittest.TestCase):
             compatibility_warnings=(),
             selection_warnings=(),
         )
-        self.admission = EvaluationAdmission("evaluated", "compatible")
+        self.admission = to_admission(_admitting_evaluation())
         self.store = Mock()
         self.runner = _FakeRunner()
 

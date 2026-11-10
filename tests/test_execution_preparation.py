@@ -41,13 +41,30 @@ from castlearq.runtimes import (
     RuntimeStatus,
 )
 from castlearq.selection import RuntimeSelectionError, SelectionErrorCode
+from castlearq.evaluate_compatibility import EvaluateModelCompatibilityResult, to_admission
+
+
+def _admitting_evaluation():
+    """Evaluation result that projects to an admitting Admission via to_admission()."""
+    from unittest import mock
+
+    strict_result = mock.Mock(status="compatible")
+    evaluation = mock.Mock(result=strict_result)
+    return EvaluateModelCompatibilityResult(
+        model_id="test-model",
+        artifact=None,
+        runtime="llama.cpp CLI",
+        capability=None,
+        evaluation=evaluation,
+        integration=None,
+        status="evaluated",
+        blocking_outcome=None,
+    )
 
 
 class ExecutionPreparationTests(unittest.TestCase):
     def setUp(self):
-        self.admission = EvaluationAdmission(
-            status="evaluated", verdict="compatible"
-        )
+        self.admission = to_admission(_admitting_evaluation())
         self.model = ModelSpec(name="test model", id="test-model")
         self.artifact = ArtifactSpec(
             model_id="test-model",

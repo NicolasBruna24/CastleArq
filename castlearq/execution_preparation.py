@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from .admission import EvaluationAdmission
+from .admission import EvaluationAdmission, _STRICT_EVALUATION_TOKEN
 from .compatibility import (
     CompatibilityConfig,
     CompatibilityResult,
@@ -149,6 +149,14 @@ def require_evaluation_admission(
         raise AdmissionDeniedError(
             "Execution denied: no evaluation admission was supplied; "
             "deny-by-default applies"
+        )
+    # Provenance check: only ``to_admission()`` may issue an admission that
+    # can pass the gate.  Direct constructions and duck-typed summaries lack
+    # the internal token and are denied here, before any status/verdict rule.
+    if getattr(admission, "_admission_provenance", None) is not _STRICT_EVALUATION_TOKEN:
+        raise AdmissionDeniedError(
+            "Execution denied: admission was not issued by the authorized "
+            "evaluation flow; deny-by-default applies"
         )
     status = str(getattr(admission, "status", "")).strip().lower()
     if status != "evaluated":
